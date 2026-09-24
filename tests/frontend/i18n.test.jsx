@@ -200,24 +200,49 @@ describe("LanguageProvider", () => {
 });
 
 describe("LanguageToggle", () => {
-  it("offers English while in Arabic, switches the whole page and saves the choice", () => {
+  it("is an English on/off switch: off in Arabic, flips the whole page and saves the choice", () => {
     render(<LanguageProvider><LanguageToggle /><Probe /></LanguageProvider>);
-    const toggle = screen.getByTestId("language-toggle");
-    expect(toggle).toHaveTextContent("English");
-    expect(toggle).toHaveAttribute("aria-label", "التبديل إلى الإنجليزية");
-    expect(toggle).toHaveAttribute("lang", "en");
+    const toggle = screen.getByRole("switch", { name: "الإنجليزية" });
+    expect(toggle).toBe(screen.getByTestId("language-toggle"));
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+    expect(toggle).toHaveAttribute("title", "التبديل إلى الإنجليزية");
+    expect(screen.getByTestId("language-toggle-knob")).toHaveClass("translate-x-0");
 
     fireEvent.click(toggle);
     expect(screen.getByTestId("probe")).toHaveTextContent("en|ltr|Log out");
     expect(document.documentElement).toHaveAttribute("lang", "en");
     expect(document.documentElement).toHaveAttribute("dir", "ltr");
     expect(readLangCookie()).toBe("en");
-    expect(toggle).toHaveTextContent("العربية");
-    expect(toggle).toHaveAttribute("aria-label", "Switch to Arabic");
+    expect(screen.getByRole("switch", { name: "English" })).toHaveAttribute("aria-checked", "true");
+    expect(toggle).toHaveAttribute("title", "Switch to Arabic");
+    expect(screen.getByTestId("language-toggle-knob")).toHaveClass("translate-x-[38px]");
 
     fireEvent.click(toggle);
     expect(screen.getByTestId("probe")).toHaveTextContent("ar|rtl|خروج");
+    expect(toggle).toHaveAttribute("aria-checked", "false");
     expect(readLangCookie()).toBe("ar");
+  });
+
+  it("shows both languages on the track, highlights the active one, and never mirrors", () => {
+    render(<LanguageProvider><LanguageToggle /></LanguageProvider>);
+    const toggle = screen.getByTestId("language-toggle");
+    // The track stays left-to-right in both languages, so the knob doesn't jump sides.
+    expect(toggle).toHaveAttribute("dir", "ltr");
+    const [ar, en] = toggle.querySelectorAll("span[lang]");
+    expect(ar).toHaveTextContent("ع");
+    expect(ar).toHaveAttribute("lang", "ar");
+    expect(en).toHaveTextContent("EN");
+    expect(en).toHaveAttribute("lang", "en");
+    expect(ar).toHaveClass("text-slate-900");
+    expect(en).toHaveClass("text-white/80");
+
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("dir", "ltr");
+    expect(ar).toHaveClass("text-white/80");
+    expect(en).toHaveClass("text-slate-900");
+    // Keyboard: it's a real button, so Space/Enter work natively; the knob respects reduced motion.
+    expect(toggle.tagName).toBe("BUTTON");
+    expect(screen.getByTestId("language-toggle-knob")).toHaveClass("motion-reduce:transition-none");
   });
 
   it("the choice survives a reload (new provider reads the cookie)", () => {
@@ -246,15 +271,15 @@ describe("screens in English", () => {
     expect(screen.getByText("Money transfers and financial transactions")).toBeInTheDocument();
     expect(screen.getByTestId("scroll-to-top")).toHaveAttribute("title", "Back to top");
     expect(within(header).getByText(/^\d{2}:\d{2}:\d{2} (AM|PM)$/)).toBeInTheDocument();
-    expect(screen.getByTestId("language-toggle")).toHaveTextContent("العربية");
+    expect(screen.getByRole("switch", { name: "English" })).toHaveAttribute("aria-checked", "true");
   });
 
-  it("header in Arabic keeps its Arabic labels and the toggle offers English", () => {
+  it("header in Arabic keeps its Arabic labels and the English switch is off", () => {
     setAuthRole("admin");
     render(<LanguageProvider><MemoryRouter><Header /></MemoryRouter></LanguageProvider>);
     expect(screen.getByText("خروج")).toBeInTheDocument();
     expect(screen.getByTestId("role-badge")).toHaveTextContent("مسؤول");
-    expect(screen.getByTestId("language-toggle")).toHaveTextContent("English");
+    expect(screen.getByRole("switch", { name: "الإنجليزية" })).toHaveAttribute("aria-checked", "false");
   });
 
   it("login page has its own toggle (before sign-in) and English labels", () => {

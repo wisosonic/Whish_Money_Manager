@@ -178,7 +178,7 @@ Everyone signs in with their own email and password. There are three roles:
 - **The browser cap:** browsers keep cookies for at most about 400 days. The app renews the cookie as you use it, so this only matters if nobody opens the app for 400 days.
 - **Logout:** ends that session on the server immediately. A copy of the token can't be reused, and other devices stay signed in.
 - **Brute-force protection:** after 10 wrong passwords for the same email, sign-in is blocked for 15 minutes.
-- **Language (العربية / English):** the header has a language switch, and so does the login page, so it works before signing in. It shows the other language's name ("English" while in Arabic, "العربية" while in English).
+- **Language (العربية / English):** the header has an on/off language switch, and so does the login page, so it works before signing in. It shows **ع** on the left and **EN** on the right, and a white knob sits on the active language. Click it (or Tab to it and press Space/Enter) to slide to the other one. Screen readers announce it as the "English" switch, on or off.
   - **Arabic is the default.**
   - **The whole interface switches:** every label, message, month name, number of transactions (with English singular/plural) and the page direction. Arabic is right-to-left; English is left-to-right, with the layout mirrored.
   - **Server messages** (e.g. a wrong password) are shown in the chosen language.

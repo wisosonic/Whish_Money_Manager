@@ -15,9 +15,9 @@ export const DEFAULT_LANG = "ar";
 const ONE_YEAR_SECONDS = 365 * 24 * 60 * 60;
 
 export const LANGUAGES = {
-  // `label` is each language's own name, shown on the toggle in its own script.
-  ar: { dictionary: ar, dir: "rtl", locale: "ar-u-nu-latn", label: "العربية" },
-  en: { dictionary: en, dir: "ltr", locale: "en-US", label: "English" },
+  // `label` is each language's own name in its own script; `short` is what the switch shows.
+  ar: { dictionary: ar, dir: "rtl", locale: "ar-u-nu-latn", label: "العربية", short: "ع" },
+  en: { dictionary: en, dir: "ltr", locale: "en-US", label: "English", short: "EN" },
 };
 
 export const readLangCookie = () => {

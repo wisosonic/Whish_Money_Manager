@@ -3,6 +3,7 @@
 const en = {
   "app.tagline": "Money transfers and financial transactions",
   "language.switchTo": "Switch to Arabic",
+  "language.english": "English",
 
   // Common
   "common.add": "Add",

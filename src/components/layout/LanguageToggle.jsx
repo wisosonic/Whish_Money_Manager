@@ -1,24 +1,41 @@
-import { Languages } from "lucide-react";
 import { LANGUAGES, useI18n } from "@/lib/i18n";
 
-// Switches the interface between Arabic and English. Shows the language you'd switch TO,
-// written in that language, so it's recognisable whichever language is active.
+// Switches the interface between Arabic and English. A two-position switch: "ع" on the left,
+// "EN" on the right, with a knob that slides under the active language. Screen readers hear a
+// switch named "English" that is on or off. The track is always left-to-right so the knob
+// doesn't jump sides when the page direction flips.
 export default function LanguageToggle({ className = "" }) {
   const { lang, t, toggleLang } = useI18n();
-  const other = lang === "ar" ? "en" : "ar";
+  const isEnglish = lang === "en";
+  const label = (code, active) => (
+    <span
+      aria-hidden="true"
+      lang={code}
+      className={`relative z-10 flex-1 text-center font-bold leading-none ${code === "ar" ? "text-base" : "text-sm"} transition-colors duration-200 motion-reduce:transition-none ${active ? "text-slate-900" : "text-white/80"}`}
+    >
+      {LANGUAGES[code].short}
+    </span>
+  );
 
   return (
     <button
       type="button"
-      onClick={toggleLang}
-      aria-label={t("language.switchTo")}
+      role="switch"
+      aria-checked={isEnglish}
+      aria-label={t("language.english")}
       title={t("language.switchTo")}
+      onClick={toggleLang}
       data-testid="language-toggle"
-      lang={other}
-      className={`flex items-center gap-2 bg-white/10 hover:bg-white/20 rounded-2xl px-3 py-2 transition text-sm font-medium text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${className}`}
+      dir="ltr"
+      className={`relative inline-flex shrink-0 items-center h-9 w-[84px] p-1 rounded-full bg-white/15 hover:bg-white/25 border border-white/20 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${className}`}
     >
-      <Languages className="w-4 h-4" aria-hidden="true" />
-      <span>{LANGUAGES[other].label}</span>
+      <span
+        aria-hidden="true"
+        data-testid="language-toggle-knob"
+        className={`absolute top-1 bottom-1 left-1 w-[38px] rounded-full bg-white shadow transition-transform duration-200 ease-out motion-reduce:transition-none ${isEnglish ? "translate-x-[38px]" : "translate-x-0"}`}
+      />
+      {label("ar", !isEnglish)}
+      {label("en", isEnglish)}
     </button>
   );
 }

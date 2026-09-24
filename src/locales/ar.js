@@ -4,6 +4,7 @@
 const ar = {
   "app.tagline": "إدارة الحوالات والمعاملات المالية",
   "language.switchTo": "التبديل إلى الإنجليزية",
+  "language.english": "الإنجليزية",
 
   // Common
   "common.add": "إضافة",

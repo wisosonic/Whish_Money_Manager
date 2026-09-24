@@ -120,7 +120,10 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - **Use logical spacing and alignment classes**, so English mirrors correctly: `text-start` / `text-end`, `ms-`/`me-`, `ps-`/`pe-`, `start-`/`end-`, not `text-right`, `mr-`, `pl-`, `left-`. Keep `dir="ltr"` on numbers, emails and dates embedded in text.
   - **Server messages** stay English in the API. The frontend shows them with `errorText(message)`, which maps the exact message through `ar.__serverErrors`. Add new user-facing API messages there.
   - **Role names and descriptions** from the API are shown via `t("roles.<name>")`. Month names are `months.1`–`months.12`.
-  - **Language names** ("العربية" / "English") are never translated; they live in `LANGUAGES` in `src/lib/i18n.jsx`.
+  - **Language names** ("العربية" / "English") and the switch's short labels (`short`: "ع" / "EN") are never translated; they live in `LANGUAGES` in `src/lib/i18n.jsx`.
+  - **The language switch** (`LanguageToggle.jsx`, user's request) is a `<button role="switch">` named `t("language.english")`, with `aria-checked` true in English. `title` keeps the "switch to…" hint.
+    - The track is `dir="ltr"` in both languages: ع is always on the left and EN on the right, so the knob doesn't jump sides when the page mirrors.
+    - The knob slides with `translate-x-[38px]` (track 84px, knob 38px); if you resize one, resize the other. It uses `motion-reduce:transition-none`.
   - **Guard tests:** `tests/frontend/i18n.test.jsx` fails if the two word lists' keys or placeholders differ, a used key is missing, or any Arabic literal or `dir="rtl"` appears in UI code. `ReviewPDFModal.jsx` and `InsertTransactionModal.jsx` are unused and exempt; translate them if they're ever brought back.
   - **Preference:** the `wmm_lang` cookie (`ar`/`en`, one year, SameSite=Lax, readable by JS). `index.html` applies it before the first paint. Components without a `LanguageProvider` (unit tests) get Arabic, so Arabic assertions keep working.
 - **Branding**:
@@ -204,6 +207,7 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - `Dashboard` computes `yearly*` figures.
   - Added `StatsCards.test.jsx` and Dashboard summary tests. Total now 104.
 ### 2026-09-24
+- **Language button → switch** (user's request): the toggle is now a sliding ع / EN switch (`role="switch"`), in the header and on the login page. Checked in Edge in both languages, on the login page and at phone width. Tests: the toggle tests now check switch semantics, the knob position, the active label and the fixed left-to-right track, plus 1 new test (total 358).
 - **Scroll position kept after saving** (user-reported):
   - **Cause:** every refresh set `loading = true`, which replaced the table with a one-line placeholder. The page shrank (to 720px in an 800px window) and the scroll dropped from 2047 to 13.
   - **Fix:** `loading` is now only for the first load; refreshes swap data in place.
