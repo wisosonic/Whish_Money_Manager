@@ -63,6 +63,12 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - Axis captions are horizontal and anchored to the axis edge; rotated Arabic was unreadable. The legend sits below the plot so it doesn't collide with the captions on phones.
   - Animation is off when the user has `prefers-reduced-motion` turned on.
   - **Screenshotting it headless:** use `--force-prefers-reduced-motion`. Otherwise the capture shows the first frame of the animation (no bars or lines). Headless Chrome/Edge also lays out at least ~492px wide, so a 400px screenshot looks cropped even though the chart fits.
+- **Type column** (user's request): `TypeIcon` in `TransactionsList.jsx` shows a green `ArrowDown` (Cash In) or a red `ArrowUp` (Cash Out) in a tinted circle, with `role="img"` + `aria-label`/`title` so it's never color-alone.
+  - The arrow is `text-green-700` (not 600), for at least 3:1 contrast on `bg-green-100`.
+  - The names stay the English "Cash In"/"Cash Out" in both languages, like the toolbar buttons.
+  - **Sorting:** the header button cycles `TYPE_SORT_CYCLE`: none → cash_in first (`aria-sort="ascending"`) → cash_out first (`"descending"`) → none.
+  - `sortByType` is stable and returns the input unchanged for "none". It only reorders what's displayed: selection, bulk actions and "#" (the real journal number) still work from `transactions`.
+  - The sort is component state, not saved.
 - **Bulk actions** (`TransactionsList.jsx` selection + `BulkEditModal.jsx`; server `POST /transactions/bulk-update` and `/bulk-delete`):
   - **Selection** is a `Set` of ids, limited to the currently visible rows. A `useEffect` on `transactions` drops ids that disappear through a day change or search, so bulk actions never hit hidden rows.
   - **Bulk edit is opt-in per field** (a "تغيير" checkbox). Only ticked fields are sent, and ticked + empty clears the field.
@@ -207,6 +213,7 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - `Dashboard` computes `yearly*` figures.
   - Added `StatsCards.test.jsx` and Dashboard summary tests. Total now 104.
 ### 2026-09-24
+- **Type column icons + sorting**: "Cash In"/"Cash Out" text replaced by green/red arrow icons, and the Type header sorts (Cash In first / Cash Out first / original). Checked in Edge in both languages and all three sort states. Added 4 tests (total 362).
 - **Language button → switch** (user's request): the toggle is now a sliding ع / EN switch (`role="switch"`), in the header and on the login page. Checked in Edge in both languages, on the login page and at phone width. Tests: the toggle tests now check switch semantics, the knob position, the active label and the fixed left-to-right track, plus 1 new test (total 358).
 - **Scroll position kept after saving** (user-reported):
   - **Cause:** every refresh set `loading = true`, which replaced the table with a one-line placeholder. The page shrank (to 720px in an 800px window) and the scroll dropped from 2047 to 13.

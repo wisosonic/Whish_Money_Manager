@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Search, FileText, Trash2, Pencil, X, Loader2, UserSearch, UserCheck, Percent, BarChart3 } from "lucide-react";
+import { Search, FileText, Trash2, Pencil, X, Loader2, UserSearch, UserCheck, Percent, BarChart3, ArrowDown, ArrowUp, ArrowUpDown, ChevronUp, ChevronDown } from "lucide-react";
 import BulkEditModal from "@/components/transactions/BulkEditModal";
 import SenderReportModal from "@/components/transactions/SenderReportModal";
 import MonthlyChartModal from "@/components/dashboard/MonthlyChartModal";
@@ -11,6 +11,35 @@ import DailyCommissionReport from "@/components/transactions/DailyCommissionRepo
 import { useAuth } from "@/lib/AuthContext";
 import { PERMISSIONS } from "@/lib/permissions";
 import { useI18n } from "@/lib/i18n";
+
+// ═══ Type column: icon + sorting ═══
+// Cash In = green down-arrow, Cash Out = red up-arrow (same arrows as the Cash In / Cash Out buttons).
+// The name stays available to screen readers (role="img" + aria-label) and on hover (title).
+export function TypeIcon({ type }) {
+  const isIn = type === "cash_in";
+  const label = isIn ? "Cash In" : "Cash Out";
+  const Icon = isIn ? ArrowDown : ArrowUp;
+  return (
+    <span
+      role="img"
+      aria-label={label}
+      title={label}
+      data-type={isIn ? "cash_in" : "cash_out"}
+      className={`inline-flex items-center justify-center w-7 h-7 rounded-full ${isIn ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"}`}>
+      <Icon className="w-4 h-4" strokeWidth={2.75} aria-hidden="true" />
+    </span>
+  );
+}
+
+// Clicking the Type header cycles: original order → Cash In first → Cash Out first → original.
+export const TYPE_SORT_CYCLE = { none: "cash_in", cash_in: "cash_out", cash_out: "none" };
+
+// Stable: rows of the same type keep their journal order.
+export const sortByType = (rows, sort) => {
+  if (sort === "none") return rows;
+  const rank = (t) => ((t.type === "cash_in") === (sort === "cash_in") ? 0 : 1);
+  return rows.map((t, i) => [t, i]).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map(([t]) => t);
+};
 
 export default function TransactionsList({
   transactions,
@@ -38,6 +67,9 @@ export default function TransactionsList({
   const [showReceiverReport, setShowReceiverReport] = useState(false);
   const [showCommissionReport, setShowCommissionReport] = useState(false);
   const [showChart, setShowChart] = useState(false);
+  const [typeSort, setTypeSort] = useState("none");
+  const rows = sortByType(transactions, typeSort);
+  const TypeSortIcon = typeSort === "cash_in" ? ChevronDown : typeSort === "cash_out" ? ChevronUp : ArrowUpDown;
 
   // Permissions (the API enforces the same rules; this only hides what the user can't do).
   const { can, canEditTransaction } = useAuth();
@@ -391,7 +423,19 @@ export default function TransactionsList({
                     className="w-4 h-4 accent-blue-600 cursor-pointer align-middle" />
                 </th>
                 <th className="px-4 py-3">#</th>
-                <th className="px-4 py-3">{tr("columns.type")}</th>
+                <th
+                  className="px-2 py-3"
+                  aria-sort={typeSort === "none" ? "none" : typeSort === "cash_in" ? "ascending" : "descending"}>
+                  <button
+                    type="button"
+                    onClick={() => setTypeSort(TYPE_SORT_CYCLE[typeSort])}
+                    title={tr(`list.sortType.${TYPE_SORT_CYCLE[typeSort]}`)}
+                    data-testid="sort-type"
+                    className={`inline-flex items-center gap-1 rounded-md px-2 py-1 font-[inherit] hover:bg-gray-200 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${typeSort === "none" ? "" : "text-blue-700"}`}>
+                    {tr("columns.type")}
+                    <TypeSortIcon className={`w-3.5 h-3.5 ${typeSort === "none" ? "opacity-50" : ""}`} aria-hidden="true" />
+                  </button>
+                </th>
                 <th className="px-4 py-3">{tr("columns.sender")}</th>
                 <th className="px-4 py-3">{tr("columns.receiver")}</th>
                 <th className="px-4 py-3">{tr("columns.amount")}</th>
@@ -406,7 +450,7 @@ export default function TransactionsList({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {transactions.map((t, i) => {
+              {rows.map((t, i) => {
                 // الرقم الحقيقي للعملية في اليوم (من allTransactions مرتبة بنفس ترتيب الجدول)
                 const realIndex = allTransactions.filter((tx) => {
                   const d = tx.transaction_date || new Date(tx.created_date).toISOString().split("T")[0];
@@ -425,15 +469,7 @@ export default function TransactionsList({
                   </td>
                   <td className="px-4 py-3 text-gray-400">{displayIndex}</td>
                   <td className="px-4 py-3">
-                    <span
-                          className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                          t.type === "cash_in" ?
-                          "bg-green-100 text-green-700" :
-                          "bg-red-100 text-red-700"}`
-                          }>
-                          
-                      {t.type === "cash_in" ? "Cash In" : "Cash Out"}
-                    </span>
+                    <TypeIcon type={t.type} />
                   </td>
                   <td className="px-4 py-3 font-medium">{t.sender_name || "-"}</td>
                   <td className="px-4 py-3 font-medium">

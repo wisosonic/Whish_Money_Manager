@@ -81,6 +81,9 @@ const en = {
 
   // Table columns (shared)
   "columns.type": "Type",
+  "list.sortType.cash_in": "Sort by type: Cash In first",
+  "list.sortType.cash_out": "Sort by type: Cash Out first",
+  "list.sortType.none": "Back to the original order",
   "columns.sender": "Sender",
   "columns.receiver": "Receiver",
   "columns.amount": "Amount",

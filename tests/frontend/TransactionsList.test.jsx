@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import TransactionsList from "@/components/dashboard/TransactionsList";
+import TransactionsList, { sortByType } from "@/components/dashboard/TransactionsList";
 import { base44 } from "@/api/base44Client";
 import { setAuthRole } from "./authMock";
 
@@ -354,5 +354,73 @@ describe("TransactionsList — role-based controls", () => {
     fireEvent.click(screen.getByLabelText("تحديد كل العمليات الظاهرة"));
     expect(screen.getByRole("button", { name: /تعديل المحدد/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /حذف المحدد/ })).toBeInTheDocument();
+  });
+});
+
+describe("TransactionsList — type column (icons + sorting)", () => {
+  const mixed = [
+    { ...transactions[0], id: 11, sender_name: "OUT-A" },
+    { ...transactions[1], id: 12, sender_name: "IN-A" },
+    { ...transactions[0], id: 13, sender_name: "OUT-B" },
+    { ...transactions[1], id: 14, sender_name: "IN-B" },
+  ];
+  const typeIcons = (container) => bodyRows(container).map((row) => row.querySelector("td:nth-child(3) [role='img']"));
+  const senders = (container) => bodyRows(container).map((row) => row.querySelector("td:nth-child(4)").textContent);
+  const numbers = (container) => bodyRows(container).map((row) => row.querySelector("td:nth-child(2)").textContent);
+
+  it("shows a green icon for Cash In and a red one for Cash Out instead of text, still named for screen readers", () => {
+    const { container } = renderList();
+    const [outIcon, inIcon] = typeIcons(container);
+    expect(outIcon).toHaveAccessibleName("Cash Out");
+    expect(outIcon).toHaveAttribute("title", "Cash Out");
+    expect(outIcon).toHaveClass("bg-red-100", "text-red-600");
+    expect(outIcon.querySelector("svg")).toHaveClass("lucide-arrow-up");
+    expect(inIcon).toHaveAccessibleName("Cash In");
+    expect(inIcon).toHaveClass("bg-green-100", "text-green-700");
+    expect(inIcon.querySelector("svg")).toHaveClass("lucide-arrow-down");
+    // No visible "Cash In"/"Cash Out" text left in the rows.
+    bodyRows(container).forEach((row) => expect(row.querySelector("td:nth-child(3)").textContent).toBe(""));
+  });
+
+  it("the Type header sorts: Cash In first → Cash Out first → original order", () => {
+    const { container } = renderList({ transactions: mixed, allTransactions: mixed });
+    const header = screen.getByTestId("sort-type");
+    const th = header.closest("th");
+    expect(th).toHaveAttribute("aria-sort", "none");
+    expect(header).toHaveAttribute("title", "ترتيب حسب النوع: Cash In أولاً");
+    expect(senders(container)).toEqual(["OUT-A", "IN-A", "OUT-B", "IN-B"]);
+
+    fireEvent.click(header);
+    expect(th).toHaveAttribute("aria-sort", "ascending");
+    expect(senders(container)).toEqual(["IN-A", "IN-B", "OUT-A", "OUT-B"]);
+    expect(typeIcons(container).map((i) => i.dataset.type)).toEqual(["cash_in", "cash_in", "cash_out", "cash_out"]);
+    // "#" keeps each row's real place in the day's journal.
+    expect(numbers(container)).toEqual(["2", "4", "1", "3"]);
+
+    fireEvent.click(header);
+    expect(th).toHaveAttribute("aria-sort", "descending");
+    expect(senders(container)).toEqual(["OUT-A", "OUT-B", "IN-A", "IN-B"]);
+    expect(header).toHaveAttribute("title", "العودة إلى الترتيب الأصلي");
+
+    fireEvent.click(header);
+    expect(th).toHaveAttribute("aria-sort", "none");
+    expect(senders(container)).toEqual(["OUT-A", "IN-A", "OUT-B", "IN-B"]);
+  });
+
+  it("sorting only reorders: selection and bulk actions still use the same rows", () => {
+    const { container } = renderList({ transactions: mixed, allTransactions: mixed });
+    fireEvent.click(screen.getByTestId("sort-type"));
+    const firstRow = bodyRows(container)[0];
+    fireEvent.click(within(firstRow).getByRole("checkbox"));
+    expect(screen.getByTestId("bulk-selected-count")).toHaveTextContent("1");
+    expect(within(bodyRows(container)[0]).getByRole("checkbox")).toBeChecked();
+    expect(senders(container)[0]).toBe("IN-A");
+  });
+
+  it("sortByType is stable and doesn't change the input", () => {
+    const input = [...mixed];
+    expect(sortByType(input, "none")).toBe(input);
+    expect(sortByType(input, "cash_out").map((t) => t.id)).toEqual([11, 13, 12, 14]);
+    expect(input.map((t) => t.id)).toEqual([11, 12, 13, 14]);
   });
 });
