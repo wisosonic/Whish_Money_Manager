@@ -82,7 +82,7 @@ const makeEntityClient = (entityPath) => ({
     }),
 });
 
-export const base44 = {
+export const api = {
   auth: {
     // The signed-in user (with role and permissions), or a 401 error.
     me: async () => apiRequest('/auth/me', { method: 'GET' }),

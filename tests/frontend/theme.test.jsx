@@ -11,11 +11,11 @@ import MonthlyChartModal, { CHART_INK, CHART_SERIES } from "@/components/dashboa
 import { LanguageProvider } from "@/lib/i18n";
 import { PreferencesProvider, usePreferences } from "@/lib/PreferencesContext";
 import { applyPreferenceChanges, resolvePreferences } from "@/lib/preferences";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/apiClient";
 import { setAuthLoading, setAuthRole } from "./authMock";
 
 vi.mock("@/lib/AuthContext", async () => (await import("./authMock")).authContextMock);
-vi.mock("@/api/base44Client", () => ({ base44: { auth: { updatePreferences: vi.fn() } } }));
+vi.mock("@/api/apiClient", () => ({ api: { auth: { updatePreferences: vi.fn() } } }));
 vi.mock("recharts", async (importOriginal) => {
   const actual = await importOriginal();
   const { cloneElement } = await import("react");
@@ -52,8 +52,8 @@ beforeEach(() => {
   document.cookie = "wmm_lang=; Max-Age=0; Path=/";
   setAuthRole("user");
   serverPreferences = resolvePreferences(null);
-  base44.auth.updatePreferences.mockReset();
-  base44.auth.updatePreferences.mockImplementation(async (changes) => {
+  api.auth.updatePreferences.mockReset();
+  api.auth.updatePreferences.mockImplementation(async (changes) => {
     serverPreferences = applyPreferenceChanges(serverPreferences, changes).preferences;
     return { preferences: serverPreferences };
   });
@@ -93,7 +93,7 @@ describe("theme preference", () => {
 
     fireEvent.click(screen.getByTestId("theme-dark"));
     expect(root).toHaveClass("dark");
-    await waitFor(() => expect(base44.auth.updatePreferences).toHaveBeenCalledWith({ theme: "dark" }));
+    await waitFor(() => expect(api.auth.updatePreferences).toHaveBeenCalledWith({ theme: "dark" }));
 
     fireEvent.click(screen.getByTestId("theme-light"));
     expect(root).not.toHaveClass("dark");

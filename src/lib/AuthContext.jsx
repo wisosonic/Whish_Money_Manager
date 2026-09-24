@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import { base44, SESSION_ENDED_EVENT } from '@/api/base44Client';
+import { api, SESSION_ENDED_EVENT } from '@/api/apiClient';
 import { canUpdateTransaction, hasPermission } from '@/lib/permissions';
 
 const AuthContext = createContext();
@@ -21,7 +21,7 @@ export const AuthProvider = ({ children }) => {
   const checkUserAuth = useCallback(async () => {
     setIsLoadingAuth(true);
     try {
-      const currentUser = await base44.auth.me();
+      const currentUser = await api.auth.me();
       setUser(currentUser);
       setIsAuthenticated(true);
       setAuthError(null);
@@ -49,7 +49,7 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     try {
-      const currentUser = await base44.auth.login(email, password);
+      const currentUser = await api.auth.login(email, password);
       setUser(currentUser);
       setIsAuthenticated(true);
       setAuthError(null);
@@ -62,7 +62,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = async () => {
-    await base44.auth.logout();
+    await api.auth.logout();
     signedOut();
   };
 

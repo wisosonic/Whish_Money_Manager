@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/apiClient";
 import { X, Calendar } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 
@@ -30,7 +30,7 @@ export default function EditTransactionModal({ transaction, onClose, onSaved }) 
       const amt = Number(form.amount) || 0;
       const finalCommission = parseFloat(form.commission) || 0;
 
-      await base44.entities.Transaction.update(transaction.id, {
+      await api.entities.Transaction.update(transaction.id, {
         type: form.type,
         sender_name: form.sender_name,
         receiver_name: form.receiver_name,

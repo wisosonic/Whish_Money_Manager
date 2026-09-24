@@ -12,7 +12,7 @@
 // the dark palette lives in src/assets/css/index.css. The choice is mirrored to the `wmm_theme`
 // cookie so index.html can apply it before the first paint (no white flash on reload).
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/apiClient";
 import { useAuth } from "@/lib/AuthContext";
 import { useI18n } from "@/lib/i18n";
 import { DEFAULT_PREFERENCES, resolvePreferences } from "@/lib/preferences";
@@ -73,7 +73,7 @@ export function PreferencesProvider({ children }) {
     setError("");
     const send = async () => {
       try {
-        const updated = await base44.auth.updatePreferences(changes);
+        const updated = await api.auth.updatePreferences(changes);
         confirmed.current = resolvePreferences(updated?.preferences);
         if (saveId !== latestSave.current) return;
         setPreferences(confirmed.current);

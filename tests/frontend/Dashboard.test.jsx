@@ -2,15 +2,15 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Dashboard from "@/pages/Dashboard";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/apiClient";
 import { setAuthRole } from "./authMock";
 
 vi.mock("@/lib/AuthContext", async () => (await import("./authMock")).authContextMock);
 beforeEach(() => setAuthRole("admin"));
 
 vi.mock("@/components/layout/Header", () => ({ default: () => null }));
-vi.mock("@/api/base44Client", () => ({
-  base44: {
+vi.mock("@/api/apiClient", () => ({
+  api: {
     auth: { me: vi.fn() },
     entities: {
       Transaction: { filter: vi.fn(), update: vi.fn(), delete: vi.fn() },
@@ -47,9 +47,9 @@ const stored = [
 beforeEach(() => {
   window.localStorage.clear();
   window.localStorage.setItem("selectedDate", "2026-09-23");
-  base44.auth.me.mockResolvedValue({ email: "local@hawalaflow.app" });
-  base44.entities.Transaction.filter.mockResolvedValue(stored);
-  base44.entities.DailyBalance.filter.mockResolvedValue([]);
+  api.auth.me.mockResolvedValue({ email: "local@hawalaflow.app" });
+  api.entities.Transaction.filter.mockResolvedValue(stored);
+  api.entities.DailyBalance.filter.mockResolvedValue([]);
 });
 
 afterEach(cleanup);
@@ -241,8 +241,8 @@ describe("Dashboard — roles", () => {
   it("loads all office transactions and balances (no per-user filter)", async () => {
     const { container } = render(<Dashboard />);
     await waitFor(() => expect(rowCount(container)).toBe(2));
-    expect(base44.entities.Transaction.filter).toHaveBeenCalledWith({}, "created_date", 10000);
-    expect(base44.entities.DailyBalance.filter).toHaveBeenCalledWith({});
+    expect(api.entities.Transaction.filter).toHaveBeenCalledWith({}, "created_date", 10000);
+    expect(api.entities.DailyBalance.filter).toHaveBeenCalledWith({});
   });
 
   it("Admin/Manager can edit the opening balance; a User can't", async () => {
@@ -270,13 +270,13 @@ describe("Dashboard — keeps the user's place after saving", () => {
   const rowFor = (container, text) => [...container.querySelectorAll("tbody tr")].find((tr) => tr.textContent.includes(text));
 
   beforeEach(() => {
-    base44.entities.Transaction.update.mockResolvedValue({});
-    base44.entities.Transaction.delete.mockResolvedValue({ ok: true });
+    api.entities.Transaction.update.mockResolvedValue({});
+    api.entities.Transaction.delete.mockResolvedValue({ ok: true });
   });
 
   it("shows the loading line only on the very first load", async () => {
     const first = deferred();
-    base44.entities.Transaction.filter.mockReturnValueOnce(first.promise);
+    api.entities.Transaction.filter.mockReturnValueOnce(first.promise);
     const { container } = render(<Dashboard />);
     expect(await screen.findByText("جاري التحميل...")).toBeInTheDocument();
     first.resolve(stored);
@@ -291,12 +291,12 @@ describe("Dashboard — keeps the user's place after saving", () => {
 
     // The refresh after saving is slow: hold it open to inspect the in-between state.
     const refresh = deferred();
-    base44.entities.Transaction.filter.mockReturnValueOnce(refresh.promise);
+    api.entities.Transaction.filter.mockReturnValueOnce(refresh.promise);
 
     fireEvent.click(within(rowBefore).getByTitle("تعديل"));
     fireEvent.change(screen.getByDisplayValue("50"), { target: { value: "75" } });
     fireEvent.click(screen.getByRole("button", { name: "حفظ التعديل" }));
-    await waitFor(() => expect(base44.entities.Transaction.update).toHaveBeenCalledWith(2, expect.objectContaining({ amount: 75 })));
+    await waitFor(() => expect(api.entities.Transaction.update).toHaveBeenCalledWith(2, expect.objectContaining({ amount: 75 })));
     await waitFor(() => expect(screen.queryByText("تعديل العملية")).not.toBeInTheDocument());
 
     // Mid-refresh: no loading line, the same rows (same DOM elements) are still there.
@@ -317,11 +317,11 @@ describe("Dashboard — keeps the user's place after saving", () => {
 
     // Both the empty-day check after a delete and the refresh read transactions: hold them all open.
     const refresh = deferred();
-    base44.entities.Transaction.filter.mockImplementation(() => refresh.promise);
+    api.entities.Transaction.filter.mockImplementation(() => refresh.promise);
     const target = rowFor(container, "MOUNIR TOSKA");
     fireEvent.click(within(target).getByTitle("مسح"));
     fireEvent.click(within(target).getByText("تأكيد"));
-    await waitFor(() => expect(base44.entities.Transaction.delete).toHaveBeenCalledWith(2));
+    await waitFor(() => expect(api.entities.Transaction.delete).toHaveBeenCalledWith(2));
 
     expect(screen.queryByText("جاري التحميل...")).not.toBeInTheDocument();
     expect(rowCount(container)).toBe(2);
@@ -329,7 +329,7 @@ describe("Dashboard — keeps the user's place after saving", () => {
     refresh.resolve(stored.filter((t) => t.id !== 2));
     await waitFor(() => expect(rowCount(container)).toBe(1));
     expect(rowFor(container, "Vicario")).toBe(survivor);
-    base44.entities.Transaction.filter.mockReset();
+    api.entities.Transaction.filter.mockReset();
   });
 
   it("never scrolls the page itself during a refresh", async () => {
@@ -337,10 +337,10 @@ describe("Dashboard — keeps the user's place after saving", () => {
     try {
       const { container } = render(<Dashboard />);
       await waitFor(() => expect(rowCount(container)).toBe(2));
-      const callsBefore = base44.entities.Transaction.filter.mock.calls.length;
+      const callsBefore = api.entities.Transaction.filter.mock.calls.length;
       fireEvent.click(within(rowFor(container, "MOUNIR TOSKA")).getByTitle("تعديل"));
       fireEvent.click(screen.getByRole("button", { name: "حفظ التعديل" }));
-      await waitFor(() => expect(base44.entities.Transaction.filter.mock.calls.length).toBe(callsBefore + 1));
+      await waitFor(() => expect(api.entities.Transaction.filter.mock.calls.length).toBe(callsBefore + 1));
       expect(scrollSpy).not.toHaveBeenCalled();
     } finally {
       scrollSpy.mockRestore();

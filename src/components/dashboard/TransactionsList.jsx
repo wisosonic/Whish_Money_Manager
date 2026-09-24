@@ -5,7 +5,7 @@ import SenderReportModal from "@/components/transactions/SenderReportModal";
 import MonthlyChartModal from "@/components/dashboard/MonthlyChartModal";
 import ReceiverReportModal from "@/components/transactions/ReceiverReportModal";
 import { format } from "date-fns";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/apiClient";
 import EditTransactionModal from "@/components/transactions/EditTransactionModal";
 import DailyCommissionReport from "@/components/transactions/DailyCommissionReport";
 import { useAuth } from "@/lib/AuthContext";
@@ -184,7 +184,7 @@ export default function TransactionsList({
     setBulkWorking(true);
     setBulkError("");
     try {
-      await base44.entities.Transaction.bulkDelete(selectedTransactions.map((t) => t.id));
+      await api.entities.Transaction.bulkDelete(selectedTransactions.map((t) => t.id));
       await cleanUpEmptyDays(selectedTransactions.map(txDateOf));
       clearSelection();
       onRefresh();
@@ -207,7 +207,7 @@ export default function TransactionsList({
   // الحذف فوري بعد التأكيد (زر التراجع أُزيل، فلا داعي لتأجيل الحذف)
   const handleDeleteOne = async (transaction) => {
     setConfirmDeleteId(null);
-    await base44.entities.Transaction.delete(transaction.id);
+    await api.entities.Transaction.delete(transaction.id);
     const txDate = transaction.transaction_date || new Date(transaction.created_date).toISOString().split("T")[0];
     if (onDeleteDailyBalanceForDate) {
       await onDeleteDailyBalanceForDate(txDate);
@@ -227,7 +227,7 @@ export default function TransactionsList({
         return tDate === dateToDelete;
       });
       for (const t of toDelete) {
-        try {await base44.entities.Transaction.delete(t.id);} catch (_) {}
+        try {await api.entities.Transaction.delete(t.id);} catch (_) {}
       }
       if (onDeleteDailyBalanceForDate) {
         await onDeleteDailyBalanceForDate(dateToDelete);

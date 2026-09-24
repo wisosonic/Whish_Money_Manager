@@ -92,10 +92,10 @@ The transactions table's toolbar has: الرسم البياني, تقرير مر
 
 ```
 Browser (React + Vite, :5173)  ──/local-api (Vite proxy)──►  Express API (:3001)  ──►  SQLite (server/hawalaflow.db)
-src/api/base44Client.js                                       server/index.js
+src/api/apiClient.js                                          server/index.js
 ```
 
-- `src/api/base44Client.js` is the app's API client (`base44.auth`, `base44.entities.*`, `base44.integrations.Core.*`, `base44.users`); it talks only to the local Express API. (The `base44` name is historical: the project started on the Base44 platform, which is no longer used.)
+- `src/api/apiClient.js` is the app's API client (`api.auth`, `api.entities.*`, `api.integrations.Core.*`, `api.users`, `api.admin`); it talks only to the local Express API.
 - PDF and CSV parsing happen on the server. Both engines return the same result shape, so the import screen, the save step and the dashboard don't care which one was used.
 - Dashboard totals are calculated in the browser from the stored transactions and the opening balance for each day.
 
@@ -365,7 +365,7 @@ tests/
 │   └── pdfEngine.test.js     # PDF engine on generated PDFs, balance-based direction correction
 └── frontend/
     ├── authMock.js           # simulated signed-in user per role for component tests
-    ├── base44Client.test.js  # API client: cookie session (no identity header), 401 handling, errors
+    ├── apiClient.test.js     # API client: cookie session (no identity header), 401 handling, errors
     ├── AuthContext.test.jsx  # session restore, login/logout, session-ended, can(), route guard
     ├── UsersPage.test.jsx    # Admin users screen: list, add, role change, deactivate, reset password
     ├── fileType.test.js      # PDF/CSV detection
@@ -383,6 +383,7 @@ tests/
     ├── BulkEditModal.test.jsx        # opt-in fields, payload, commission rate, validation, errors
     ├── ReceiverReportModal.test.jsx  # receiver matching, totals, date filter
     ├── branding.test.jsx             # header (logo, name, role, last login, sticky), login page, tab title/icon, manifest
+    ├── codebase.test.js              # the removed modals stay deleted; no leftover base44 names
     ├── i18n.test.jsx                 # language toggle: dictionaries match, no untranslated text, cookie,
     │                                 # page direction, main screens in English
     ├── StatsCards.test.jsx           # monthly/yearly summaries: defaults, collapse, layout, animation

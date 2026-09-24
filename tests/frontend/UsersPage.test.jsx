@@ -3,13 +3,13 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import UsersPage from "@/pages/UsersPage";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/apiClient";
 import { DEFAULT_ROLES } from "@/lib/permissions";
 import { setAuthRole } from "./authMock";
 
 vi.mock("@/lib/AuthContext", async () => (await import("./authMock")).authContextMock);
-vi.mock("@/api/base44Client", () => ({
-  base44: { users: { list: vi.fn(), create: vi.fn(), update: vi.fn() }, roles: { list: vi.fn() } },
+vi.mock("@/api/apiClient", () => ({
+  api: { users: { list: vi.fn(), create: vi.fn(), update: vi.fn() }, roles: { list: vi.fn() } },
 }));
 
 const roles = DEFAULT_ROLES.map((r, i) => ({ id: i + 1, name: r.name, label: r.label, description: r.description, permissions: r.permissions }));
@@ -22,10 +22,10 @@ const people = [
 beforeEach(() => {
   vi.clearAllMocks();
   setAuthRole("admin"); // id 1 → "(أنت)"
-  base44.users.list.mockResolvedValue(people);
-  base44.roles.list.mockResolvedValue(roles);
-  base44.users.update.mockResolvedValue({});
-  base44.users.create.mockResolvedValue({ id: 9, email: "new@test.local" });
+  api.users.list.mockResolvedValue(people);
+  api.roles.list.mockResolvedValue(roles);
+  api.users.update.mockResolvedValue({});
+  api.users.create.mockResolvedValue({ id: 9, email: "new@test.local" });
 });
 afterEach(cleanup);
 
@@ -48,7 +48,7 @@ describe("UsersPage", () => {
   it("changes a user's role", async () => {
     await renderPage();
     fireEvent.change(within(row("cashier@test.local")).getByLabelText("دور cashier@test.local"), { target: { value: "manager" } });
-    await waitFor(() => expect(base44.users.update).toHaveBeenCalledWith(5, { role: "manager" }));
+    await waitFor(() => expect(api.users.update).toHaveBeenCalledWith(5, { role: "manager" }));
     expect(await screen.findByText("تم تغيير دور cashier@test.local")).toBeInTheDocument();
   });
 
@@ -56,13 +56,13 @@ describe("UsersPage", () => {
     await renderPage();
     expect(within(row("admin@test.local")).queryByRole("button", { name: "تعطيل" })).not.toBeInTheDocument();
     fireEvent.click(within(row("cashier@test.local")).getByRole("button", { name: "تعطيل" }));
-    await waitFor(() => expect(base44.users.update).toHaveBeenCalledWith(5, { is_active: false }));
+    await waitFor(() => expect(api.users.update).toHaveBeenCalledWith(5, { is_active: false }));
     fireEvent.click(within(row("old@test.local")).getByRole("button", { name: "تفعيل" }));
-    await waitFor(() => expect(base44.users.update).toHaveBeenCalledWith(6, { is_active: true }));
+    await waitFor(() => expect(api.users.update).toHaveBeenCalledWith(6, { is_active: true }));
   });
 
   it("shows the server's refusal (e.g. last Admin)", async () => {
-    base44.users.update.mockRejectedValue(new Error("At least one active Admin is required"));
+    api.users.update.mockRejectedValue(new Error("At least one active Admin is required"));
     await renderPage();
     fireEvent.change(within(row("admin@test.local")).getByLabelText("دور admin@test.local"), { target: { value: "user" } });
     expect(await screen.findByRole("alert")).toHaveTextContent("يجب أن يبقى مسؤول نشط واحد على الأقل"); // translated API message
@@ -78,9 +78,9 @@ describe("UsersPage", () => {
     fireEvent.change(within(dialog).getByLabelText(/كلمة المرور/), { target: { value: "long-password" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "إضافة" }));
 
-    await waitFor(() => expect(base44.users.create).toHaveBeenCalledWith({ full_name: "New Person", email: "new@test.local", role: "manager", password: "long-password" }));
+    await waitFor(() => expect(api.users.create).toHaveBeenCalledWith({ full_name: "New Person", email: "new@test.local", role: "manager", password: "long-password" }));
     expect(await screen.findByText("تمت إضافة new@test.local")).toBeInTheDocument();
-    expect(base44.users.list).toHaveBeenCalledTimes(2); // reloaded
+    expect(api.users.list).toHaveBeenCalledTimes(2); // reloaded
   });
 
   it("blocks a short password before calling the server, and shows server errors", async () => {
@@ -91,9 +91,9 @@ describe("UsersPage", () => {
     fireEvent.change(within(dialog).getByLabelText(/كلمة المرور/), { target: { value: "short" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "إضافة" }));
     expect(within(dialog).getByRole("alert")).toHaveTextContent("8 أحرف على الأقل");
-    expect(base44.users.create).not.toHaveBeenCalled();
+    expect(api.users.create).not.toHaveBeenCalled();
 
-    base44.users.create.mockRejectedValue(new Error("A user with this email already exists"));
+    api.users.create.mockRejectedValue(new Error("A user with this email already exists"));
     fireEvent.change(within(dialog).getByLabelText(/كلمة المرور/), { target: { value: "long-password" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "إضافة" }));
     expect(await within(dialog).findByText("يوجد مستخدم بهذا البريد الإلكتروني")).toBeInTheDocument();
@@ -105,7 +105,7 @@ describe("UsersPage", () => {
     const dialog = screen.getByRole("dialog", { name: "كلمة مرور جديدة لـ cashier@test.local" });
     fireEvent.change(within(dialog).getByLabelText("كلمة المرور الجديدة"), { target: { value: "new-long-password" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "حفظ" }));
-    await waitFor(() => expect(base44.users.update).toHaveBeenCalledWith(5, { password: "new-long-password" }));
+    await waitFor(() => expect(api.users.update).toHaveBeenCalledWith(5, { password: "new-long-password" }));
     expect(await screen.findByText(/وتسجيل خروجه من كل الأجهزة/)).toBeInTheDocument();
   });
 });

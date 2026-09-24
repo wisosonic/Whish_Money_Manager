@@ -20,7 +20,7 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - `auth.js`: login and logout, the session cookie, the `authenticate` and `requirePermission` middleware, and the Admin user-management routes.
   - `permissions.js`: permission names and the default roles.
   - `seed.js`: `npm run seed`.
-- `src/api/base44Client.js`: the app's API client. The name comes from the Base44 platform the project started on; **Base44 is no longer used at all** (removed 2026-09-24). Components call `base44.entities.Transaction.*`, `base44.integrations.Core.ExtractPdf/ExtractCsv`, `base44.auth.*` and `base44.users/roles.*`.
+- `src/api/apiClient.js`: the app's API client, exported as `api` (renamed from `base44Client` / `base44` on 2026-09-24; the project no longer has anything to do with the Base44 platform). Components call `api.entities.Transaction.*`, `api.integrations.Core.ExtractPdf/ExtractCsv`, `api.auth.*`, `api.users/roles.*` and `api.admin.*`. `tests/frontend/codebase.test.js` fails if a `base44` name comes back.
   - The only credential is the HTTP-only session cookie; there are **no identity headers and no user in localStorage**.
   - A 401 on a non-auth call fires `SESSION_ENDED_EVENT`.
 - `src/lib/AuthContext.jsx`: session state, loaded from `/auth/me` on start. Exposes `can(permission)` and `canEditTransaction(t)`.
@@ -93,7 +93,7 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
 - **PDF commission** still has its original exceptions (description contains "cashin" or "qr topup", or service contains "reversed" → 0%). The user hasn't asked to align it with the CSV rule; ask before changing it.
 - `NAME - 96171588017` descriptions are split in **both** engines (`splitNamePhone`): the name goes to sender/receiver, `phone` gets the number as printed, and `customer_number` gets it without the `961` / `+961` prefix.
 - Duplicates are matched by `reference_number` **across the whole office** (everyone shares one set of transactions). On re-import the user chooses **overwrite** (delete same-reference rows, then insert, in one database transaction) or **cancel**. Rows without a reference are never matched or deleted.
-- Manual insertion between table rows ("+ إدراج هنا") was removed at the user's request. Cash In / Cash Out buttons stay. `InsertTransactionModal.jsx` still exists but nothing uses it.
+- Manual insertion between table rows ("+ إدراج هنا") was removed at the user's request. Cash In / Cash Out buttons stay. `InsertTransactionModal.jsx` was deleted (2026-09-24).
 - **Search scope** (changed at the user's request on 2026-09-24; it used to cover only the selected day):
   - A switch next to the search box, **كل الأيام** (default) / **هذا اليوم**. `searchScope` state lives in `Dashboard.jsx`.
   - With a search in "all" scope, the table gets every matching transaction (`tableRows`). Otherwise it gets the selected day's matches (`filtered`).
@@ -155,7 +155,7 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - Single-row delete used to hide the row and really delete it 60 minutes later, only so Undo could cancel it. If the page was reloaded within that hour, the delete never happened and the row came back.
   - Delete is now immediate after "تأكيد", then the table reloads.
   - The `hiddenIds` / `onHiddenIdsChange` plumbing was removed from `TransactionsList` and `Dashboard`.
-- The **"مراجعة الكشف"** (statement review) button was removed at the user's request. `ReviewPDFModal.jsx` still exists but nothing uses it.
+- The **"مراجعة الكشف"** (statement review) button was removed at the user's request. `ReviewPDFModal.jsx` was deleted (2026-09-24); the import screen covers both PDF and CSV.
 - **Accounts, roles and permissions** (user's decisions, 2026-09-24):
   - **Visibility:** everyone sees **all** office transactions and balances. Reads are never filtered by user.
   - **User:** read, create, import, and edit **own** transactions (`created_by === email`). No delete of any kind, no import overwrite (it deletes), no opening balances, no user management.
@@ -203,7 +203,7 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - **The language switch** (`LanguageToggle.jsx`, user's request) is a `<button role="switch">` named `t("language.english")`, with `aria-checked` true in English. `title` keeps the "switch to…" hint.
     - The track is `dir="ltr"` in both languages: ع is always on the left and EN on the right, so the knob doesn't jump sides when the page mirrors.
     - The knob slides with `translate-x-[38px]` (track 84px, knob 38px); if you resize one, resize the other. It uses `motion-reduce:transition-none`.
-  - **Guard tests:** `tests/frontend/i18n.test.jsx` fails if the two word lists' keys or placeholders differ, a used key is missing, or any Arabic literal or `dir="rtl"` appears in UI code. `ReviewPDFModal.jsx` and `InsertTransactionModal.jsx` are unused and exempt; translate them if they're ever brought back.
+  - **Guard tests:** `tests/frontend/i18n.test.jsx` fails if the two word lists' keys or placeholders differ, a used key is missing, or any Arabic literal or `dir="rtl"` appears in UI code. Every screen is checked (no exemptions since the two unused modals were deleted).
   - **Preference:** the `wmm_lang` cookie (`ar`/`en`, one year, SameSite=Lax, readable by JS). `index.html` applies it before the first paint. Components without a `LanguageProvider` (unit tests) get Arabic, so Arabic assertions keep working.
 - **Branding**:
   - The app is called "Whish Money Manager". Components get the name, short name, tagline and logo from `src/lib/branding.js`; never hardcode them.
@@ -243,7 +243,6 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
 - **PDF engine, fragile opening-balance pattern**: `OPENING BALANCE…` takes the first run of digits (decimals optional). A missed or wrong opening balance defaults to 0 and corrupts the first transaction through the balance check.
 - **PDF engine, no final check**: the closing balance is never compared with the result. `total_transactions_count` equals `transactions.length`, so the "fewer rows than expected" warning can't fire for PDFs.
 - **`total_commission` from the PDF engine is built as text**: commission is a `toFixed` string, so the total is string concatenation. The UI doesn't use it.
-- **ReviewPDFModal** (no longer used anywhere) calls `Core.UploadFile` / `Core.InvokeLLM`, which the local client doesn't implement. If it's brought back, wire it to `/pdf/extract` or `/csv/extract` instead.
 - **Security, remaining:**
   - `/pdf/extract` has no page limit or timeout, and parsing blocks the server's main thread.
   - The login lockout is in memory, so it resets when the server restarts.

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/apiClient";
 import { X } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 
@@ -19,7 +19,7 @@ export default function CashOutModal({ onClose, onSaved }) {
 
   const handleSave = async () => {
     setSaving(true);
-    await base44.entities.Transaction.create({
+    await api.entities.Transaction.create({
       ...form,
       type: "cash_out",
       amount: Number(form.amount),

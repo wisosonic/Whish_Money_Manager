@@ -2,14 +2,14 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ImportPDFModal from "@/components/transactions/ImportPDFModal";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/apiClient";
 import { setAuthRole } from "./authMock";
 
 vi.mock("@/lib/AuthContext", async () => (await import("./authMock")).authContextMock);
 beforeEach(() => setAuthRole("admin"));
 
-vi.mock("@/api/base44Client", () => ({
-  base44: {
+vi.mock("@/api/apiClient", () => ({
+  api: {
     integrations: { Core: { ExtractPdf: vi.fn(), ExtractCsv: vi.fn() } },
     entities: { Transaction: { findDuplicates: vi.fn(), importRecords: vi.fn() } },
   },
@@ -51,10 +51,10 @@ const renderModal = () => {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  base44.integrations.Core.ExtractCsv.mockResolvedValue(extraction());
-  base44.integrations.Core.ExtractPdf.mockResolvedValue(extraction({ validation: undefined }));
-  base44.entities.Transaction.findDuplicates.mockResolvedValue([]);
-  base44.entities.Transaction.importRecords.mockResolvedValue({ replaced: 0, records: [] });
+  api.integrations.Core.ExtractCsv.mockResolvedValue(extraction());
+  api.integrations.Core.ExtractPdf.mockResolvedValue(extraction({ validation: undefined }));
+  api.entities.Transaction.findDuplicates.mockResolvedValue([]);
+  api.entities.Transaction.importRecords.mockResolvedValue({ replaced: 0, records: [] });
 });
 
 afterEach(cleanup);
@@ -70,17 +70,17 @@ describe("ImportPDFModal", () => {
     const { container } = renderModal();
     upload(container, new File(["\x89PNG"], "photo.png", { type: "image/png" }));
     expect(await screen.findByText("يرجى اختيار ملف PDF أو CSV فقط")).toBeInTheDocument();
-    expect(base44.integrations.Core.ExtractCsv).not.toHaveBeenCalled();
-    expect(base44.integrations.Core.ExtractPdf).not.toHaveBeenCalled();
+    expect(api.integrations.Core.ExtractCsv).not.toHaveBeenCalled();
+    expect(api.integrations.Core.ExtractPdf).not.toHaveBeenCalled();
   });
 
   it("routes a CSV to the CSV engine and shows the preview with the reconciliation banner", async () => {
     const { container } = renderModal();
     upload(container, csvFile());
     expect(await screen.findByText(/تم استخراج 2 حوالة/)).toBeInTheDocument();
-    expect(base44.integrations.Core.ExtractCsv).toHaveBeenCalledTimes(1);
-    expect(base44.integrations.Core.ExtractPdf).not.toHaveBeenCalled();
-    expect(base44.entities.Transaction.findDuplicates).toHaveBeenCalledWith(["tr:1", "tr:2"]);
+    expect(api.integrations.Core.ExtractCsv).toHaveBeenCalledTimes(1);
+    expect(api.integrations.Core.ExtractPdf).not.toHaveBeenCalled();
+    expect(api.entities.Transaction.findDuplicates).toHaveBeenCalledWith(["tr:1", "tr:2"]);
     expect(screen.getByText(/الكشف متطابق/)).toBeInTheDocument();
   });
 
@@ -88,12 +88,12 @@ describe("ImportPDFModal", () => {
     const { container } = renderModal();
     upload(container, pdfFile());
     expect(await screen.findByText(/تم استخراج 2 حوالة/)).toBeInTheDocument();
-    expect(base44.integrations.Core.ExtractPdf).toHaveBeenCalledTimes(1);
-    expect(base44.integrations.Core.ExtractCsv).not.toHaveBeenCalled();
+    expect(api.integrations.Core.ExtractPdf).toHaveBeenCalledTimes(1);
+    expect(api.integrations.Core.ExtractCsv).not.toHaveBeenCalled();
   });
 
   it("shows a warning listing what doesn't reconcile", async () => {
-    base44.integrations.Core.ExtractCsv.mockResolvedValue(extraction({
+    api.integrations.Core.ExtractCsv.mockResolvedValue(extraction({
       validation: { is_valid: false, total_debit_matches: false, total_credit_matches: true, closing_balance_matches: false, balance_mismatch_lines: [2] },
     }));
     const { container } = renderModal();
@@ -104,7 +104,7 @@ describe("ImportPDFModal", () => {
   });
 
   it("when the provider's rounding explains a difference, it reconciles and says so", async () => {
-    base44.integrations.Core.ExtractCsv.mockResolvedValue(extraction({
+    api.integrations.Core.ExtractCsv.mockResolvedValue(extraction({
       validation: {
         is_valid: true, total_debit_matches: true, total_credit_matches: true, closing_balance_matches: true,
         balance_mismatch_lines: [], rounding_difference: 0.01, rounded_rows: 145, first_unexplained_line: null,
@@ -119,7 +119,7 @@ describe("ImportPDFModal", () => {
   });
 
   it("no rounding note when everything adds up exactly", async () => {
-    base44.integrations.Core.ExtractCsv.mockResolvedValue(extraction({
+    api.integrations.Core.ExtractCsv.mockResolvedValue(extraction({
       validation: {
         is_valid: true, total_debit_matches: true, total_credit_matches: true, closing_balance_matches: true,
         balance_mismatch_lines: [], rounding_difference: 0, rounded_rows: 10, first_unexplained_line: null,
@@ -132,7 +132,7 @@ describe("ImportPDFModal", () => {
   });
 
   it("names the line where balances stop adding up when rounding can't explain it", async () => {
-    base44.integrations.Core.ExtractCsv.mockResolvedValue(extraction({
+    api.integrations.Core.ExtractCsv.mockResolvedValue(extraction({
       validation: {
         is_valid: false, total_debit_matches: true, total_credit_matches: true, closing_balance_matches: false,
         balance_mismatch_lines: [], rounding_difference: 0.03, rounded_rows: 3, first_unexplained_line: 901,
@@ -150,8 +150,8 @@ describe("ImportPDFModal", () => {
     upload(container, csvFile());
     fireEvent.click(await screen.findByText("حفظ الكل (2)"));
 
-    await waitFor(() => expect(base44.entities.Transaction.importRecords).toHaveBeenCalledTimes(1));
-    const [records, options] = base44.entities.Transaction.importRecords.mock.calls[0];
+    await waitFor(() => expect(api.entities.Transaction.importRecords).toHaveBeenCalledTimes(1));
+    const [records, options] = api.entities.Transaction.importRecords.mock.calls[0];
     expect(options).toEqual({ overwrite: false });
     expect(records[0]).toMatchObject({
       type: "cash_in", amount: 75, commission: 0.75, sender_name: "MOUNIR TOSKA",
@@ -166,7 +166,7 @@ describe("ImportPDFModal", () => {
 
   describe("when the statement was already imported", () => {
     beforeEach(() => {
-      base44.entities.Transaction.findDuplicates.mockResolvedValue([
+      api.entities.Transaction.findDuplicates.mockResolvedValue([
         { id: 1, reference_number: "tr:1", transaction_date: "2026-09-23" },
       ]);
     });
@@ -184,7 +184,7 @@ describe("ImportPDFModal", () => {
       upload(container, csvFile());
       fireEvent.click(await screen.findByText("إلغاء الرفع"));
       expect(await screen.findByText("اسحب ملف PDF أو CSV هنا أو اضغط للاختيار")).toBeInTheDocument();
-      expect(base44.entities.Transaction.importRecords).not.toHaveBeenCalled();
+      expect(api.entities.Transaction.importRecords).not.toHaveBeenCalled();
     });
 
     it("overwrite continues to the preview and saves with overwrite: true", async () => {
@@ -194,13 +194,13 @@ describe("ImportPDFModal", () => {
       expect(screen.getByText(/سيتم حذف 1 عملية موجودة/)).toBeInTheDocument();
 
       fireEvent.click(screen.getByText("حفظ الكل (2)"));
-      await waitFor(() => expect(base44.entities.Transaction.importRecords).toHaveBeenCalledTimes(1));
-      expect(base44.entities.Transaction.importRecords.mock.calls[0][1]).toEqual({ overwrite: true });
+      await waitFor(() => expect(api.entities.Transaction.importRecords).toHaveBeenCalledTimes(1));
+      expect(api.entities.Transaction.importRecords.mock.calls[0][1]).toEqual({ overwrite: true });
     });
   });
 
   it("shows the server error when extraction fails", async () => {
-    base44.integrations.Core.ExtractCsv.mockRejectedValue(new Error("CSV file is missing the transactions header"));
+    api.integrations.Core.ExtractCsv.mockRejectedValue(new Error("CSV file is missing the transactions header"));
     const { container } = renderModal();
     upload(container, csvFile());
     expect(await screen.findByText("CSV file is missing the transactions header")).toBeInTheDocument();
@@ -210,7 +210,7 @@ describe("ImportPDFModal", () => {
 describe("ImportPDFModal — re-import as a User", () => {
   beforeEach(() => {
     setAuthRole("user");
-    base44.entities.Transaction.findDuplicates.mockResolvedValue([{ id: 1, reference_number: "tr:1", transaction_date: "2026-09-23" }]);
+    api.entities.Transaction.findDuplicates.mockResolvedValue([{ id: 1, reference_number: "tr:1", transaction_date: "2026-09-23" }]);
   });
 
   it("offers only cancel (replacing needs delete rights) and explains why", async () => {
@@ -223,10 +223,10 @@ describe("ImportPDFModal — re-import as a User", () => {
   });
 
   it("imports a new statement normally", async () => {
-    base44.entities.Transaction.findDuplicates.mockResolvedValue([]);
+    api.entities.Transaction.findDuplicates.mockResolvedValue([]);
     const { container } = renderModal();
     upload(container, csvFile());
     fireEvent.click(await screen.findByText("حفظ الكل (2)"));
-    await waitFor(() => expect(base44.entities.Transaction.importRecords).toHaveBeenCalledWith(expect.any(Array), { overwrite: false }));
+    await waitFor(() => expect(api.entities.Transaction.importRecords).toHaveBeenCalledWith(expect.any(Array), { overwrite: false }));
   });
 });

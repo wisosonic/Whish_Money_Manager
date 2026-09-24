@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { UserPlus, KeyRound, Loader2, X, AlertCircle, CheckCircle } from "lucide-react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/apiClient";
 import { useAuth } from "@/lib/AuthContext";
 import Header from "@/components/layout/Header";
 import { useI18n } from "@/lib/i18n";
@@ -23,7 +23,7 @@ export default function UsersPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [userList, roleList] = await Promise.all([base44.users.list(), base44.roles.list()]);
+      const [userList, roleList] = await Promise.all([api.users.list(), api.roles.list()]);
       setUsers(userList);
       setRoles(roleList);
       setError("");
@@ -42,7 +42,7 @@ export default function UsersPage() {
     setError("");
     setNotice("");
     try {
-      await base44.users.update(target.id, changes);
+      await api.users.update(target.id, changes);
       setNotice(successMessage);
       await load();
     } catch (err) {
@@ -212,7 +212,7 @@ function CreateUserModal({ roles, onClose, onCreated }) {
     setSaving(true);
     setError("");
     try {
-      onCreated(await base44.users.create(form));
+      onCreated(await api.users.create(form));
     } catch (err) {
       setError(errorText(err.message));
       setSaving(false);
@@ -266,7 +266,7 @@ function ResetPasswordModal({ target, onClose, onSaved }) {
     }
     setSaving(true);
     try {
-      await base44.users.update(target.id, { password });
+      await api.users.update(target.id, { password });
       onSaved();
     } catch (err) {
       setError(errorText(err.message));

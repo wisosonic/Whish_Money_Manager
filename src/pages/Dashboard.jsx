@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/apiClient";
 import Header from "@/components/layout/Header";
 import StatsCards from "@/components/dashboard/StatsCards";
 import WalletSummary from "@/components/dashboard/WalletSummary";
@@ -46,7 +46,7 @@ export default function Dashboard() {
   const [currentUser, setCurrentUser] = useState(null);
 
   const fetchDailyBalances = async (userEmail) => {
-    const records = await base44.entities.DailyBalance.filter({});
+    const records = await api.entities.DailyBalance.filter({});
     setDailyBalances(records);
   };
 
@@ -54,9 +54,9 @@ export default function Dashboard() {
     if (!date || !canWriteBalances) return;
     const existing = dailyBalances.find((d) => d.date === date);
     if (existing) {
-      await base44.entities.DailyBalance.update(existing.id, { opening_balance: val });
+      await api.entities.DailyBalance.update(existing.id, { opening_balance: val });
     } else {
-      await base44.entities.DailyBalance.create({ date, opening_balance: val });
+      await api.entities.DailyBalance.create({ date, opening_balance: val });
     }
     await fetchDailyBalances(currentUser?.email);
   };
@@ -67,7 +67,7 @@ export default function Dashboard() {
   // the user lost their place. Refreshes now keep the current rows on screen until the new data
   // arrives and replaces them in place, so the scroll position is preserved.
   const fetchTransactions = async (userEmail) => {
-    const data = await base44.entities.Transaction.filter({}, "created_date", 10000);
+    const data = await api.entities.Transaction.filter({}, "created_date", 10000);
     // رتّب: أولاً بـ transaction_date ثم بـ sort_order (ترتيب الاستيراد) ثم بـ reference_number رقمياً
     const sorted = [...data].sort((a, b) => {
       const dateA = a.transaction_date || new Date(a.created_date).toISOString().split("T")[0];
@@ -85,7 +85,7 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    base44.auth.me().then((user) => {
+    api.auth.me().then((user) => {
       setCurrentUser(user);
       fetchTransactions(user.email);
       fetchDailyBalances(user.email);
@@ -207,7 +207,7 @@ export default function Dashboard() {
 
   const handleResetOpeningBalance = async () => {
     if (dailyRecord) {
-      await base44.entities.DailyBalance.update(dailyRecord.id, { opening_balance: 0 });
+      await api.entities.DailyBalance.update(dailyRecord.id, { opening_balance: 0 });
       await fetchDailyBalances(currentUser?.email);
     }
   };
@@ -216,7 +216,7 @@ export default function Dashboard() {
     if (!dateToCheck || !currentUser?.email || !canWriteBalances) return;
 
     const normalizedTargetDate = normalizeDate(dateToCheck);
-    const remainingTransactions = await base44.entities.Transaction.filter({}, "created_date", 10000);
+    const remainingTransactions = await api.entities.Transaction.filter({}, "created_date", 10000);
 
     const hasRemainingForDate = remainingTransactions.some((t) => {
       const tDate = t.transaction_date || new Date(t.created_date).toISOString().split("T")[0];
@@ -228,7 +228,7 @@ export default function Dashboard() {
     const dailyBalanceRow = dailyBalances.find((d) => normalizeDate(d.date) === normalizedTargetDate);
     if (!dailyBalanceRow) return;
 
-    await base44.entities.DailyBalance.delete(dailyBalanceRow.id);
+    await api.entities.DailyBalance.delete(dailyBalanceRow.id);
     await fetchDailyBalances(currentUser.email);
   };
 

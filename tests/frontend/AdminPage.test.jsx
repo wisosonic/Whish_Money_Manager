@@ -10,13 +10,13 @@ import { RequirePermission } from "@/App";
 import { LanguageProvider } from "@/lib/i18n";
 import { PERMISSIONS } from "@/lib/permissions";
 import { saveBlob } from "@/lib/download";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/apiClient";
 import { setAuthRole } from "./authMock";
 
 vi.mock("@/lib/AuthContext", async () => (await import("./authMock")).authContextMock);
 vi.mock("@/lib/download", () => ({ saveBlob: vi.fn() }));
-vi.mock("@/api/base44Client", () => ({
-  base44: {
+vi.mock("@/api/apiClient", () => ({
+  api: {
     admin: { range: vi.fn(), summary: vi.fn(), exportCsv: vi.fn(), purge: vi.fn() },
     auth: { updatePreferences: vi.fn() },
   },
@@ -32,10 +32,10 @@ const summaryOf = (overrides = {}) => ({
 beforeEach(() => {
   setAuthRole("admin");
   vi.clearAllMocks();
-  base44.admin.summary.mockImplementation(async (from, to) => ({ from, to, ...summaryOf() }));
-  base44.admin.range.mockResolvedValue({ first_date: "2025-12-31", last_date: "2026-09-23" });
-  base44.admin.exportCsv.mockImplementation(async (kind, from, to) => ({ blob: new Blob(["id\r\n"]), filename: `${kind}_${from}_${to}.csv` }));
-  base44.admin.purge.mockImplementation(async (from, to) => ({ from, to, deleted_transactions: 128, deleted_opening_balances: 30 }));
+  api.admin.summary.mockImplementation(async (from, to) => ({ from, to, ...summaryOf() }));
+  api.admin.range.mockResolvedValue({ first_date: "2025-12-31", last_date: "2026-09-23" });
+  api.admin.exportCsv.mockImplementation(async (kind, from, to) => ({ blob: new Blob(["id\r\n"]), filename: `${kind}_${from}_${to}.csv` }));
+  api.admin.purge.mockImplementation(async (from, to) => ({ from, to, deleted_transactions: 128, deleted_opening_balances: 30 }));
 });
 afterEach(cleanup);
 
@@ -57,7 +57,7 @@ describe("Admin panel — layout and preview", () => {
     expect(screen.getByTestId("range-from")).toHaveValue(monthStart);
     expect(screen.getByTestId("range-to")).toHaveValue(ymd(today));
     await loaded();
-    expect(base44.admin.summary).toHaveBeenCalledWith(monthStart, ymd(today));
+    expect(api.admin.summary).toHaveBeenCalledWith(monthStart, ymd(today));
     expect(summaryBox()).toHaveTextContent("30 رصيد بداية");
     expect(summaryBox()).toHaveTextContent("$40,447.67");
     expect(summaryBox()).toHaveTextContent("$41,091.65");
@@ -83,7 +83,7 @@ describe("Admin panel — layout and preview", () => {
     setAuthRole("user");
     render(<LanguageProvider><MemoryRouter><RequirePermission permission={PERMISSIONS.DATA_EXPORT}><AdminPage /></RequirePermission></MemoryRouter></LanguageProvider>);
     expect(screen.queryByRole("heading", { name: "لوحة الإدارة" })).not.toBeInTheDocument();
-    expect(base44.admin.summary).not.toHaveBeenCalled();
+    expect(api.admin.summary).not.toHaveBeenCalled();
   });
 
   it("quick ranges set the dates and refresh the preview", async () => {
@@ -91,26 +91,26 @@ describe("Admin panel — layout and preview", () => {
     await loaded();
     fireEvent.click(screen.getByTestId("range-lastMonth"));
     const last = subMonths(today, 1);
-    await waitFor(() => expect(base44.admin.summary).toHaveBeenLastCalledWith(ymd(startOfMonth(last)), ymd(endOfMonth(last))));
+    await waitFor(() => expect(api.admin.summary).toHaveBeenLastCalledWith(ymd(startOfMonth(last)), ymd(endOfMonth(last))));
     fireEvent.click(screen.getByTestId("range-allData"));
-    await waitFor(() => expect(base44.admin.summary).toHaveBeenLastCalledWith("2025-12-31", "2026-09-23"));
+    await waitFor(() => expect(api.admin.summary).toHaveBeenLastCalledWith("2025-12-31", "2026-09-23"));
     expect(screen.getByTestId("range-from")).toHaveValue("2025-12-31");
   });
 
   it("a start date after the end date is refused before asking the server", async () => {
     renderPage();
     await loaded();
-    const calls = base44.admin.summary.mock.calls.length;
+    const calls = api.admin.summary.mock.calls.length;
     fireEvent.change(screen.getByTestId("range-from"), { target: { value: "2026-12-01" } });
     fireEvent.change(screen.getByTestId("range-to"), { target: { value: "2026-11-01" } });
     expect(summaryBox()).toHaveTextContent("يجب أن يكون تاريخ البداية قبل تاريخ النهاية أو مساوياً له.");
-    expect(base44.admin.summary.mock.calls.length).toBe(calls);
+    expect(api.admin.summary.mock.calls.length).toBe(calls);
     expect(screen.getByTestId("download-transactions")).toBeDisabled();
     expect(screen.getByTestId("delete-range")).toBeDisabled();
   });
 
   it("shows a server error (translated) instead of the preview", async () => {
-    base44.admin.summary.mockRejectedValueOnce(new Error("A valid date range is required (from and to, YYYY-MM-DD)"));
+    api.admin.summary.mockRejectedValueOnce(new Error("A valid date range is required (from and to, YYYY-MM-DD)"));
     renderPage();
     await waitFor(() => expect(summaryBox()).toHaveTextContent("يلزم تحديد فترة صحيحة"));
   });
@@ -122,7 +122,7 @@ describe("Admin panel — backup", () => {
     await loaded();
     fireEvent.click(screen.getByTestId("download-transactions"));
     await waitFor(() => expect(saveBlob).toHaveBeenCalledTimes(1));
-    expect(base44.admin.exportCsv).toHaveBeenCalledWith("transactions", monthStart, ymd(today));
+    expect(api.admin.exportCsv).toHaveBeenCalledWith("transactions", monthStart, ymd(today));
     expect(saveBlob.mock.calls[0][1]).toBe(`transactions_${monthStart}_${ymd(today)}.csv`);
     expect(screen.getByTestId("admin-notice")).toHaveTextContent(`تم تنزيل transactions_${monthStart}_${ymd(today)}.csv.`);
     expect(screen.getByTestId("download-transactions")).toHaveTextContent("تنزيل 128 عملية (CSV)");
@@ -132,11 +132,11 @@ describe("Admin panel — backup", () => {
     renderPage();
     await loaded();
     fireEvent.click(screen.getByTestId("download-balances"));
-    await waitFor(() => expect(base44.admin.exportCsv).toHaveBeenCalledWith("balances", monthStart, ymd(today)));
+    await waitFor(() => expect(api.admin.exportCsv).toHaveBeenCalledWith("balances", monthStart, ymd(today)));
   });
 
   it("buttons are disabled when the range has nothing of that kind", async () => {
-    base44.admin.summary.mockImplementation(async () => summaryOf({ transactions: 0, opening_balances: 0, days: 0 }));
+    api.admin.summary.mockImplementation(async () => summaryOf({ transactions: 0, opening_balances: 0, days: 0 }));
     renderPage();
     await waitFor(() => expect(summaryBox()).toHaveTextContent("0 عملية"));
     expect(screen.getByTestId("download-transactions")).toBeDisabled();
@@ -145,7 +145,7 @@ describe("Admin panel — backup", () => {
   });
 
   it("a failed download says so", async () => {
-    base44.admin.exportCsv.mockRejectedValueOnce(new Error(""));
+    api.admin.exportCsv.mockRejectedValueOnce(new Error(""));
     renderPage();
     await loaded();
     fireEvent.click(screen.getByTestId("download-transactions"));
@@ -173,22 +173,22 @@ describe("Admin panel — delete", () => {
     expect(confirm).toBeDisabled();
     fireEvent.change(within(dialog).getByLabelText("اكتب 128 للتأكيد"), { target: { value: "128" } });
     expect(confirm).toBeEnabled();
-    expect(base44.admin.purge).not.toHaveBeenCalled();
+    expect(api.admin.purge).not.toHaveBeenCalled();
   });
 
   it("deletes with the confirmed count, reports the result and refreshes the preview", async () => {
     const dialog = await openDialog();
-    const calls = base44.admin.summary.mock.calls.length;
+    const calls = api.admin.summary.mock.calls.length;
     fireEvent.change(within(dialog).getByTestId("purge-confirm-input"), { target: { value: "128" } });
     fireEvent.click(within(dialog).getByTestId("purge-confirm"));
     await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
-    expect(base44.admin.purge).toHaveBeenCalledWith(monthStart, ymd(today), 128);
+    expect(api.admin.purge).toHaveBeenCalledWith(monthStart, ymd(today), 128);
     expect(screen.getByTestId("admin-notice")).toHaveTextContent(`تم حذف 128 عملية و30 رصيد بداية من ${monthStart} إلى ${ymd(today)}.`);
-    await waitFor(() => expect(base44.admin.summary.mock.calls.length).toBe(calls + 1));
+    await waitFor(() => expect(api.admin.summary.mock.calls.length).toBe(calls + 1));
   });
 
   it("if the data changed since the preview, nothing is deleted and the dialog explains why", async () => {
-    base44.admin.purge.mockRejectedValueOnce(Object.assign(new Error("The data changed since the preview. Check the counts and try again."), { status: 409 }));
+    api.admin.purge.mockRejectedValueOnce(Object.assign(new Error("The data changed since the preview. Check the counts and try again."), { status: 409 }));
     const dialog = await openDialog();
     fireEvent.change(within(dialog).getByTestId("purge-confirm-input"), { target: { value: "128" } });
     fireEvent.click(within(dialog).getByTestId("purge-confirm"));
@@ -203,17 +203,17 @@ describe("Admin panel — delete", () => {
     await waitFor(() => expect(saveBlob).toHaveBeenCalledTimes(1));
     fireEvent.click(within(dialog).getByRole("button", { name: "إلغاء" }));
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
-    expect(base44.admin.purge).not.toHaveBeenCalled();
+    expect(api.admin.purge).not.toHaveBeenCalled();
   });
 
   it("pressing Enter only deletes once the count matches", async () => {
     const dialog = await openDialog();
     const input = within(dialog).getByTestId("purge-confirm-input");
     fireEvent.submit(input.closest("form"));
-    expect(base44.admin.purge).not.toHaveBeenCalled();
+    expect(api.admin.purge).not.toHaveBeenCalled();
     fireEvent.change(input, { target: { value: " 128 " } });
     await act(async () => { fireEvent.submit(input.closest("form")); });
-    expect(base44.admin.purge).toHaveBeenCalledTimes(1);
+    expect(api.admin.purge).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -232,7 +232,7 @@ describe("Admin panel — header link and English", () => {
   });
 
   it("reads in English with singular/plural counts", async () => {
-    base44.admin.summary.mockImplementation(async () => summaryOf({ transactions: 1, opening_balances: 1, days: 1 }));
+    api.admin.summary.mockImplementation(async () => summaryOf({ transactions: 1, opening_balances: 1, days: 1 }));
     render(<LanguageProvider initialLang="en"><MemoryRouter><AdminPage /></MemoryRouter></LanguageProvider>);
     await waitFor(() => expect(summaryBox()).toHaveTextContent("1 transaction over 1 day"));
     expect(summaryBox()).toHaveTextContent("1 opening balance");

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { X, Pencil, AlertCircle } from "lucide-react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/apiClient";
 import { useI18n } from "@/lib/i18n";
 
 // Fields that make sense to set on many transactions at once. Per-row values (amount, reference,
@@ -41,7 +41,7 @@ export default function BulkEditModal({ transactions, onClose, onSaved }) {
     try {
       const payload = { ...changes };
       if (payload.commission_rate !== undefined) payload.commission_rate = Number(payload.commission_rate);
-      await base44.entities.Transaction.bulkUpdate(transactions.map((t) => t.id), payload);
+      await api.entities.Transaction.bulkUpdate(transactions.map((t) => t.id), payload);
       onSaved(payload);
     } catch (err) {
       setError(err?.message ? errorText(err.message) : tr("bulk.saveFailed"));

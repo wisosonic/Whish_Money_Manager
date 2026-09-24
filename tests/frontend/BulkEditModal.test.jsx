@@ -2,10 +2,10 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import BulkEditModal from "@/components/transactions/BulkEditModal";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/apiClient";
 
-vi.mock("@/api/base44Client", () => ({
-  base44: { entities: { Transaction: { bulkUpdate: vi.fn() } } },
+vi.mock("@/api/apiClient", () => ({
+  api: { entities: { Transaction: { bulkUpdate: vi.fn() } } },
 }));
 
 const selected = [
@@ -26,7 +26,7 @@ const saveButton = () => screen.getByRole("button", { name: "حفظ التعدي
 
 beforeEach(() => {
   vi.clearAllMocks();
-  base44.entities.Transaction.bulkUpdate.mockResolvedValue({ updated: 3, records: [] });
+  api.entities.Transaction.bulkUpdate.mockResolvedValue({ updated: 3, records: [] });
 });
 
 afterEach(cleanup);
@@ -63,8 +63,8 @@ describe("BulkEditModal", () => {
     // Fields left unticked (e.g. note) are not sent.
     fireEvent.click(saveButton());
 
-    await waitFor(() => expect(base44.entities.Transaction.bulkUpdate).toHaveBeenCalledTimes(1));
-    expect(base44.entities.Transaction.bulkUpdate).toHaveBeenCalledWith([11, 12, 13], { service: "W2W", type: "cash_out" });
+    await waitFor(() => expect(api.entities.Transaction.bulkUpdate).toHaveBeenCalledTimes(1));
+    expect(api.entities.Transaction.bulkUpdate).toHaveBeenCalledWith([11, 12, 13], { service: "W2W", type: "cash_out" });
     expect(onSaved).toHaveBeenCalledWith({ service: "W2W", type: "cash_out" });
   });
 
@@ -74,14 +74,14 @@ describe("BulkEditModal", () => {
     fireEvent.change(screen.getByLabelText("نسبة العمولة (%)"), { target: { value: "1.5" } });
     expect(screen.getByText("تُحسب العمولة لكل عملية من مبلغها")).toBeInTheDocument();
     fireEvent.click(saveButton());
-    await waitFor(() => expect(base44.entities.Transaction.bulkUpdate).toHaveBeenCalledWith([11, 12, 13], { commission_rate: 1.5 }));
+    await waitFor(() => expect(api.entities.Transaction.bulkUpdate).toHaveBeenCalledWith([11, 12, 13], { commission_rate: 1.5 }));
   });
 
   it("can deliberately clear a text field", async () => {
     renderModal();
     enable("ملاحظة");
     fireEvent.click(saveButton());
-    await waitFor(() => expect(base44.entities.Transaction.bulkUpdate).toHaveBeenCalledWith([11, 12, 13], { note: "" }));
+    await waitFor(() => expect(api.entities.Transaction.bulkUpdate).toHaveBeenCalledWith([11, 12, 13], { note: "" }));
   });
 
   it("moves transactions to another date", async () => {
@@ -103,7 +103,7 @@ describe("BulkEditModal", () => {
   });
 
   it("shows the server error and stays open when saving fails", async () => {
-    base44.entities.Transaction.bulkUpdate.mockRejectedValue(new Error("No transactions selected"));
+    api.entities.Transaction.bulkUpdate.mockRejectedValue(new Error("No transactions selected"));
     const { onSaved } = renderModal();
     enable("الخدمة");
     fireEvent.click(saveButton());
@@ -117,6 +117,6 @@ describe("BulkEditModal", () => {
     fireEvent.click(screen.getByRole("button", { name: "إلغاء" }));
     fireEvent.click(screen.getByRole("button", { name: "إغلاق" }));
     expect(onClose).toHaveBeenCalledTimes(2);
-    expect(base44.entities.Transaction.bulkUpdate).not.toHaveBeenCalled();
+    expect(api.entities.Transaction.bulkUpdate).not.toHaveBeenCalled();
   });
 });

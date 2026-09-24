@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { format, startOfMonth, startOfYear, subMonths, endOfMonth } from "date-fns";
 import { CalendarRange, Download, Trash2, Loader2, AlertTriangle, CheckCircle2, X } from "lucide-react";
 import Header from "@/components/layout/Header";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/apiClient";
 import { useAuth } from "@/lib/AuthContext";
 import { useI18n } from "@/lib/i18n";
 import { PERMISSIONS } from "@/lib/permissions";
@@ -64,7 +64,7 @@ export default function AdminPage() {
     let current = true;
     setLoadingSummary(true);
     setSummaryError("");
-    base44.admin.summary(from, to)
+    api.admin.summary(from, to)
       .then((result) => { if (current) setSummary(result); })
       .catch((err) => { if (current) { setSummary(null); setSummaryError(errorText(err?.message || "")); } })
       .finally(() => { if (current) setLoadingSummary(false); });
@@ -86,7 +86,7 @@ export default function AdminPage() {
     {
       key: "allData",
       apply: async () => {
-        const { first_date: first, last_date: last } = await base44.admin.range();
+        const { first_date: first, last_date: last } = await api.admin.range();
         if (first && last) setRange(first, last);
       },
     },
@@ -96,7 +96,7 @@ export default function AdminPage() {
     setDownloading(kind);
     setNotice(null);
     try {
-      const { blob, filename } = await base44.admin.exportCsv(kind, from, to);
+      const { blob, filename } = await api.admin.exportCsv(kind, from, to);
       saveBlob(blob, filename);
       setNotice({ tone: "ok", text: t("admin.downloaded", { file: filename }) });
     } catch (err) {
@@ -120,7 +120,7 @@ export default function AdminPage() {
     setDeleting(true);
     setDeleteError("");
     try {
-      const result = await base44.admin.purge(from, to, txCount);
+      const result = await api.admin.purge(from, to, txCount);
       setConfirmOpen(false);
       setNotice({
         tone: "ok",

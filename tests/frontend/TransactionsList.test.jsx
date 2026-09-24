@@ -2,14 +2,14 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import TransactionsList from "@/components/dashboard/TransactionsList";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/apiClient";
 import { setAuthRole } from "./authMock";
 
 vi.mock("@/lib/AuthContext", async () => (await import("./authMock")).authContextMock);
 beforeEach(() => setAuthRole("admin"));
 
-vi.mock("@/api/base44Client", () => ({
-  base44: { entities: { Transaction: { delete: vi.fn(), bulkDelete: vi.fn(), bulkUpdate: vi.fn() } } },
+vi.mock("@/api/apiClient", () => ({
+  api: { entities: { Transaction: { delete: vi.fn(), bulkDelete: vi.fn(), bulkUpdate: vi.fn() } } },
 }));
 
 const transactions = [
@@ -94,7 +94,7 @@ describe("TransactionsList", () => {
     fireEvent.click(within(bodyRows(container)[0]).getByText("تأكيد"));
 
     await waitFor(() => expect(onRefresh).toHaveBeenCalledTimes(1));
-    expect(base44.entities.Transaction.delete).toHaveBeenCalledWith(1);
+    expect(api.entities.Transaction.delete).toHaveBeenCalledWith(1);
     expect(onDeleteDailyBalanceForDate).toHaveBeenCalledWith("2026-09-23");
   });
 
@@ -163,8 +163,8 @@ describe("TransactionsList — bulk actions", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    base44.entities.Transaction.bulkDelete.mockResolvedValue({ deleted: 2 });
-    base44.entities.Transaction.bulkUpdate.mockResolvedValue({ updated: 2, records: [] });
+    api.entities.Transaction.bulkDelete.mockResolvedValue({ deleted: 2 });
+    api.entities.Transaction.bulkUpdate.mockResolvedValue({ updated: 2, records: [] });
   });
 
   const rowBox = (n) => screen.getByLabelText(`تحديد العملية ${n}`);
@@ -243,11 +243,11 @@ describe("TransactionsList — bulk actions", () => {
 
     const dialog = screen.getByRole("alertdialog", { name: "تأكيد حذف المحدد" });
     expect(dialog).toHaveTextContent("هل أنت متأكد من حذف 2 عملية؟");
-    expect(base44.entities.Transaction.bulkDelete).not.toHaveBeenCalled();
+    expect(api.entities.Transaction.bulkDelete).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "حذف 2 عملية" }));
     await waitFor(() => expect(onRefresh).toHaveBeenCalledTimes(1));
-    expect(base44.entities.Transaction.bulkDelete).toHaveBeenCalledWith([1, 3]);
+    expect(api.entities.Transaction.bulkDelete).toHaveBeenCalledWith([1, 3]);
     // Opening balances are cleaned up once for each affected day.
     expect(onDeleteDailyBalanceForDate.mock.calls.map((c) => c[0]).sort()).toEqual(["2026-09-22", "2026-09-23"]);
     expect(bar()).not.toBeInTheDocument();
@@ -259,12 +259,12 @@ describe("TransactionsList — bulk actions", () => {
     fireEvent.click(screen.getByRole("button", { name: /حذف المحدد/ }));
     fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "إلغاء" }));
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
-    expect(base44.entities.Transaction.bulkDelete).not.toHaveBeenCalled();
+    expect(api.entities.Transaction.bulkDelete).not.toHaveBeenCalled();
     expect(screen.getByTestId("bulk-selected-count")).toHaveTextContent("2 عملية محددة");
   });
 
   it("shows an error if the bulk delete fails and keeps the selection", async () => {
-    base44.entities.Transaction.bulkDelete.mockRejectedValue(new Error("boom"));
+    api.entities.Transaction.bulkDelete.mockRejectedValue(new Error("boom"));
     const onRefresh = vi.fn();
     renderList({ onRefresh });
     fireEvent.click(selectAll());
@@ -287,7 +287,7 @@ describe("TransactionsList — bulk actions", () => {
     fireEvent.click(screen.getByRole("button", { name: "حفظ التعديلات" }));
 
     await waitFor(() => expect(onRefresh).toHaveBeenCalledTimes(1));
-    expect(base44.entities.Transaction.bulkUpdate).toHaveBeenCalledWith([2], { service: "QR" });
+    expect(api.entities.Transaction.bulkUpdate).toHaveBeenCalledWith([2], { service: "QR" });
     expect(screen.queryByText("تعديل 1 عملية")).not.toBeInTheDocument();
     expect(bar()).not.toBeInTheDocument();
   });
@@ -301,7 +301,7 @@ describe("TransactionsList — bulk actions", () => {
     fireEvent.change(screen.getByLabelText("التاريخ"), { target: { value: "2026-09-22" } });
     fireEvent.click(screen.getByRole("button", { name: "حفظ التعديلات" }));
 
-    await waitFor(() => expect(base44.entities.Transaction.bulkUpdate).toHaveBeenCalledWith([1, 2, 3], { transaction_date: "2026-09-22" }));
+    await waitFor(() => expect(api.entities.Transaction.bulkUpdate).toHaveBeenCalledWith([1, 2, 3], { transaction_date: "2026-09-22" }));
     await waitFor(() => expect(onDeleteDailyBalanceForDate.mock.calls.map((c) => c[0])).toEqual(["2026-09-23"]));
   });
 });

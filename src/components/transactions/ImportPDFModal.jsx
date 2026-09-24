@@ -1,7 +1,7 @@
 // @ts-nocheck
 
 import { useState, useRef } from "react";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/apiClient";
 import { detectFileType } from "@/lib/fileType";
 import { useAuth } from "@/lib/AuthContext";
 import { PERMISSIONS } from "@/lib/permissions";
@@ -42,8 +42,8 @@ export default function ImportPDFModal({ onClose, onSaved }) {
 
     try {
       const result = fileType === "csv"
-        ? await base44.integrations.Core.ExtractCsv(file)
-        : await base44.integrations.Core.ExtractPdf(file);
+        ? await api.integrations.Core.ExtractCsv(file)
+        : await api.integrations.Core.ExtractPdf(file);
       setValidation(result?.validation || null);
 
       const rows = result?.transactions || [];
@@ -89,7 +89,7 @@ export default function ImportPDFModal({ onClose, onSaved }) {
 
       // ═══ كشف العمليات المكررة (نفس رقم العملية مسجل مسبقاً) ═══
       const references = [...new Set(rowsWithDate.map((r) => String(r.reference_number || "").trim()).filter(Boolean))];
-      const existing = references.length ? await base44.entities.Transaction.findDuplicates(references) : [];
+      const existing = references.length ? await api.entities.Transaction.findDuplicates(references) : [];
 
       setEditRows(rowsWithDate);
       setDuplicates(existing);
@@ -143,7 +143,7 @@ export default function ImportPDFModal({ onClose, onSaved }) {
         };
       });
 
-      await base44.entities.Transaction.importRecords(records, { overwrite });
+      await api.entities.Transaction.importRecords(records, { overwrite });
 
       setStep("done");
       setTimeout(() => { 

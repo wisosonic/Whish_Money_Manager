@@ -19,7 +19,7 @@ import TransactionsList from "@/components/dashboard/TransactionsList";
 import { setAuthRole } from "./authMock";
 
 vi.mock("@/lib/AuthContext", async () => (await import("./authMock")).authContextMock);
-vi.mock("@/api/base44Client", () => ({ base44: { entities: { Transaction: { delete: vi.fn(), bulkDelete: vi.fn(), bulkUpdate: vi.fn() } } } }));
+vi.mock("@/api/apiClient", () => ({ api: { entities: { Transaction: { delete: vi.fn(), bulkDelete: vi.fn(), bulkUpdate: vi.fn() } } } }));
 
 const root = path.resolve(__dirname, "../..");
 const clearLangCookie = () => { document.cookie = `${LANG_COOKIE}=; Path=/; Max-Age=0`; };
@@ -42,15 +42,14 @@ const placeholders = (value) => {
   return [...new Set(texts.flatMap((text) => [...String(text).matchAll(/\{(\w+)\}/g)].map((m) => m[1])))].sort();
 };
 
-// Every source file with UI text, except the translations themselves and two screens nothing renders.
-const UNUSED_SCREENS = ["ReviewPDFModal.jsx", "InsertTransactionModal.jsx"];
+// Every source file with UI text, except the translations themselves.
 const sourceFiles = () => {
   const files = [];
   const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).forEach((entry) => {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
       if (!["ui", "locales"].includes(entry.name)) walk(full);
-    } else if (/\.jsx?$/.test(entry.name) && !UNUSED_SCREENS.includes(entry.name)) {
+    } else if (/\.jsx?$/.test(entry.name)) {
       files.push(full);
     }
   });

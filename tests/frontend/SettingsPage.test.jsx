@@ -12,12 +12,12 @@ import StatsCards from "@/components/dashboard/StatsCards";
 import { LanguageProvider } from "@/lib/i18n";
 import { PreferencesProvider, usePreferences } from "@/lib/PreferencesContext";
 import { TABLE_COLUMNS, applyPreferenceChanges, resolvePreferences } from "@/lib/preferences";
-import { base44 } from "@/api/base44Client";
+import { api } from "@/api/apiClient";
 import { setAuthRole } from "./authMock";
 
 vi.mock("@/lib/AuthContext", async () => (await import("./authMock")).authContextMock);
-vi.mock("@/api/base44Client", () => ({
-  base44: {
+vi.mock("@/api/apiClient", () => ({
+  api: {
     auth: { updatePreferences: vi.fn() },
     entities: { Transaction: { delete: vi.fn(), bulkDelete: vi.fn(), bulkUpdate: vi.fn() } },
   },
@@ -31,8 +31,8 @@ beforeEach(() => {
   document.documentElement.dir = "rtl";
   setAuthRole("user");
   serverPreferences = resolvePreferences(null);
-  base44.auth.updatePreferences.mockReset();
-  base44.auth.updatePreferences.mockImplementation(async (changes) => {
+  api.auth.updatePreferences.mockReset();
+  api.auth.updatePreferences.mockImplementation(async (changes) => {
     const { preferences, error } = applyPreferenceChanges(serverPreferences, changes);
     if (error) throw Object.assign(new Error(error), { status: 400 });
     serverPreferences = preferences;
@@ -80,12 +80,12 @@ describe("Settings page", () => {
 
   it("hiding a column saves only that change and reports Saving… then Saved", async () => {
     let finish;
-    base44.auth.updatePreferences.mockImplementationOnce((changes) => new Promise((resolve) => {
+    api.auth.updatePreferences.mockImplementationOnce((changes) => new Promise((resolve) => {
       finish = () => resolve({ preferences: applyPreferenceChanges(serverPreferences, changes).preferences });
     }));
     renderSettings();
     fireEvent.click(box("column-note"));
-    await waitFor(() => expect(base44.auth.updatePreferences).toHaveBeenCalledWith({ hiddenColumns: ["note"] }));
+    await waitFor(() => expect(api.auth.updatePreferences).toHaveBeenCalledWith({ hiddenColumns: ["note"] }));
     // Applied immediately, before the server answers.
     expect(box("column-note")).not.toBeChecked();
     expect(status()).toHaveTextContent("جاري الحفظ…");
@@ -102,10 +102,10 @@ describe("Settings page", () => {
     fireEvent.click(box("column-service"));
     await waitFor(() => expect(status()).toHaveTextContent("تم الحفظ"));
     fireEvent.click(box("column-type"));
-    await waitFor(() => expect(base44.auth.updatePreferences).toHaveBeenLastCalledWith({ hiddenColumns: ["type", "service"] }));
+    await waitFor(() => expect(api.auth.updatePreferences).toHaveBeenLastCalledWith({ hiddenColumns: ["type", "service"] }));
     await waitFor(() => expect(status()).toHaveTextContent("تم الحفظ"));
     fireEvent.click(screen.getByRole("button", { name: "إظهار كل الأعمدة" }));
-    await waitFor(() => expect(base44.auth.updatePreferences).toHaveBeenLastCalledWith({ hiddenColumns: [] }));
+    await waitFor(() => expect(api.auth.updatePreferences).toHaveBeenLastCalledWith({ hiddenColumns: [] }));
     await waitFor(() => expect(box("column-type")).toBeChecked());
   });
 
@@ -123,9 +123,9 @@ describe("Settings page", () => {
     fireEvent.click(box("density-compact"));
     fireEvent.click(box("summary-year"));
     fireEvent.click(box("summary-month"));
-    await waitFor(() => expect(base44.auth.updatePreferences).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(api.auth.updatePreferences).toHaveBeenCalledTimes(3));
     // Each save carries only its own change.
-    expect(base44.auth.updatePreferences.mock.calls.map(([changes]) => changes)).toEqual([
+    expect(api.auth.updatePreferences.mock.calls.map(([changes]) => changes)).toEqual([
       { density: "compact" }, { summaries: { year: true } }, { summaries: { month: false } },
     ]);
     await waitFor(() => expect(serverPreferences.summaries).toEqual({ month: false, year: true }));
@@ -138,8 +138,8 @@ describe("Settings page", () => {
     setAuthRole("user", { preferences: { language: "ar", hiddenColumns: ["note"], density: "compact", summaries: { month: false, year: true }, theme: "dark" } });
     renderSettings();
     fireEvent.click(box("settings-reset"));
-    await waitFor(() => expect(base44.auth.updatePreferences).toHaveBeenCalledTimes(1));
-    expect(base44.auth.updatePreferences).toHaveBeenCalledWith({
+    await waitFor(() => expect(api.auth.updatePreferences).toHaveBeenCalledTimes(1));
+    expect(api.auth.updatePreferences).toHaveBeenCalledWith({
       hiddenColumns: [], theme: "light", density: "comfortable", summaries: { month: true, year: false },
     });
     await waitFor(() => expect(box("settings-reset")).toBeDisabled());
@@ -152,13 +152,13 @@ describe("Settings page", () => {
     expect(document.documentElement).toHaveAttribute("dir", "ltr");
     expect(screen.getByRole("heading", { level: 1, name: "Settings" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Table columns" })).toBeInTheDocument();
-    await waitFor(() => expect(base44.auth.updatePreferences).toHaveBeenCalledWith({ language: "en" }));
+    await waitFor(() => expect(api.auth.updatePreferences).toHaveBeenCalledWith({ language: "en" }));
     await waitFor(() => expect(status()).toHaveTextContent("Saved"));
     expect(document.cookie).toContain("wmm_lang=en");
   });
 
   it("if saving fails, the previous value comes back and the error is shown in the interface language", async () => {
-    base44.auth.updatePreferences.mockRejectedValueOnce(Object.assign(new Error("At least one column must stay visible"), { status: 400 }));
+    api.auth.updatePreferences.mockRejectedValueOnce(Object.assign(new Error("At least one column must stay visible"), { status: 400 }));
     renderSettings();
     fireEvent.click(box("column-date"));
     expect(box("column-date")).not.toBeChecked();
@@ -170,7 +170,7 @@ describe("Settings page", () => {
     setAuthRole("user", { preferences: { summaries: { month: false, year: false } } });
     serverPreferences = resolvePreferences({ summaries: { month: false, year: false } });
     const answers = [];
-    base44.auth.updatePreferences.mockImplementation((changes) => new Promise((resolve) => {
+    api.auth.updatePreferences.mockImplementation((changes) => new Promise((resolve) => {
       answers.push(() => {
         const { preferences } = applyPreferenceChanges(serverPreferences, changes);
         serverPreferences = preferences;
@@ -185,15 +185,15 @@ describe("Settings page", () => {
     expect(box("summary-year")).toBeChecked();
     expect(box("summary-month")).not.toBeChecked();
     // Only the first request is on the wire until it's answered.
-    await waitFor(() => expect(base44.auth.updatePreferences).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(api.auth.updatePreferences).toHaveBeenCalledTimes(1));
     await new Promise((r) => setTimeout(r, 20));
-    expect(base44.auth.updatePreferences).toHaveBeenCalledTimes(1);
+    expect(api.auth.updatePreferences).toHaveBeenCalledTimes(1);
 
     await act(async () => answers[0]());
     // The first answer (density only) doesn't undo the pending summary change on screen.
     expect(box("summary-year")).toBeChecked();
     expect(status()).toHaveTextContent("جاري الحفظ…");
-    await waitFor(() => expect(base44.auth.updatePreferences).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(api.auth.updatePreferences).toHaveBeenCalledTimes(2));
 
     await act(async () => answers[1]());
     expect(status()).toHaveTextContent("تم الحفظ");
@@ -204,7 +204,7 @@ describe("Settings page", () => {
 
   it("if an earlier save fails while a later one is pending, the later answer settles the screen", async () => {
     const answers = [];
-    base44.auth.updatePreferences.mockImplementation((changes) => new Promise((resolve, reject) => {
+    api.auth.updatePreferences.mockImplementation((changes) => new Promise((resolve, reject) => {
       answers.push({ ok: () => resolve({ preferences: (serverPreferences = applyPreferenceChanges(serverPreferences, changes).preferences) }), fail: () => reject(new Error("boom")) });
     }));
     renderSettings();
@@ -241,7 +241,7 @@ describe("Preferences follow the account", () => {
     render(withProviders(<LanguageToggle />, "/"));
     fireEvent.click(screen.getByTestId("language-toggle"));
     expect(document.documentElement).toHaveAttribute("lang", "en");
-    await waitFor(() => expect(base44.auth.updatePreferences).toHaveBeenCalledWith({ language: "en" }));
+    await waitFor(() => expect(api.auth.updatePreferences).toHaveBeenCalledWith({ language: "en" }));
   });
 
   it("signed out (login page), the switch only changes the language — nothing is sent", async () => {
@@ -250,7 +250,7 @@ describe("Preferences follow the account", () => {
     fireEvent.click(screen.getByTestId("language-toggle"));
     expect(document.documentElement).toHaveAttribute("lang", "en");
     await new Promise((r) => setTimeout(r, 20));
-    expect(base44.auth.updatePreferences).not.toHaveBeenCalled();
+    expect(api.auth.updatePreferences).not.toHaveBeenCalled();
   });
 
   it("components used without the provider get the defaults", () => {
