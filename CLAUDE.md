@@ -27,6 +27,9 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
 - `src/lib/permissions.js` **re-exports `server/permissions.js`**, so the UI and the API share one definition. Never duplicate the rules.
 - `src/components/transactions/ImportPDFModal.jsx`: the single import screen for both engines. Steps: upload → (duplicates) → preview → saving → done.
 - `src/pages/Dashboard.jsx`: all totals and balances are calculated in the browser. Search logic is in `src/lib/transactionSearch.js`.
+  - **Refreshes must not blank the table.** `loading` starts `true` and `fetchTransactions` only ever clears it. Don't add `setLoading(true)` back: swapping the table for the "loading" line shrank the page below the window, and the browser jumped to the top after every edit or delete.
+  - After a save, the current rows stay mounted (stable `key={t.id}`) and are updated in place when the new data arrives. `Dashboard.test.jsx` checks this, and fails if the old behaviour returns.
+  - **Browser check:** headless Edge only lays out when asked, so to see a transient state, sample `scrollHeight` / `scrollY` every 10ms while the action runs.
 
 ## Business rules (confirmed by the user — don't change without asking)
 
@@ -201,6 +204,11 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - `Dashboard` computes `yearly*` figures.
   - Added `StatsCards.test.jsx` and Dashboard summary tests. Total now 104.
 ### 2026-09-24
+- **Scroll position kept after saving** (user-reported):
+  - **Cause:** every refresh set `loading = true`, which replaced the table with a one-line placeholder. The page shrank (to 720px in an 800px window) and the scroll dropped from 2047 to 13.
+  - **Fix:** `loading` is now only for the first load; refreshes swap data in place.
+  - **Verified in Edge:** the page never shrank below 4243px, and the scroll stayed at 2047 on desktop and 3364 on a phone-width screen.
+  - **Tests:** 4 Dashboard tests covering first-load only, edit, delete, and no programmatic scroll. They fail with the old line restored. Total 357.
 - **Arabic / English language toggle**:
   - **Built:** `src/lib/i18n.jsx` (provider, `t()`, plurals, `errorText()`, the `wmm_lang` cookie, `<html lang dir>`), `src/locales/ar.js` and `en.js` (about 250 keys each, plus translated server messages), and a `LanguageToggle` in the header and on the login page. `index.html` sets the direction before the first paint.
   - **Converted:** all 19 rendered UI files. Hardcoded `dir="rtl"` and left/right classes became direction-aware.

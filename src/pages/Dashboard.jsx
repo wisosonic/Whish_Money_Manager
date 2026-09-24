@@ -59,8 +59,12 @@ export default function Dashboard() {
     await fetchDailyBalances(currentUser?.email);
   };
 
+  // `loading` starts true and is only cleared here — it is NOT set back to true on later refreshes
+  // (after an edit, delete, bulk action, cash in/out or import). Swapping the table for the short
+  // "loading" line made the page shrink below the viewport, so the browser jumped to the top and
+  // the user lost their place. Refreshes now keep the current rows on screen until the new data
+  // arrives and replaces them in place, so the scroll position is preserved.
   const fetchTransactions = async (userEmail) => {
-    setLoading(true);
     const data = await base44.entities.Transaction.filter({}, "created_date", 10000);
     // رتّب: أولاً بـ transaction_date ثم بـ sort_order (ترتيب الاستيراد) ثم بـ reference_number رقمياً
     const sorted = [...data].sort((a, b) => {

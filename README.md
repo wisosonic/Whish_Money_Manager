@@ -46,6 +46,7 @@ It runs entirely on your machine: a React frontend and a small Node.js/Express A
     - Colors were checked for color-blind readers, and cash out is also dashed, so no series relies on color alone.
     - The animation is skipped for users who turn on "reduce motion".
   - Because profit and cash flows use different scales on the two axes, compare each line against its own axis. The tooltip and table view give exact values.
+- **Your place is kept:** after editing, deleting, a bulk action, Cash In/Out or an import, the table updates in place and the page stays exactly where you had scrolled. It doesn't jump back to the top. "Loading..." appears only the first time the page opens.
 - **Manual entry**: Cash In / Cash Out forms, plus edit, delete, and "delete all for this day". Deleting a row happens as soon as you confirm it ("تأكيد"); there is no undo.
 - **Bulk actions (multi-select)**: tick the checkbox on any rows, or use the header checkbox to select every visible row. A partly-selected header shows a dash.
   - A blue bar appears above the table with the selection count and total amount, plus:
@@ -307,7 +308,8 @@ tests/
     ├── monthlyChartData.test.js      # per-month aggregation, future months, formatters
     ├── MonthlyChartModal.test.jsx    # axes, bars/lines, legend, tooltip, table view, year switch,
     │                                 # live updates, desktop vs phone layout, reduced motion
-    └── Dashboard.test.jsx            # search, and monthly/yearly totals following the date picker
+    └── Dashboard.test.jsx            # search, monthly/yearly totals following the date picker,
+                                      # table kept in place (scroll position) while refreshing after edit/delete
 ```
 
 - Backend tests start the API on a random port against an **in-memory SQLite database** (`HAWALAFLOW_DB_PATH=":memory:"`, set in `vitest.config.js`). Your real `server/hawalaflow.db` is never touched.

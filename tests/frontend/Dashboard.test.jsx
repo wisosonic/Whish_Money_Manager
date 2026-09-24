@@ -13,7 +13,7 @@ vi.mock("@/api/base44Client", () => ({
   base44: {
     auth: { me: vi.fn() },
     entities: {
-      Transaction: { filter: vi.fn() },
+      Transaction: { filter: vi.fn(), update: vi.fn(), delete: vi.fn() },
       DailyBalance: { filter: vi.fn(), create: vi.fn(), update: vi.fn() },
     },
   },
@@ -146,5 +146,95 @@ describe("Dashboard — roles", () => {
     const second = render(<Dashboard />);
     await waitFor(() => expect(rowCount(second.container)).toBe(2));
     expect(screen.queryByLabelText("تعديل رصيد البداية")).not.toBeInTheDocument();
+  });
+});
+
+describe("Dashboard — keeps the user's place after saving", () => {
+  // The bug: every refresh swapped the table for a short "loading" line, the page shrank below the
+  // window, and the browser jumped to the top. jsdom has no layout, so these tests pin the cause:
+  // during a refresh the table stays mounted (same row elements), and "loading" never replaces it.
+  const deferred = () => {
+    let resolve;
+    const promise = new Promise((r) => { resolve = r; });
+    return { promise, resolve };
+  };
+  const rowFor = (container, text) => [...container.querySelectorAll("tbody tr")].find((tr) => tr.textContent.includes(text));
+
+  beforeEach(() => {
+    base44.entities.Transaction.update.mockResolvedValue({});
+    base44.entities.Transaction.delete.mockResolvedValue({ ok: true });
+  });
+
+  it("shows the loading line only on the very first load", async () => {
+    const first = deferred();
+    base44.entities.Transaction.filter.mockReturnValueOnce(first.promise);
+    const { container } = render(<Dashboard />);
+    expect(await screen.findByText("جاري التحميل...")).toBeInTheDocument();
+    first.resolve(stored);
+    await waitFor(() => expect(rowCount(container)).toBe(2));
+    expect(screen.queryByText("جاري التحميل...")).not.toBeInTheDocument();
+  });
+
+  it("after editing and saving, the table stays on screen while it refreshes, then updates in place", async () => {
+    const { container } = render(<Dashboard />);
+    await waitFor(() => expect(rowCount(container)).toBe(2));
+    const rowBefore = rowFor(container, "MOUNIR TOSKA");
+
+    // The refresh after saving is slow: hold it open to inspect the in-between state.
+    const refresh = deferred();
+    base44.entities.Transaction.filter.mockReturnValueOnce(refresh.promise);
+
+    fireEvent.click(within(rowBefore).getByTitle("تعديل"));
+    fireEvent.change(screen.getByDisplayValue("50"), { target: { value: "75" } });
+    fireEvent.click(screen.getByRole("button", { name: "حفظ التعديل" }));
+    await waitFor(() => expect(base44.entities.Transaction.update).toHaveBeenCalledWith(2, expect.objectContaining({ amount: 75 })));
+    await waitFor(() => expect(screen.queryByText("تعديل العملية")).not.toBeInTheDocument());
+
+    // Mid-refresh: no loading line, the same rows (same DOM elements) are still there.
+    expect(screen.queryByText("جاري التحميل...")).not.toBeInTheDocument();
+    expect(rowCount(container)).toBe(2);
+    expect(rowFor(container, "MOUNIR TOSKA")).toBe(rowBefore);
+
+    refresh.resolve(stored.map((t) => (t.id === 2 ? { ...t, amount: 75 } : t)));
+    await waitFor(() => expect(within(rowBefore).getByText("$75.00")).toBeInTheDocument());
+    // Updated in place — React reused the same row element rather than rebuilding the table.
+    expect(rowFor(container, "MOUNIR TOSKA")).toBe(rowBefore);
+  });
+
+  it("deleting a row also refreshes without blanking the table", async () => {
+    const { container } = render(<Dashboard />);
+    await waitFor(() => expect(rowCount(container)).toBe(2));
+    const survivor = rowFor(container, "Vicario");
+
+    // Both the empty-day check after a delete and the refresh read transactions: hold them all open.
+    const refresh = deferred();
+    base44.entities.Transaction.filter.mockImplementation(() => refresh.promise);
+    const target = rowFor(container, "MOUNIR TOSKA");
+    fireEvent.click(within(target).getByTitle("مسح"));
+    fireEvent.click(within(target).getByText("تأكيد"));
+    await waitFor(() => expect(base44.entities.Transaction.delete).toHaveBeenCalledWith(2));
+
+    expect(screen.queryByText("جاري التحميل...")).not.toBeInTheDocument();
+    expect(rowCount(container)).toBe(2);
+
+    refresh.resolve(stored.filter((t) => t.id !== 2));
+    await waitFor(() => expect(rowCount(container)).toBe(1));
+    expect(rowFor(container, "Vicario")).toBe(survivor);
+    base44.entities.Transaction.filter.mockReset();
+  });
+
+  it("never scrolls the page itself during a refresh", async () => {
+    const scrollSpy = vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+    try {
+      const { container } = render(<Dashboard />);
+      await waitFor(() => expect(rowCount(container)).toBe(2));
+      const callsBefore = base44.entities.Transaction.filter.mock.calls.length;
+      fireEvent.click(within(rowFor(container, "MOUNIR TOSKA")).getByTitle("تعديل"));
+      fireEvent.click(screen.getByRole("button", { name: "حفظ التعديل" }));
+      await waitFor(() => expect(base44.entities.Transaction.filter.mock.calls.length).toBe(callsBefore + 1));
+      expect(scrollSpy).not.toHaveBeenCalled();
+    } finally {
+      scrollSpy.mockRestore();
+    }
   });
 });
