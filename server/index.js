@@ -2,6 +2,7 @@ import cookieParser from "cookie-parser";
 import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
+import { registerAdminRoutes } from "./admin.js";
 import { authenticate, registerAuthRoutes, requirePermission } from "./auth.js";
 import { db, dbPath, ensureDefaultRoles, initializeDb, nowIso } from "./db.js";
 import { PERMISSIONS as P, canUpdateTransaction, hasPermission } from "./permissions.js";
@@ -168,6 +169,9 @@ registerAuthRoutes(app);
 
 // Every other API route requires a signed-in user.
 app.use("/local-api", authenticate);
+
+// Admin panel: CSV backup and delete-by-date-range (Admin + Manager).
+registerAdminRoutes(app);
 
 const parseAmount = (value) => Number(String(value || "").replace(/,/g, "")) || 0;
 

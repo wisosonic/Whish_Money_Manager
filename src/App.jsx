@@ -9,6 +9,7 @@ import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import Dashboard from "./pages/Dashboard";
 import UsersPage from "./pages/UsersPage";
 import SettingsPage from "./pages/SettingsPage";
+import AdminPage from "./pages/AdminPage";
 import LoginPage from "@/components/auth/LoginPage";
 import { PERMISSIONS } from "@/lib/permissions";
 import { LanguageProvider, useI18n } from "@/lib/i18n";
@@ -60,6 +61,9 @@ const AuthenticatedApp = () => {
       <Route
         path="/users"
         element={<RequirePermission permission={PERMISSIONS.USERS_MANAGE}><UsersPage /></RequirePermission>} />
+      <Route
+        path="/admin"
+        element={<RequirePermission permission={PERMISSIONS.DATA_EXPORT}><AdminPage /></RequirePermission>} />
       {/* Every signed-in user has their own settings. */}
       <Route path="/settings" element={<SettingsPage />} />
       {/* Add your page Route elements here */}

@@ -7,6 +7,7 @@
 //     no changing opening balances.
 //   • Manager: everything with transactions, imports, balances and reports; no user/role management.
 //   • Admin: everything.
+//   • Admin panel (Admin + Manager): download a CSV backup and delete all data for a date range.
 
 export const PERMISSIONS = {
   TRANSACTIONS_READ: "transactions:read",
@@ -18,6 +19,8 @@ export const PERMISSIONS = {
   BALANCES_READ: "balances:read",
   BALANCES_WRITE: "balances:write",
   USERS_MANAGE: "users:manage",
+  DATA_EXPORT: "data:export", // admin panel: CSV backup of transactions / opening balances by date range
+  DATA_PURGE: "data:purge", // admin panel: delete every transaction and opening balance in a date range
 };
 
 const P = PERMISSIONS;
@@ -49,6 +52,14 @@ export const DEFAULT_ROLES = [
     ],
   },
 ];
+
+// Permissions introduced after databases already existed. Default roles in an existing database were
+// stored with the old list, so on startup each permission here is granted once to these roles
+// (see grantLaterPermissions in db.js). New databases get them from DEFAULT_ROLES directly.
+export const PERMISSIONS_ADDED_LATER = {
+  [P.DATA_EXPORT]: ["admin", "manager"],
+  [P.DATA_PURGE]: ["admin", "manager"],
+};
 
 export const hasPermission = (user, permission) => Boolean(user?.permissions?.includes(permission));
 

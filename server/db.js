@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import path from "path";
 import { fileURLToPath } from "url";
-import { DEFAULT_ROLES } from "./permissions.js";
+import { DEFAULT_ROLES, PERMISSIONS_ADDED_LATER } from "./permissions.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -84,6 +84,13 @@ export const initializeDb = () => {
     );
 
     CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+
+    -- One-time upgrade steps already applied (e.g. "granted:data:export").
+    CREATE TABLE IF NOT EXISTS app_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT,
+      created_date TEXT NOT NULL
+    );
   `);
 
   // Columns added after a table was first created: add them to existing databases.
@@ -113,6 +120,34 @@ export const ensureDefaultRoles = ({ reset = false } = {}) => {
       if (reset) update.run(role.label, role.description, permissions, now, role.name);
     });
   })();
+  grantLaterPermissions();
+};
+
+// Grant each permission in PERMISSIONS_ADDED_LATER to its roles — once per permission, recorded in
+// app_meta, so it never runs again (and never re-adds a permission someone removed on purpose).
+export const grantLaterPermissions = () => {
+  const done = db.prepare("SELECT 1 FROM app_meta WHERE key = ?");
+  const record = db.prepare("INSERT INTO app_meta (key, value, created_date) VALUES (?, ?, ?)");
+  const readRole = db.prepare("SELECT permissions FROM roles WHERE name = ?");
+  const writeRole = db.prepare("UPDATE roles SET permissions = ?, updated_date = ? WHERE name = ?");
+  for (const [permission, roleNames] of Object.entries(PERMISSIONS_ADDED_LATER)) {
+    const key = `granted:${permission}`;
+    if (done.get(key)) continue;
+    db.transaction(() => {
+      const now = nowIso();
+      const granted = [];
+      for (const name of roleNames) {
+        const row = readRole.get(name);
+        if (!row) continue;
+        const list = JSON.parse(row.permissions || "[]");
+        if (!list.includes(permission)) {
+          writeRole.run(JSON.stringify([...list, permission]), now, name);
+          granted.push(name);
+        }
+      }
+      record.run(key, JSON.stringify(granted), now);
+    })();
+  }
 };
 
 export const findRoleByName = (name) => db.prepare("SELECT * FROM roles WHERE name = ?").get(String(name || ""));

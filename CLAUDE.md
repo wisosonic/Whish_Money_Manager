@@ -43,6 +43,22 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
     - `StatsCards` takes `defaultOpen` from `preferences.summaries`.
   - Without a provider (unit tests), `usePreferences()` returns the defaults, so existing component tests are unaffected.
   - **Header:** the nav row is `flex-wrap` and the links are `whitespace-nowrap`. Admins have up to 5 items there, and the non-wrapping row made the page 663px wide on a ~500px phone (measured in Edge via `scrollWidth`).
+- **Admin panel** (`src/pages/AdminPage.jsx`, route `/admin`; API in `server/admin.js`):
+  - **Who:** Admin and Manager, via `data:export` (page, preview, CSV) and `data:purge` (delete). The page's route guard needs `data:export`, and the delete card needs `data:purge`.
+  - **Day rule:** a transaction's day is `COALESCE(NULLIF(transaction_date,''), substr(created_date,1,10))`, the same as the dashboard's. Ranges are inclusive `YYYY-MM-DD`, validated by `parseRange`.
+  - **CSV** (`toCsv` / `csvCell`):
+    - UTF-8 BOM (so Excel reads Arabic), CRLF line endings, RFC-4180 quoting.
+    - Strings starting with `= @ \t \r`, or `+`/`-` followed by anything but digits/space/().- , get a leading `'` (spreadsheet formula guard).
+    - Numbers and phones are untouched.
+    - fetch's `text()` strips the BOM, so tests check the raw bytes.
+  - **Delete:**
+    - It removes the range's transactions **and** opening balances, in one `db.transaction`. That matches the app's rule that an empty day has no opening balance.
+    - The client sends `expected_count`, the number the user typed to confirm. The server re-counts inside the transaction and returns 409 (deleting nothing) on a mismatch. A mutation check confirmed the 409 test fails without this.
+    - Each delete is logged to the server console.
+  - **Statement timing:** `server/admin.js` prepares statements lazily, because it's imported before `initializeDb()` creates the tables. A module-level `db.prepare` broke every fresh test database.
+- **New permissions for existing databases:** roles are stored in the database, so adding a permission to `DEFAULT_ROLES` doesn't reach existing ones.
+  - List it in `PERMISSIONS_ADDED_LATER` (`server/permissions.js`) with the roles that should get it.
+  - `grantLaterPermissions()` (called from `ensureDefaultRoles` at every startup) grants it once and records `granted:<permission>` in `app_meta`, so a permission removed on purpose isn't re-added.
 - **Dark mode** (Settings → Display → Theme: `light` default / `dark` / `system`):
   - `PreferencesContext` puts the `dark` class and `color-scheme` on `<html>`. "system" listens to `prefers-color-scheme`.
   - While `isLoadingAuth`, it leaves the page alone: `index.html` has already applied the `wmm_theme` cookie before first paint, and the provider mirrors the theme there when signed in.
@@ -197,6 +213,7 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
 ## Testing notes
 
 - Backend tests use an in-memory database (`HAWALAFLOW_DB_PATH=":memory:"`). **Never run tests or experiments against `server/hawalaflow.db`**: it is the user's real data. For manual checks, copy it to the scratchpad or open it read-only.
+  - **Importing `server/index.js` or `server/db.js` opens that file and runs the startup upgrades on it** unless `HAWALAFLOW_DB_PATH` is set. On 2026-09-24 a plain `node -e "import('./server/index.js')"` load check did exactly that. It created `app_meta` and granted the two admin-panel permissions early; no data changed. For ad-hoc checks, prefix with `HAWALAFLOW_DB_PATH=":memory:"`.
 - Frontend tests need `/** @vitest-environment jsdom */` and mock `@/api/base44Client`.
 - **Auth in backend tests:** `tests/backend/helpers.js` provides `startServer()`, `createTestUsers()` (admin, manager, user, user2, password `PASSWORD`), and `makeClient()`, which keeps one cookie per account. Use `client.request(method, route, { as: "user", body })`.
   - Each test file gets its own in-memory database.
@@ -260,6 +277,9 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
 - **PDF one-cent overwrite fixed:** the balance cross-check now works in whole cents. A difference of exactly 1 cent is the provider's rounding and keeps the printed amount; anything larger is still corrected from the balance, and corrected amounts no longer carry float residue (20.19999999999999 → 20.2). 3 regression tests use values found by search that trigger the old float bug (e.g. 1100.36 − 100.37 − 1000). Two of them failed before the fix.
 - **Search across all days:** a scope switch (all days by default / this day), a results line, dates that open their day, per-day "#" and unique row labels. The day's totals are unchanged by the scope. Tests: 9 new Dashboard tests; the day-only tests now select "this day".
 - **Dark mode:** a `theme` preference (light / dark / system), the CSS remapping layer, pre-paint cookie, dark chart palette (validated) and a Theme option in Settings. The guard test caught two unmapped hover classes during the work. Tests: `theme.test.jsx` (17), plus preference tests.
+- **Admin panel:** `/admin` with a date-range preview, CSV backups (transactions, opening balances) and delete-by-range with typed-count confirmation and a server-side 409 check. There are 2 new permissions, granted to existing Admin/Manager roles once via `app_meta`.
+  - **Checked in Edge:** light and dark, the confirmation dialog, dark dashboard and search results. Two dark-mode fixes followed: a count label's leftover background, and browser-grey text fields.
+  - **Tests:** `admin.test.js` (26), `AdminPage.test.jsx` (21) and `download.test.js` (1), total 503.
 - **Settings page** (per-user preferences):
   - **Server:** `server/preferences.js`, a `users.preferences` column with an upgrade step, and `PUT /auth/preferences`.
   - **Frontend:** `PreferencesContext`, `/settings`, and a header gear link.

@@ -10,7 +10,8 @@ export const SESSION_ENDED_EVENT = 'auth:session-ended';
 
 // The session lives in an HTTP-only cookie set by the server: the browser sends it automatically
 // with same-origin requests, and page scripts can't read it.
-const apiRequest = async (path, options = {}) => {
+// `download: true` returns { blob, filename } (from Content-Disposition) instead of parsed JSON.
+const apiRequest = async (path, { download = false, ...options } = {}) => {
   const response = await fetch(`${LOCAL_API_PREFIX}${path}`, {
     credentials: 'same-origin',
     ...options,
@@ -34,6 +35,11 @@ const apiRequest = async (path, options = {}) => {
     throw Object.assign(new Error(message || `Request failed: ${response.status}`), { status: response.status });
   }
 
+  if (download) {
+    const disposition = response.headers.get('Content-Disposition') || '';
+    const filename = (disposition.match(/filename="([^"]+)"/) || [])[1] || 'download.csv';
+    return { blob: await response.blob(), filename };
+  }
   return response.json();
 };
 
@@ -117,6 +123,25 @@ export const base44 = {
   },
   roles: {
     list: async () => apiRequest('/roles', { method: 'GET' }),
+  },
+
+  // Admin panel (data:export / data:purge — Admin and Manager). Dates are YYYY-MM-DD, inclusive.
+  admin: {
+    // First and last day that has any data.
+    range: async () => apiRequest('/admin/range', { method: 'GET' }),
+    // Counts and totals in a range (the preview shown before a backup or a delete).
+    summary: async (from, to) =>
+      apiRequest(`/admin/summary?${new URLSearchParams({ from, to })}`, { method: 'GET' }),
+    // CSV backup; kind is "transactions" or "balances". Returns { blob, filename }.
+    exportCsv: async (kind, from, to) =>
+      apiRequest(`/admin/export?${new URLSearchParams({ kind, from, to })}`, { method: 'GET', download: true }),
+    // Deletes the range's transactions and opening balances. `expectedCount` is the number of
+    // transactions the user confirmed; the server refuses (409) if the data changed since.
+    purge: async (from, to, expectedCount) =>
+      apiRequest('/admin/purge', {
+        method: 'POST',
+        body: JSON.stringify({ from, to, expected_count: expectedCount }),
+      }),
   },
   entities: {
     Transaction: {

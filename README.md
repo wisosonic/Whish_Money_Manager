@@ -64,7 +64,8 @@ It runs entirely on your machine: a React frontend and a small Node.js/Express A
     - Rows with an empty value always go last, and rows with the same value keep their journal order.
   - The "#" column always shows each row's real number in the day's journal. Selecting rows and bulk actions work the same while sorted.
   - The sort resets when the page reloads.
-- **Personal settings** (⚙️ in the header): each user chooses their language, which table columns to show, compact or comfortable rows, and which summaries start open. Saved to their account. See [Settings](#settings).
+- **Personal settings** (⚙️ in the header): each user chooses their language, light or dark theme, which table columns to show, compact or comfortable rows, and which summaries start open. Saved to their account. See [Settings](#settings).
+- **Admin panel** (Admin and Manager): download a CSV backup of any date range, or permanently delete all data in a range. See [Admin panel](#admin-panel-admin-and-manager).
 - **Manual entry**: Cash In / Cash Out forms, plus edit, delete, and "delete all for this day". Deleting a row happens as soon as you confirm it ("تأكيد"); there is no undo.
 - **Bulk actions (multi-select)**: tick the checkbox on any rows, or use the header checkbox to select every visible row. A partly-selected header shows a dash.
   - A blue bar appears above the table with the selection count and total amount, plus:
@@ -184,6 +185,8 @@ Everyone signs in with their own email and password. There are three roles:
 | Replace an already-imported statement (deletes the old entries) | ✓ | ✓ | — |
 | Set or change opening balances | ✓ | ✓ | — |
 | Manage users and roles (المستخدمون page) | ✓ | — | — |
+| Admin panel: CSV backup by date range | ✓ | ✓ | — |
+| Admin panel: delete all data in a date range | ✓ | ✓ | — |
 
 - **Everyone sees everything.** The office shares one set of transactions; roles only limit what people may change.
 - **The server enforces every rule.** Buttons a user can't use are hidden, but the API also refuses the action (HTTP 403), so the rules can't be bypassed.
@@ -227,6 +230,27 @@ Every user has a **Settings** page: click the ⚙️ gear in the header (next to
 - **Restore default display settings** resets the theme, columns, row spacing and summaries in one step. Your language is left as it is.
 
 Settings are personal: they never change what other users see.
+
+### Admin panel (Admin and Manager)
+
+Open **لوحة الإدارة** (Admin panel) in the header. Users don't see the link, and opening `/admin` directly shows a "no permission" page.
+
+1. **Choose a date range:** a start and end date (both included), or a quick range:
+   - This month
+   - Last month
+   - This year
+   - All data (from the first to the last day that has anything)
+
+   Below the dates, a preview shows what the range holds: the number of transactions and days, opening balances, and the total in, out and commissions. It updates as you change the dates. A start date after the end date is refused.
+2. **Backup:** two buttons download the range as CSV files.
+   - **Transactions:** `transactions_<from>_<to>.csv`, with every column: type, amount, commission, names, phone, customer number, reference, service, note, currency, status, who entered it and when.
+   - **Opening balances:** `opening-balances_<from>_<to>.csv`.
+   - **Opening in Excel:** the files open in Excel with Arabic names intact. Text that Excel would treat as a formula (starting with `=` or `@`, for example) is saved with a leading `'`, so opening a file can't run anything. Phone numbers such as `+96171…` and amounts are saved exactly.
+3. **Delete data** (red section): permanently deletes **every transaction and every opening balance** in the range, for everyone in the office.
+   - **Confirming:** a confirmation window shows the range and the counts. It offers "Download a backup first", and you must type the exact number of transactions (e.g. `128`) before "Delete permanently" is enabled.
+   - **If the data changed:** if someone added or deleted transactions in that range after you opened the confirmation, nothing is deleted. You're asked to check the new counts first.
+   - **Afterwards:** a message confirms how many transactions and opening balances were deleted. The server also logs who deleted what.
+   - **It can't be undone.** Keep the CSV backup if you might need the data again.
 
 ### Managing users (Admin)
 
@@ -327,6 +351,8 @@ tests/
 │   │                         # own-vs-others edits, live role changes
 │   ├── preferences.test.js   # per-user settings: defaults, partial saves, validation (400), per-account,
 │   │                         # tolerant reading of stored JSON, database upgrade
+│   ├── admin.test.js         # admin panel API: permissions, preview, CSV (quoting, formula guard, BOM),
+│   │                         # delete by range (409 when counts changed), permission upgrade
 │   ├── users.test.js         # Admin user management, deactivation/reset revoke sessions, last-Admin rules
 │   ├── seed.test.js          # default roles, first Admin, generated password, idempotency, data migration
 │   ├── startup.test.js       # auto-seed on server start when no users exist (runs the real server twice)
@@ -344,7 +370,9 @@ tests/
     │                                 # multi-select, select-all, bulk edit/delete flows,
     │                                 # type icons, sorting by every column
     ├── transactionSort.test.js       # sort cycle, stability, empty values last, natural/Arabic order
+    ├── AdminPage.test.jsx            # admin panel: ranges, preview, downloads, typed-count delete, 409, header link
     ├── theme.test.jsx                # dark mode: saved/system theme, pre-paint script, stylesheet mappings, chart
+    ├── download.test.js              # saving a CSV download
     ├── SettingsPage.test.jsx         # settings page, saving (in order, errors), language on sign-in,
     │                                 # header link, table columns/density and summaries following the settings
     ├── BulkEditModal.test.jsx        # opt-in fields, payload, commission rate, validation, errors
@@ -371,12 +399,14 @@ server/index.js               Express API routes (with permission checks), PDF +
 server/auth.js                Login/logout, JWT session cookie, authenticate + requirePermission middleware, user admin API
 server/permissions.js         Permission names and the three default roles (shared with the frontend)
 server/db.js                  SQLite connection and schema (transactions, daily_balances, roles, users, sessions)
+server/admin.js               Admin panel API: range preview, CSV export, delete by date range
 server/preferences.js         Per-user settings: column list, defaults, validation (shared with the frontend)
 server/seed.js                `npm run seed`: default roles + first Admin + legacy data migration
 src/api/base44Client.js       API client for the local Express API (name kept from the project's Base44 origins)
 src/pages/Dashboard.jsx       Main screen: totals, balances, day filter, search
 src/pages/UsersPage.jsx       Admin: users and roles
-src/pages/SettingsPage.jsx    Every user: language, visible table columns, row spacing, summaries
+src/pages/SettingsPage.jsx    Every user: language, theme, visible table columns, row spacing, summaries
+src/pages/AdminPage.jsx       Admin + Manager: CSV backup and delete by date range
 src/lib/PreferencesContext.jsx  The signed-in user's settings: applied at once, saved in order to the account
 src/components/dashboard/     Stats cards, wallet summary, transactions table, monthly chart
 src/components/transactions/  Import, cash in/out, edit, sender/receiver/commission reports
@@ -403,7 +433,11 @@ All routes are under `/local-api`.
 | POST | `/auth/login` | — | `{ email, password }` → sets the session cookie, returns the user with role, permissions, `last_login` (this sign-in) and `previous_login` (the one before) |
 | POST | `/auth/logout` | — | Deletes the session and clears the cookie |
 | GET | `/auth/me` | session | The signed-in user, including their `preferences` |
-| PUT | `/auth/preferences` | session (own account only) | Partial change, e.g. `{ density: "compact" }` or `{ hiddenColumns: ["note"] }`, merged over what's stored. Keys: `language` (`ar`/`en`/`null`), `hiddenColumns` (column keys; at least one must stay visible), `density` (`comfortable`/`compact`), `summaries` (`{ month, year }` booleans). Unknown keys or values → 400. Returns the user |
+| PUT | `/auth/preferences` | session (own account only) | Partial change, e.g. `{ density: "compact" }` or `{ hiddenColumns: ["note"] }`, merged over what's stored. Keys: `language` (`ar`/`en`/`null`), `hiddenColumns` (column keys; at least one must stay visible), `density` (`comfortable`/`compact`), `summaries` (`{ month, year }` booleans), `theme` (`light`/`dark`/`system`). Unknown keys or values → 400. Returns the user |
+| GET | `/admin/range` | `data:export` | `{ first_date, last_date }` of all data |
+| GET | `/admin/summary?from=&to=` | `data:export` | Counts and totals in the range (dates `YYYY-MM-DD`, both included) |
+| GET | `/admin/export?kind=&from=&to=` | `data:export` | CSV download; `kind` = `transactions` or `balances` |
+| POST | `/admin/purge` | `data:purge` | `{ from, to, expected_count }` deletes the range's transactions and opening balances in one database transaction. 409 (nothing deleted) if the range no longer has `expected_count` transactions |
 | GET | `/users` · `/roles` | `users:manage` | List users / roles |
 | POST | `/users` | `users:manage` | `{ email, full_name, password, role }` → create a user |
 | PUT | `/users/:id` | `users:manage` | `{ full_name?, role?, is_active?, password? }`. Deactivation and password reset end the user's sessions |

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { User, LogOut, Users, LayoutDashboard, Settings } from "lucide-react";
+import { User, LogOut, Users, LayoutDashboard, Settings, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 import { APP_NAME } from "@/lib/branding";
 import { useI18n } from "@/lib/i18n";
@@ -37,6 +37,7 @@ export default function Header() {
   const onDashboard = location.pathname === "/";
   const onUsersPage = location.pathname.startsWith("/users");
   const onSettingsPage = location.pathname.startsWith("/settings");
+  const onAdminPage = location.pathname.startsWith("/admin");
   const navLink = "flex items-center gap-2 whitespace-nowrap bg-white/10 hover:bg-white/20 rounded-2xl px-4 py-2 transition text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400";
 
   useEffect(() => {
@@ -130,7 +131,8 @@ export default function Header() {
             <User className="w-5 h-5" />
           </div>
         </div>
-        {/* Navigation: back to the dashboard from any other page, Users (Admin only), Settings (everyone). */}
+        {/* Navigation: back to the dashboard from any other page, Users (Admin only), Admin panel
+            (Admin + Manager), Settings (everyone). */}
         {!onDashboard &&
         <Link to="/" className={navLink}>
             <LayoutDashboard className="w-4 h-4" />
@@ -141,6 +143,12 @@ export default function Header() {
         <Link to="/users" className={navLink}>
             <Users className="w-4 h-4" />
             <span>{t("header.users")}</span>
+          </Link>
+        }
+        {can(PERMISSIONS.DATA_EXPORT) && !onAdminPage &&
+        <Link to="/admin" className={navLink} data-testid="admin-link">
+            <ShieldCheck className="w-4 h-4" aria-hidden="true" />
+            <span>{t("header.admin")}</span>
           </Link>
         }
         {!onSettingsPage &&
