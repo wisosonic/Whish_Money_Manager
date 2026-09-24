@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { format, startOfMonth, startOfYear, subMonths, endOfMonth } from "date-fns";
-import { CalendarRange, Download, Trash2, Loader2, AlertTriangle, CheckCircle2, X } from "lucide-react";
+import { CalendarRange, Download, Trash2, Loader2, AlertTriangle } from "lucide-react";
 import Header from "@/components/layout/Header";
 import { api } from "@/api/apiClient";
 import { useAuth } from "@/lib/AuthContext";
 import { useI18n } from "@/lib/i18n";
 import { PERMISSIONS } from "@/lib/permissions";
 import { saveBlob } from "@/lib/download";
+import { notify } from "@/lib/notify";
 
 // Admin panel (Admin + Manager): pick a date range, see what it holds, download it as CSV, or
 // delete it. Deleting needs a typed confirmation of the exact number of transactions shown, and the
@@ -48,7 +49,6 @@ export default function AdminPage() {
   const [refreshKey, setRefreshKey] = useState(0);
 
   const [downloading, setDownloading] = useState(null); // "transactions" | "balances" | null
-  const [notice, setNotice] = useState(null); // { tone: "ok" | "error", text }
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [typed, setTyped] = useState("");
@@ -76,7 +76,6 @@ export default function AdminPage() {
   const setRange = (start, end) => {
     setFrom(start);
     setTo(end);
-    setNotice(null);
   };
 
   const quickRanges = [
@@ -94,13 +93,12 @@ export default function AdminPage() {
 
   const download = async (kind) => {
     setDownloading(kind);
-    setNotice(null);
     try {
       const { blob, filename } = await api.admin.exportCsv(kind, from, to);
       saveBlob(blob, filename);
-      setNotice({ tone: "ok", text: t("admin.downloaded", { file: filename }) });
+      notify.success(t("admin.downloaded", { file: filename }));
     } catch (err) {
-      setNotice({ tone: "error", text: errorText(err?.message || "") || t("admin.downloadFailed") });
+      notify.error(errorText(err?.message || "") || t("admin.downloadFailed"));
     } finally {
       setDownloading(null);
     }
@@ -122,13 +120,16 @@ export default function AdminPage() {
     try {
       const result = await api.admin.purge(from, to, txCount);
       setConfirmOpen(false);
-      setNotice({
-        tone: "ok",
-        text: t("admin.deleted", { transactions: result.deleted_transactions, balances: result.deleted_opening_balances, from, to }),
-      });
+      // A lasting record of what was deleted: kept on screen longer than a usual success.
+      notify.success(
+        t("admin.deleted", { transactions: result.deleted_transactions, balances: result.deleted_opening_balances, from, to }),
+        { duration: 10000 }
+      );
     } catch (err) {
       // 409: the data changed since the preview — show the fresh counts before anything is deleted.
-      setDeleteError(errorText(err?.message || "") || t("admin.deleteFailed"));
+      const message = errorText(err?.message || "") || t("admin.deleteFailed");
+      setDeleteError(message);
+      if (err?.status === 409) notify.warning(message); else notify.error(message);
     } finally {
       setDeleting(false);
       setRefreshKey((k) => k + 1);
@@ -143,19 +144,6 @@ export default function AdminPage() {
           <h1 className="text-2xl font-bold text-gray-800">{t("admin.title")}</h1>
           <p className="text-sm text-gray-500">{t("admin.subtitle")}</p>
         </div>
-
-        {notice &&
-          <div
-            role="status"
-            data-testid="admin-notice"
-            className={`flex items-start gap-2 rounded-lg border px-4 py-3 text-sm ${notice.tone === "ok" ? "bg-green-50 border-green-200 text-green-800" : "bg-red-50 border-red-200 text-red-700"}`}>
-            {notice.tone === "ok" ? <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" aria-hidden="true" /> : <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" aria-hidden="true" />}
-            <span className="flex-1">{notice.text}</span>
-            <button type="button" onClick={() => setNotice(null)} aria-label={t("common.close")} className="text-current opacity-70 hover:opacity-100">
-              <X className="w-4 h-4" aria-hidden="true" />
-            </button>
-          </div>
-        }
 
         <Card id="admin-range" icon={CalendarRange} title={t("admin.range.title")} description={t("admin.range.description")}>
           <div className="flex flex-wrap items-end gap-3">

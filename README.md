@@ -66,6 +66,15 @@ It runs entirely on your machine: a React frontend and a small Node.js/Express A
   - The sort resets when the page reloads.
 - **Personal settings** (⚙️ in the header): each user chooses their language, light or dark theme, which table columns to show, compact or comfortable rows, and which summaries start open. Saved to their account. See [Settings](#settings).
 - **Admin panel** (Admin and Manager): download a CSV backup of any date range, or permanently delete all data in a range. See [Admin panel](#admin-panel-admin-and-manager).
+- **Notifications**: a short message pops up in the bottom corner (bottom-left in Arabic, bottom-right in English; full width on phones) after every action, so you always know whether it worked.
+  - **Kinds:** green for success, blue for information, amber for warnings and red for errors. Each has its own icon, and the text says what happened.
+  - **Timing:** errors and warnings stay longer (8 and 7 seconds) than confirmations (4 seconds). Every notification has a close button and pauses while you hover over it. Screen readers announce them.
+  - **Imports:** "127 transactions imported" (and how many were replaced when overwriting); a warning when the statement doesn't reconcile or has no rows; an error when a file can't be read or the save fails. The screen stays open so you can try again.
+  - **Transactions:** Cash In / Cash Out saved; transaction updated or deleted; bulk edit or delete ("5 transactions deleted"); "delete all for this day"; and the opening balance saved. Any failure shows the server's reason in your language.
+  - **Settings:** "Settings saved". Several quick changes share one notification instead of piling up. Switching language from the header saves quietly, because the page itself changes.
+  - **Admin panel and Users page:** backup downloaded, data deleted (kept on screen longer), user added, role changed, user deactivated or reactivated, password reset.
+    - A delete refused because the data changed is a warning, not an error.
+    - Errors inside a form (e.g. a duplicate email) also stay next to the form.
 - **Manual entry**: Cash In / Cash Out forms, plus edit, delete, and "delete all for this day". Deleting a row happens as soon as you confirm it ("تأكيد"); there is no undo.
 - **Bulk actions (multi-select)**: tick the checkbox on any rows, or use the header checkbox to select every visible row. A partly-selected header shows a dash.
   - A blue bar appears above the table with the selection count and total amount, plus:
@@ -383,6 +392,7 @@ tests/
     ├── BulkEditModal.test.jsx        # opt-in fields, payload, commission rate, validation, errors
     ├── ReceiverReportModal.test.jsx  # receiver matching, totals, date filter
     ├── branding.test.jsx             # header (logo, name, role, last login, sticky), login page, tab title/icon, manifest
+    ├── notifications.test.jsx        # toasts: position/direction/theme, kinds, and each action's feedback
     ├── codebase.test.js              # the removed modals stay deleted; no leftover base44 names
     ├── i18n.test.jsx                 # language toggle: dictionaries match, no untranslated text, cookie,
     │                                 # page direction, main screens in English
@@ -408,7 +418,9 @@ server/db.js                  SQLite connection and schema (transactions, daily_
 server/admin.js               Admin panel API: range preview, CSV export, delete by date range
 server/preferences.js         Per-user settings: column list, defaults, validation (shared with the frontend)
 server/seed.js                `npm run seed`: default roles + first Admin + legacy data migration
-src/api/base44Client.js       API client for the local Express API (name kept from the project's Base44 origins)
+src/api/apiClient.js          API client for the local Express API
+src/lib/notify.js             Toast notifications (success / info / warning / error), used by every screen
+src/components/layout/AppToaster.jsx  Where notifications appear (direction- and theme-aware)
 src/pages/Dashboard.jsx       Main screen: totals, balances, day filter, search
 src/pages/UsersPage.jsx       Admin: users and roles
 src/pages/SettingsPage.jsx    Every user: language, theme, visible table columns, row spacing, summaries

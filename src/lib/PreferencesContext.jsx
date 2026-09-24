@@ -15,6 +15,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { api } from "@/api/apiClient";
 import { useAuth } from "@/lib/AuthContext";
 import { useI18n } from "@/lib/i18n";
+import { notify } from "@/lib/notify";
 import { DEFAULT_PREFERENCES, resolvePreferences } from "@/lib/preferences";
 
 export const THEME_COOKIE = "wmm_theme";
@@ -36,7 +37,7 @@ const prefersDarkQuery = () =>
 
 export function PreferencesProvider({ children }) {
   const { user, isLoadingAuth } = useAuth();
-  const { setLang } = useI18n();
+  const { setLang, t, errorText } = useI18n();
   const [preferences, setPreferences] = useState(() => resolvePreferences(user?.preferences));
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState("");
@@ -61,7 +62,9 @@ export function PreferencesProvider({ children }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
-  const savePreferences = useCallback((changes) => {
+  // { silent: true } skips the "Saved" toast (the header language switch is its own feedback);
+  // a failure is always reported. Toasts share one id, so quick changes update a single toast.
+  const savePreferences = useCallback((changes, { silent = false } = {}) => {
     if (!userId) return Promise.resolve();
     const saveId = ++latestSave.current;
     setPreferences((prev) => resolvePreferences({
@@ -78,16 +81,20 @@ export function PreferencesProvider({ children }) {
         if (saveId !== latestSave.current) return;
         setPreferences(confirmed.current);
         setStatus("saved");
+        if (!silent) notify.success(t("toast.settings.saved"), { id: "settings-save" });
       } catch (err) {
         // A newer save is still coming; its answer (the server's full state) will settle the screen.
         if (saveId !== latestSave.current) return;
         setPreferences(confirmed.current);
         setStatus("error");
         setError(err?.message || "");
+        notify.error(err?.message ? errorText(err.message) : t("settings.saveFailed"), { id: "settings-save" });
       }
     };
     queue.current = queue.current.then(send);
     return queue.current;
+    // t / errorText only change with the language; the latest ones are used when the save settles.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
   // ═══ Theme ═══
@@ -116,7 +123,7 @@ export function PreferencesProvider({ children }) {
   // Switching language anywhere (header switch, Settings page) also remembers it for the account.
   const setLanguage = useCallback((lang) => {
     setLang(lang);
-    if (userId) savePreferences({ language: lang });
+    if (userId) savePreferences({ language: lang }, { silent: true });
   }, [setLang, savePreferences, userId]);
 
   const value = useMemo(

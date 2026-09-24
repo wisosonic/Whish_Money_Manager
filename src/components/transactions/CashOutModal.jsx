@@ -2,9 +2,10 @@ import { useState } from "react";
 import { api } from "@/api/apiClient";
 import { X } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
+import { notify } from "@/lib/notify";
 
 export default function CashOutModal({ onClose, onSaved }) {
-  const { t, dir } = useI18n();
+  const { t, dir, errorText } = useI18n();
   const [form, setForm] = useState({
     sender_name: "",
     receiver_name: "",
@@ -19,14 +20,20 @@ export default function CashOutModal({ onClose, onSaved }) {
 
   const handleSave = async () => {
     setSaving(true);
-    await api.entities.Transaction.create({
-      ...form,
-      type: "cash_out",
-      amount: Number(form.amount),
-      commission: Number(form.commission) || 0,
-    });
-    setSaving(false);
-    onSaved();
+    try {
+      await api.entities.Transaction.create({
+        ...form,
+        type: "cash_out",
+        amount: Number(form.amount),
+        commission: Number(form.commission) || 0,
+      });
+      notify.success(t("toast.tx.cashOutSaved"));
+      onSaved();
+    } catch (err) {
+      notify.error(err?.message ? errorText(err.message) : t("toast.tx.saveFailed"));
+    } finally {
+      setSaving(false);
+    }
   };
 
   const field = (label, key, type = "text", placeholder = "") => (

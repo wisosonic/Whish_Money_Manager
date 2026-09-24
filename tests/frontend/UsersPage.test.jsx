@@ -3,6 +3,8 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import UsersPage from "@/pages/UsersPage";
+import AppToaster from "@/components/layout/AppToaster";
+import { clearToasts, findToast } from "./toastHelpers";
 import { api } from "@/api/apiClient";
 import { DEFAULT_ROLES } from "@/lib/permissions";
 import { setAuthRole } from "./authMock";
@@ -27,10 +29,13 @@ beforeEach(() => {
   api.users.update.mockResolvedValue({});
   api.users.create.mockResolvedValue({ id: 9, email: "new@test.local" });
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  clearToasts();
+});
 
 const renderPage = async () => {
-  render(<MemoryRouter><UsersPage /></MemoryRouter>);
+  render(<MemoryRouter><UsersPage /><AppToaster /></MemoryRouter>);
   await screen.findByTestId("user-row-cashier@test.local");
 };
 const row = (email) => screen.getByTestId(`user-row-${email}`);
@@ -49,7 +54,7 @@ describe("UsersPage", () => {
     await renderPage();
     fireEvent.change(within(row("cashier@test.local")).getByLabelText("دور cashier@test.local"), { target: { value: "manager" } });
     await waitFor(() => expect(api.users.update).toHaveBeenCalledWith(5, { role: "manager" }));
-    expect(await screen.findByText("تم تغيير دور cashier@test.local")).toBeInTheDocument();
+    expect(await findToast("تم تغيير دور cashier@test.local")).toHaveAttribute("data-type", "success");
   });
 
   it("deactivates and reactivates users, but offers no deactivate button on your own row", async () => {
@@ -65,7 +70,8 @@ describe("UsersPage", () => {
     api.users.update.mockRejectedValue(new Error("At least one active Admin is required"));
     await renderPage();
     fireEvent.change(within(row("admin@test.local")).getByLabelText("دور admin@test.local"), { target: { value: "user" } });
-    expect(await screen.findByRole("alert")).toHaveTextContent("يجب أن يبقى مسؤول نشط واحد على الأقل"); // translated API message
+    // Translated API message, as an error notification.
+    expect(await findToast("يجب أن يبقى مسؤول نشط واحد على الأقل")).toHaveAttribute("data-type", "error");
   });
 
   it("adds a user", async () => {
@@ -79,7 +85,7 @@ describe("UsersPage", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "إضافة" }));
 
     await waitFor(() => expect(api.users.create).toHaveBeenCalledWith({ full_name: "New Person", email: "new@test.local", role: "manager", password: "long-password" }));
-    expect(await screen.findByText("تمت إضافة new@test.local")).toBeInTheDocument();
+    expect(await findToast("تمت إضافة new@test.local")).toHaveAttribute("data-type", "success");
     expect(api.users.list).toHaveBeenCalledTimes(2); // reloaded
   });
 
@@ -97,6 +103,8 @@ describe("UsersPage", () => {
     fireEvent.change(within(dialog).getByLabelText(/كلمة المرور/), { target: { value: "long-password" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "إضافة" }));
     expect(await within(dialog).findByText("يوجد مستخدم بهذا البريد الإلكتروني")).toBeInTheDocument();
+    // Shown next to the form, and as an error notification.
+    expect(await findToast("يوجد مستخدم بهذا البريد الإلكتروني")).toHaveAttribute("data-type", "error");
   });
 
   it("resets a password and says the user was signed out everywhere", async () => {
@@ -106,6 +114,6 @@ describe("UsersPage", () => {
     fireEvent.change(within(dialog).getByLabelText("كلمة المرور الجديدة"), { target: { value: "new-long-password" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "حفظ" }));
     await waitFor(() => expect(api.users.update).toHaveBeenCalledWith(5, { password: "new-long-password" }));
-    expect(await screen.findByText(/وتسجيل خروجه من كل الأجهزة/)).toBeInTheDocument();
+    expect(await findToast(/وتسجيل خروجه من كل الأجهزة/)).toHaveAttribute("data-type", "success");
   });
 });

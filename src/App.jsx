@@ -1,4 +1,3 @@
-import { Toaster } from "@/components/ui/toaster"
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
 import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
@@ -14,6 +13,7 @@ import LoginPage from "@/components/auth/LoginPage";
 import { PERMISSIONS } from "@/lib/permissions";
 import { LanguageProvider, useI18n } from "@/lib/i18n";
 import { PreferencesProvider } from "@/lib/PreferencesContext";
+import AppToaster from "@/components/layout/AppToaster";
 
 // Route guard for pages that need a permission (the API enforces the same rule).
 export const RequirePermission = ({ permission, children }) => {
@@ -83,7 +83,7 @@ function App() {
             <Router>
               <AuthenticatedApp />
             </Router>
-            <Toaster />
+            <AppToaster />
           </QueryClientProvider>
         </PreferencesProvider>
       </AuthProvider>

@@ -5,6 +5,8 @@ import { MemoryRouter } from "react-router-dom";
 import { format, startOfMonth, subMonths, endOfMonth } from "date-fns";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AdminPage from "@/pages/AdminPage";
+import AppToaster from "@/components/layout/AppToaster";
+import { clearToasts, findToast, toastTexts } from "./toastHelpers";
 import Header from "@/components/layout/Header";
 import { RequirePermission } from "@/App";
 import { LanguageProvider } from "@/lib/i18n";
@@ -37,11 +39,14 @@ beforeEach(() => {
   api.admin.exportCsv.mockImplementation(async (kind, from, to) => ({ blob: new Blob(["id\r\n"]), filename: `${kind}_${from}_${to}.csv` }));
   api.admin.purge.mockImplementation(async (from, to) => ({ from, to, deleted_transactions: 128, deleted_opening_balances: 30 }));
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  clearToasts();
+});
 
 const renderPage = (path = "/admin") => render(
   <LanguageProvider>
-    <MemoryRouter initialEntries={[path]}><AdminPage /></MemoryRouter>
+    <MemoryRouter initialEntries={[path]}><AdminPage /><AppToaster /></MemoryRouter>
   </LanguageProvider>
 );
 const summaryBox = () => screen.getByTestId("range-summary");
@@ -124,7 +129,7 @@ describe("Admin panel — backup", () => {
     await waitFor(() => expect(saveBlob).toHaveBeenCalledTimes(1));
     expect(api.admin.exportCsv).toHaveBeenCalledWith("transactions", monthStart, ymd(today));
     expect(saveBlob.mock.calls[0][1]).toBe(`transactions_${monthStart}_${ymd(today)}.csv`);
-    expect(screen.getByTestId("admin-notice")).toHaveTextContent(`تم تنزيل transactions_${monthStart}_${ymd(today)}.csv.`);
+    expect(await findToast(`تم تنزيل transactions_${monthStart}_${ymd(today)}.csv.`)).toHaveAttribute("data-type", "success");
     expect(screen.getByTestId("download-transactions")).toHaveTextContent("تنزيل 128 عملية (CSV)");
   });
 
@@ -149,7 +154,7 @@ describe("Admin panel — backup", () => {
     renderPage();
     await loaded();
     fireEvent.click(screen.getByTestId("download-transactions"));
-    await waitFor(() => expect(screen.getByTestId("admin-notice")).toHaveTextContent("فشل التنزيل. حاول مرة أخرى."));
+    expect(await findToast("فشل التنزيل. حاول مرة أخرى.")).toHaveAttribute("data-type", "error");
     expect(saveBlob).not.toHaveBeenCalled();
   });
 });
@@ -183,7 +188,7 @@ describe("Admin panel — delete", () => {
     fireEvent.click(within(dialog).getByTestId("purge-confirm"));
     await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
     expect(api.admin.purge).toHaveBeenCalledWith(monthStart, ymd(today), 128);
-    expect(screen.getByTestId("admin-notice")).toHaveTextContent(`تم حذف 128 عملية و30 رصيد بداية من ${monthStart} إلى ${ymd(today)}.`);
+    expect(await findToast(`تم حذف 128 عملية و30 رصيد بداية من ${monthStart} إلى ${ymd(today)}.`)).toHaveAttribute("data-type", "success");
     await waitFor(() => expect(api.admin.summary.mock.calls.length).toBe(calls + 1));
   });
 
@@ -194,7 +199,9 @@ describe("Admin panel — delete", () => {
     fireEvent.click(within(dialog).getByTestId("purge-confirm"));
     await waitFor(() => expect(within(dialog).getByRole("alert")).toHaveTextContent("تغيّرت البيانات منذ المعاينة. راجع الأعداد وحاول مرة أخرى."));
     expect(screen.getByRole("alertdialog")).toBeInTheDocument();
-    expect(screen.queryByTestId("admin-notice")).not.toBeInTheDocument();
+    // Also a warning notification (not an error: nothing went wrong, the data moved on).
+    expect(await findToast("تغيّرت البيانات منذ المعاينة. راجع الأعداد وحاول مرة أخرى.")).toHaveAttribute("data-type", "warning");
+    expect(toastTexts().some((text) => text.includes("تم حذف"))).toBe(false);
   });
 
   it("offers a backup from inside the dialog, and Cancel closes it without deleting", async () => {

@@ -6,6 +6,7 @@ import { detectFileType } from "@/lib/fileType";
 import { useAuth } from "@/lib/AuthContext";
 import { PERMISSIONS } from "@/lib/permissions";
 import { useI18n } from "@/lib/i18n";
+import { notify } from "@/lib/notify";
 import { X, Upload, FileText, CheckCircle, AlertCircle, Loader2, Calendar } from "lucide-react";
 
 export default function ImportPDFModal({ onClose, onSaved }) {
@@ -49,10 +50,16 @@ export default function ImportPDFModal({ onClose, onSaved }) {
       const rows = result?.transactions || [];
       if (rows.length === 0) {
         setError(t("import.noRows"));
+        notify.warning(t("import.noRows"));
       }
       const expectedCount = result?.total_transactions_count;
       if (expectedCount && rows.length < expectedCount) {
         setError(t("import.fewerRows", { expected: expectedCount, found: rows.length }));
+        notify.warning(t("import.fewerRows", { expected: expectedCount, found: rows.length }));
+      }
+      // The banner in the preview gives the details; the toast makes sure it isn't missed.
+      if (rows.length > 0 && result?.validation && !result.validation.is_valid) {
+        notify.warning(t("toast.import.notReconciled"));
       }
 
       const stmtDate = result?.statement_date || "";
@@ -100,7 +107,9 @@ export default function ImportPDFModal({ onClose, onSaved }) {
     } catch (err) {
       clearInterval(timerRef.current);
       setLoading(false);
-      setError(err?.message ? errorText(err.message) : t("import.parseFailed"));
+      const message = err?.message ? errorText(err.message) : t("import.parseFailed");
+      setError(message);
+      notify.error(message);
       setStep("upload");
       return;
     }
@@ -145,12 +154,16 @@ export default function ImportPDFModal({ onClose, onSaved }) {
 
       await api.entities.Transaction.importRecords(records, { overwrite });
 
+      notify.success(overwrite && duplicates.length > 0
+        ? t("toast.import.savedReplaced", { count: records.length, replaced: duplicates.length })
+        : t("toast.import.saved", { count: records.length }));
       setStep("done");
       setTimeout(() => { 
         onSaved(openingBalance, finalDate); 
       }, 1500);
     } catch (error) {
-      console.error("خطأ في حفظ العمليات:", error);
+      // The import is one database transaction on the server: on failure nothing was saved.
+      notify.error(error?.message ? `${t("toast.import.saveFailed")} ${errorText(error.message)}` : t("toast.import.saveFailed"));
       setStep("preview");
     }
   };

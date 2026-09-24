@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Dashboard from "@/pages/Dashboard";
 import { api } from "@/api/apiClient";
 import { setAuthRole } from "./authMock";
+import AppToaster from "@/components/layout/AppToaster";
+import { clearToasts, findToast } from "./toastHelpers";
 
 vi.mock("@/lib/AuthContext", async () => (await import("./authMock")).authContextMock);
 beforeEach(() => setAuthRole("admin"));
@@ -255,6 +257,27 @@ describe("Dashboard — roles", () => {
     const second = render(<Dashboard />);
     await waitFor(() => expect(rowCount(second.container)).toBe(2));
     expect(screen.queryByLabelText("تعديل رصيد البداية")).not.toBeInTheDocument();
+  });
+
+  it("saving the opening balance is confirmed; a failure is reported", async () => {
+    const { container } = render(<><Dashboard /><AppToaster /></>);
+    await waitFor(() => expect(rowCount(container)).toBe(2));
+    const setBalance = (value) => {
+      fireEvent.click(screen.getByLabelText("تعديل رصيد البداية"));
+      const input = container.querySelector('input[type="number"]');
+      fireEvent.change(input, { target: { value } });
+      fireEvent.keyDown(input, { key: "Enter" });
+    };
+
+    api.entities.DailyBalance.create.mockRejectedValueOnce(new Error(""));
+    setBalance("250");
+    expect(await findToast("تعذّر حفظ رصيد البداية.")).toHaveAttribute("data-type", "error");
+
+    api.entities.DailyBalance.create.mockResolvedValueOnce({ id: 1 });
+    setBalance("300");
+    expect(await findToast("تم حفظ رصيد البداية لتاريخ 2026-09-23.")).toHaveAttribute("data-type", "success");
+    expect(api.entities.DailyBalance.create).toHaveBeenLastCalledWith({ date: "2026-09-23", opening_balance: 300 });
+    clearToasts();
   });
 });
 

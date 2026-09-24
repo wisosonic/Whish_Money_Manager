@@ -67,6 +67,18 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - The header, login page and language switch are dark in both themes and are exempt. The switch knob is `theme-fixed`, so it stays white.
   - Text colours were checked at ≥ 4.5:1 on the dark card.
   - **Chart:** `CHART_SERIES[*].darkColor` = `#3b82f6` / `#16a34a` / `#ec4899`, validated with the dataviz script against `#1e293b` (all checks pass). Every red light enough for the dark background failed colour-blind separation from the green, hence pink for cash out (still dashed). Axis and grid inks are in `CHART_INK`.
+- **Notifications** (user's request): all feedback toasts go through `notify.success/info/warning/error` in `src/lib/notify.js` (sonner), shown by `AppToaster`.
+  - **Toaster:** mounted once in `App.jsx`, replacing the unused Radix `<Toaster />`. It sets the direction from `useI18n` (bottom-left in RTL, bottom-right in LTR, away from the sticky header), the theme from `usePreferences().isDark`, `richColors`, a close button, and translated region and close labels.
+  - **Durations:** success and info 4s, warning 7s, error 8s (`TOAST_DURATION`); the admin delete confirmation lasts 10s.
+  - **Messages** are translated by the caller: `toast.*` keys, and server errors via `errorText`.
+  - **Rules:**
+    - Every user action reports success or failure.
+    - Success banners were replaced by toasts: the Users page notice and the Admin panel notice.
+    - Errors inside an open form or dialog keep their inline message as well.
+    - Passive loads (the admin preview, the users list) keep inline errors only.
+  - **Settings:** saves use one toast id (`settings-save`), so quick changes update a single toast. `savePreferences(changes, { silent: true })` skips the success toast; the header language switch uses it, while failures always show.
+  - **Silent failures fixed at the same time:** the import save (only `console.error`), the Edit modal (only `console.error`), and Cash In/Out, which had no try/catch and stayed stuck on "saving".
+  - **Other toast libraries:** `react-hot-toast` and `@radix-ui/react-toast` are still installed but unused. Don't add a second notification system.
 - `src/lib/permissions.js` **re-exports `server/permissions.js`**, so the UI and the API share one definition. Never duplicate the rules.
 - `src/components/transactions/ImportPDFModal.jsx`: the single import screen for both engines. Steps: upload → (duplicates) → preview → saving → done.
 - `src/pages/Dashboard.jsx`: all totals and balances are calculated in the browser. Search logic is in `src/lib/transactionSearch.js`.
@@ -226,7 +238,8 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
 
 - Backend tests use an in-memory database (`HAWALAFLOW_DB_PATH=":memory:"`). **Never run tests or experiments against `server/hawalaflow.db`**: it is the user's real data. For manual checks, copy it to the scratchpad or open it read-only.
   - **Importing `server/index.js` or `server/db.js` opens that file and runs the startup upgrades on it** unless `HAWALAFLOW_DB_PATH` is set. On 2026-09-24 a plain `node -e "import('./server/index.js')"` load check did exactly that. It created `app_meta` and granted the two admin-panel permissions early; no data changed. For ad-hoc checks, prefix with `HAWALAFLOW_DB_PATH=":memory:"`.
-- Frontend tests need `/** @vitest-environment jsdom */` and mock `@/api/base44Client`.
+- Frontend tests need `/** @vitest-environment jsdom */` and mock `@/api/apiClient` (export `api`).
+- **Toasts in tests:** render `<AppToaster />` next to the component (the real sonner, no mock). Then use `findToast(text)` from `tests/frontend/toastHelpers.jsx` and assert `data-type` (success / info / warning / error). Call `clearToasts()` in `afterEach`, because sonner's store is module-level. Text shown both inline and in a toast is found in the toast.
 - **Auth in backend tests:** `tests/backend/helpers.js` provides `startServer()`, `createTestUsers()` (admin, manager, user, user2, password `PASSWORD`), and `makeClient()`, which keeps one cookie per account. Use `client.request(method, route, { as: "user", body })`.
   - Each test file gets its own in-memory database.
   - Call `resetLoginRateLimit()` in tests that make many failed logins.
@@ -285,6 +298,12 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - `Dashboard` computes `yearly*` figures.
   - Added `StatsCards.test.jsx` and Dashboard summary tests. Total now 104.
 ### 2026-09-24
+- **Cleanup + notifications**:
+  - **Renamed the API client:** `src/api/base44Client.js` → `src/api/apiClient.js`, and `base44` → `api`, via `git mv` plus a scripted rename (24 files, 252 references). `base44.com` in the branding guard test is intentionally kept.
+  - **Deleted** `ReviewPDFModal.jsx` and `InsertTransactionModal.jsx`, and removed their i18n exemption. `codebase.test.js` guards against both coming back.
+  - **Added sonner toasts** for imports, transactions, the opening balance, settings, the admin panel and users, fixing three silent failures along the way.
+  - **Checked in Edge:** Arabic (bottom-left), English dark (bottom-right) and phone width (full width at the bottom).
+  - **Tests:** `notifications.test.jsx` (21) and `codebase.test.js` (4), a Dashboard balance test, and Users/Admin tests switched from the removed banners to toasts. Total 541.
 - **CSV "closing balance differs" warning on a correct statement**:
   - **Cause:** in `AccountStatementCSV_20200813.csv` (1,843 rows), the header totals equal the row sums, and the closing equals the last balance. But opening + credits − debits = 16,822.36 against a stated 16,822.37: 145 per-row ±0.01 rounding steps net to +0.01, and the closing check allowed less than half a cent.
   - **Fix:** a rounding-aware reconciliation (see Business rules) that proves the cent is rounding instead of tolerating it. The import screen now explains the difference, and names the first line rounding can't explain.

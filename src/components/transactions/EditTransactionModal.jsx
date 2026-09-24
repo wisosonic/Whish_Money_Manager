@@ -2,9 +2,10 @@ import { useState } from "react";
 import { api } from "@/api/apiClient";
 import { X, Calendar } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
+import { notify } from "@/lib/notify";
 
 export default function EditTransactionModal({ transaction, onClose, onSaved }) {
-  const { t, dir } = useI18n();
+  const { t, dir, errorText } = useI18n();
   const commissionRate = transaction.amount > 0
     ? ((transaction.commission / transaction.amount) * 100).toFixed(2)
     : "1";
@@ -43,9 +44,10 @@ export default function EditTransactionModal({ transaction, onClose, onSaved }) 
         transaction_date: form.transaction_date,
       });
       setSaving(false);
+      notify.success(t("toast.tx.updated"));
       onSaved();
     } catch (error) {
-      console.error('خطأ في الحفظ:', error);
+      notify.error(error?.message ? errorText(error.message) : t("toast.tx.saveFailed"));
       setSaving(false);
     }
   };

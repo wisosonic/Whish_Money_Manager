@@ -11,6 +11,7 @@ import DailyCommissionReport from "@/components/transactions/DailyCommissionRepo
 import { useAuth } from "@/lib/AuthContext";
 import { PERMISSIONS } from "@/lib/permissions";
 import { useI18n } from "@/lib/i18n";
+import { notify } from "@/lib/notify";
 import { NO_SORT, nextSort, sortTransactions } from "@/lib/transactionSort";
 import { usePreferences } from "@/lib/PreferencesContext";
 import { TABLE_COLUMNS } from "@/lib/preferences";
@@ -94,7 +95,7 @@ export default function TransactionsList({
   // Permissions (the API enforces the same rules; this only hides what the user can't do).
   const { can, canEditTransaction } = useAuth();
   // Translation function is `tr` here: `t` is used throughout this file for a transaction.
-  const { t: tr, dir, locale } = useI18n();
+  const { t: tr, dir, locale, errorText } = useI18n();
 
   // ═══ Display preferences (Settings page): visible columns and row density ═══
   const { preferences } = usePreferences();
@@ -186,10 +187,12 @@ export default function TransactionsList({
     try {
       await api.entities.Transaction.bulkDelete(selectedTransactions.map((t) => t.id));
       await cleanUpEmptyDays(selectedTransactions.map(txDateOf));
+      notify.success(tr("toast.tx.bulkDeleted", { count: selectedTransactions.length }));
       clearSelection();
       onRefresh();
     } catch (err) {
       setBulkError(err?.message || tr("list.bulkDeleteFailed"));
+      notify.error(err?.message ? errorText(err.message) : tr("list.bulkDeleteFailed"));
     } finally {
       setBulkWorking(false);
     }
@@ -197,6 +200,7 @@ export default function TransactionsList({
 
   const handleBulkEditSaved = async (changes) => {
     setShowBulkEdit(false);
+    notify.success(tr("toast.tx.bulkUpdated", { count: selectedTransactions.length }));
     if (changes.transaction_date) {
       await cleanUpEmptyDays(selectedTransactions.map(txDateOf).filter((d) => d !== changes.transaction_date));
     }
@@ -207,7 +211,13 @@ export default function TransactionsList({
   // الحذف فوري بعد التأكيد (زر التراجع أُزيل، فلا داعي لتأجيل الحذف)
   const handleDeleteOne = async (transaction) => {
     setConfirmDeleteId(null);
-    await api.entities.Transaction.delete(transaction.id);
+    try {
+      await api.entities.Transaction.delete(transaction.id);
+    } catch (err) {
+      notify.error(err?.message ? errorText(err.message) : tr("toast.tx.deleteFailed"));
+      return;
+    }
+    notify.success(tr("toast.tx.deleted"));
     const txDate = transaction.transaction_date || new Date(transaction.created_date).toISOString().split("T")[0];
     if (onDeleteDailyBalanceForDate) {
       await onDeleteDailyBalanceForDate(txDate);
@@ -226,9 +236,12 @@ export default function TransactionsList({
         const tDate = t.transaction_date || new Date(t.created_date).toISOString().split("T")[0];
         return tDate === dateToDelete;
       });
+      let failed = 0;
       for (const t of toDelete) {
-        try {await api.entities.Transaction.delete(t.id);} catch (_) {}
+        try {await api.entities.Transaction.delete(t.id);} catch {failed += 1;}
       }
+      if (failed) notify.error(tr("toast.tx.dayDeletePartial", { failed, count: toDelete.length }));
+      else notify.success(tr("toast.tx.dayDeleted", { count: toDelete.length, date: dateToDelete }));
       if (onDeleteDailyBalanceForDate) {
         await onDeleteDailyBalanceForDate(dateToDelete);
       } else if (onResetOpeningBalance) {

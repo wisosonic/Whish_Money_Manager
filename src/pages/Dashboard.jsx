@@ -10,11 +10,12 @@ import ImportPDFModal from "@/components/transactions/ImportPDFModal";
 import { matchesSearch } from "@/lib/transactionSearch";
 import { useAuth } from "@/lib/AuthContext";
 import { useI18n } from "@/lib/i18n";
+import { notify } from "@/lib/notify";
 import { PERMISSIONS } from "@/lib/permissions";
 
 export default function Dashboard() {
   const { can } = useAuth();
-  const { dir } = useI18n();
+  const { dir, t, errorText } = useI18n();
   // Everyone sees all office data; only Admin/Manager may set or clear opening balances.
   const canWriteBalances = can(PERMISSIONS.BALANCES_WRITE);
   const [transactions, setTransactions] = useState([]);
@@ -53,10 +54,15 @@ export default function Dashboard() {
   const handleSetOpeningBalance = async (val, date = null) => {
     if (!date || !canWriteBalances) return;
     const existing = dailyBalances.find((d) => d.date === date);
-    if (existing) {
-      await api.entities.DailyBalance.update(existing.id, { opening_balance: val });
-    } else {
-      await api.entities.DailyBalance.create({ date, opening_balance: val });
+    try {
+      if (existing) {
+        await api.entities.DailyBalance.update(existing.id, { opening_balance: val });
+      } else {
+        await api.entities.DailyBalance.create({ date, opening_balance: val });
+      }
+      notify.success(t("toast.balance.saved", { date }));
+    } catch (err) {
+      notify.error(err?.message ? errorText(err.message) : t("toast.balance.failed"));
     }
     await fetchDailyBalances(currentUser?.email);
   };

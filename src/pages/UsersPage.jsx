@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { UserPlus, KeyRound, Loader2, X, AlertCircle, CheckCircle } from "lucide-react";
+import { UserPlus, KeyRound, Loader2, X, AlertCircle } from "lucide-react";
 import { api } from "@/api/apiClient";
 import { useAuth } from "@/lib/AuthContext";
 import Header from "@/components/layout/Header";
 import { useI18n } from "@/lib/i18n";
+import { notify } from "@/lib/notify";
 
 const MIN_PASSWORD_LENGTH = 8;
 const inputCls = "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-200";
@@ -16,7 +17,6 @@ export default function UsersPage() {
   const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [resetFor, setResetFor] = useState(null);
 
@@ -40,13 +40,12 @@ export default function UsersPage() {
 
   const update = async (target, changes, successMessage) => {
     setError("");
-    setNotice("");
     try {
       await api.users.update(target.id, changes);
-      setNotice(successMessage);
+      notify.success(successMessage);
       await load();
     } catch (err) {
-      setError(errorText(err.message));
+      notify.error(errorText(err.message));
     }
   };
 
@@ -71,11 +70,6 @@ export default function UsersPage() {
           {error && (
             <div role="alert" className="m-4 flex items-center gap-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
               <AlertCircle className="w-4 h-4" /> {error}
-            </div>
-          )}
-          {notice && (
-            <div role="status" className="m-4 flex items-center gap-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
-              <CheckCircle className="w-4 h-4" /> {notice}
             </div>
           )}
 
@@ -160,7 +154,7 @@ export default function UsersPage() {
           onClose={() => setShowCreate(false)}
           onCreated={async (created) => {
             setShowCreate(false);
-            setNotice(t("users.added", { email: created.email }));
+            notify.success(t("users.added", { email: created.email }));
             await load();
           }}
         />
@@ -172,7 +166,7 @@ export default function UsersPage() {
           onSaved={async () => {
             const email = resetFor.email;
             setResetFor(null);
-            setNotice(t("users.passwordReset", { email }));
+            notify.success(t("users.passwordReset", { email }));
             await load();
           }}
         />
@@ -215,6 +209,7 @@ function CreateUserModal({ roles, onClose, onCreated }) {
       onCreated(await api.users.create(form));
     } catch (err) {
       setError(errorText(err.message));
+      notify.error(errorText(err.message));
       setSaving(false);
     }
   };
@@ -270,6 +265,7 @@ function ResetPasswordModal({ target, onClose, onSaved }) {
       onSaved();
     } catch (err) {
       setError(errorText(err.message));
+      notify.error(errorText(err.message));
       setSaving(false);
     }
   };
