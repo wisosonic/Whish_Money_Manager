@@ -24,6 +24,25 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - The only credential is the HTTP-only session cookie; there are **no identity headers and no user in localStorage**.
   - A 401 on a non-auth call fires `SESSION_ENDED_EVENT`.
 - `src/lib/AuthContext.jsx`: session state, loaded from `/auth/me` on start. Exposes `can(permission)` and `canEditTransaction(t)`.
+- **Per-user settings** (`src/pages/SettingsPage.jsx`, route `/settings`, ⚙️ link in the header for every role):
+  - **Shared rules:** `server/preferences.js` holds the column list (`TABLE_COLUMNS`, which must equal `SORT_VALUES`' keys, and a test checks this), the defaults, the tolerant `resolvePreferences` (used when reading) and the strict `applyPreferenceChanges` (used for `PUT /auth/preferences`). `src/lib/preferences.js` re-exports it.
+  - **Storage:** `users.preferences` holds JSON (NULL means defaults), and `initializeDb()` adds the column to older databases. The API returns `preferences` on login and `/auth/me`. No permission is needed, because users can only change their own settings.
+  - **`PreferencesContext.jsx`** (inside `AuthProvider`):
+    - Changes apply optimistically.
+    - **Saves are queued, one request at a time.** That way each answer holds the server's full state, and an older answer never undoes a newer change on screen. The first version sent saves in parallel and failed this test.
+    - A failed save reverts to the last confirmed values. `status` is idle / saving / saved / error.
+    - The optimistic merge must merge `summaries` field by field, not replace it.
+  - **Language:**
+    - When the account changes, a saved `preferences.language` is applied with `setLang`.
+    - `null` (never chosen while signed in) keeps the cookie.
+    - `setLanguage` (used by the header switch and the Settings page) sets the language and saves it when signed in.
+    - Signed out (login page), nothing is sent.
+  - **Consumers:**
+    - `TransactionsList` renders only visible columns: headers loop over `TABLE_COLUMNS`, and each cell is wrapped in `show.<key>`. If the sorted column gets hidden, the sort falls back to `NO_SORT`.
+    - `compact` density adds `[&_td]:!py-1.5 [&_th]:!py-1.5` to the table.
+    - `StatsCards` takes `defaultOpen` from `preferences.summaries`.
+  - Without a provider (unit tests), `usePreferences()` returns the defaults, so existing component tests are unaffected.
+  - **Header:** the nav row is `flex-wrap` and the links are `whitespace-nowrap`. Admins have up to 5 items there, and the non-wrapping row made the page 663px wide on a ~500px phone (measured in Edge via `scrollWidth`).
 - `src/lib/permissions.js` **re-exports `server/permissions.js`**, so the UI and the API share one definition. Never duplicate the rules.
 - `src/components/transactions/ImportPDFModal.jsx`: the single import screen for both engines. Steps: upload → (duplicates) → preview → saving → done.
 - `src/pages/Dashboard.jsx`: all totals and balances are calculated in the browser. Search logic is in `src/lib/transactionSearch.js`.
@@ -43,7 +62,7 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
 - **Receiver report** ("تقرير مستلم", `ReceiverReportModal.jsx`) searches all days. It matches `receiver_name`, and matches `phone` / `customer_number` only when `receiver_name` is empty or a phone number (`matchesReceiver` in `src/lib/transactionSearch.js`). This is because `phone` / `customer_number` belong to the other party: on a cash-in from "NAME - 961…" they're the sender's. The receiver is displayed with `receiverDisplay`, following the same rule as the table's receiver column.
 - **Summaries** (`StatsCards.jsx`):
   - "ملخص الشهر" is expanded by default and "ملخص السنة" is collapsed by default. The user specified these defaults.
-  - Open/closed state is deliberately not saved across page loads, so the defaults always apply.
+  - Open/closed state is deliberately not saved across page loads. Each load starts from the user's Settings choice, whose default is the user's original one: month open, year closed.
   - Month and year come from the **selected date**, not today. The figures are calculated in `Dashboard.jsx` with the same filter as the monthly figures.
   - "صافي المحفظة" (net wallet) is a global figure, so it appears only in the monthly block and isn't repeated in the yearly one.
   - **Expand/collapse animation** (user's request): the panel content **stays mounted**, so it can animate.
@@ -223,6 +242,14 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - `Dashboard` computes `yearly*` figures.
   - Added `StatsCards.test.jsx` and Dashboard summary tests. Total now 104.
 ### 2026-09-24
+- **Settings page** (per-user preferences):
+  - **Server:** `server/preferences.js`, a `users.preferences` column with an upgrade step, and `PUT /auth/preferences`.
+  - **Frontend:** `PreferencesContext`, `/settings`, and a header gear link.
+  - **Options:** language, the 11 table columns, row density, and which summaries start open. There's a reset for the display options.
+  - **Checked in Edge** in both languages at desktop and phone widths. The phone check found the header overflowing (663px on a 496px screen), fixed with a wrapping nav row (now 481px).
+  - **Tests:**
+    - `preferences.test.js` (backend, 18) and `SettingsPage.test.jsx` (23), total 422.
+    - A mutation check confirmed the ordering tests fail without the save queue.
 - **Every table column sortable**: generalized the Type-only sort into `src/lib/transactionSort.js` plus `SortHeader` (11 columns, asc → desc → original, stable, empty values last, locale-aware).
   - "#" now comes from a map built once, instead of filtering all transactions for every row.
   - Checked in Edge in both languages. The first English check showed cells wrapping, which was fixed with tighter header padding and a no-wrap date.

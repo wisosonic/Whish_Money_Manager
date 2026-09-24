@@ -6,6 +6,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { db, findRoleByName, nowIso } from "./db.js";
 import { PERMISSIONS } from "./permissions.js";
+import { applyPreferenceChanges, resolvePreferences } from "./preferences.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -52,7 +53,7 @@ const normalizeEmail = (value) => String(value || "").trim().toLowerCase();
 const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
 const USER_WITH_ROLE_SQL = `
-  SELECT u.id, u.email, u.full_name, u.password_hash, u.is_active, u.last_login, u.previous_login, u.created_date,
+  SELECT u.id, u.email, u.full_name, u.password_hash, u.is_active, u.last_login, u.previous_login, u.preferences, u.created_date,
          r.name AS role, r.label AS role_label, r.permissions AS role_permissions
   FROM users u JOIN roles r ON r.id = u.role_id`;
 
@@ -68,6 +69,7 @@ export const publicUser = (row) =>
     is_active: Boolean(row.is_active),
     last_login: row.last_login,
     previous_login: row.previous_login,
+    preferences: resolvePreferences(row.preferences),
     created_date: row.created_date,
   };
 
@@ -226,6 +228,19 @@ export const registerAuthRoutes = (app) => {
 
   app.get("/local-api/auth/me", authenticate, (req, res) => {
     res.json(req.user);
+  });
+
+  // Every signed-in user edits only their own display preferences (no permission needed: they
+  // change nothing anyone else sees). The body is a partial change, merged over what's stored.
+  app.put("/local-api/auth/preferences", authenticate, (req, res) => {
+    const { preferences, error } = applyPreferenceChanges(req.user.preferences, req.body);
+    if (error) {
+      res.status(400).json({ error });
+      return;
+    }
+    db.prepare("UPDATE users SET preferences = ?, updated_date = ? WHERE id = ?")
+      .run(JSON.stringify(preferences), nowIso(), req.user.id);
+    res.json(publicUser(getUserRow(req.user.id)));
   });
 
   // ─── User & role management (Admin only) ───

@@ -88,6 +88,13 @@ export const base44 = {
         body: JSON.stringify({ email, password }),
       }),
 
+    // Saves part of the signed-in user's display preferences; returns the updated user.
+    updatePreferences: async (changes) =>
+      apiRequest('/auth/preferences', {
+        method: 'PUT',
+        body: JSON.stringify(changes),
+      }),
+
     // Deletes the session on the server (the token can't be reused) and clears the cookie.
     logout: async (redirectUrl) => {
       await apiRequest('/auth/logout', { method: 'POST' }).catch(() => {});

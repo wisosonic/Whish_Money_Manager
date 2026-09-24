@@ -42,6 +42,7 @@ const ar = {
   "header.firstLogin": "أول تسجيل دخول",
   "header.dashboard": "لوحة التحكم",
   "header.users": "المستخدمون",
+  "header.settings": "الإعدادات",
   "header.logout": "خروج",
   "header.logoutTitle": "تسجيل الخروج",
 
@@ -250,6 +251,29 @@ const ar = {
 
   // Users (Admin)
   "users.title": "المستخدمون والصلاحيات",
+  "settings.title": "الإعدادات",
+  "settings.subtitle": "تُحفظ تفضيلاتك في حسابك وتتبعك على أي جهاز.",
+  "settings.saving": "جاري الحفظ…",
+  "settings.saved": "تم الحفظ",
+  "settings.saveFailed": "تعذّر حفظ الإعدادات. حاول مرة أخرى.",
+  "settings.language.title": "اللغة",
+  "settings.language.description": "لغة الواجهة كاملة واتجاهها.",
+  "settings.columns.title": "أعمدة الجدول",
+  "settings.columns.description": "اختر الأعمدة التي تظهر في جدول العمليات.",
+  "settings.columns.count": "{visible} من {total} أعمدة ظاهرة.",
+  "settings.columns.lastOne": "يجب أن يبقى عمود واحد على الأقل ظاهراً.",
+  "settings.columns.showAll": "إظهار كل الأعمدة",
+  "settings.display.title": "العرض",
+  "settings.display.description": "شكل لوحة التحكم عند فتحها.",
+  "settings.density.title": "المسافة بين الصفوف",
+  "settings.density.comfortable": "مريح",
+  "settings.density.comfortableHint": "صفوف واسعة وأسهل للقراءة.",
+  "settings.density.compact": "مضغوط",
+  "settings.density.compactHint": "صفوف متقاربة وعمليات أكثر على الشاشة.",
+  "settings.summaries.title": "الملخصات المفتوحة عند تحميل الصفحة",
+  "settings.summaries.month": "ملخص الشهر",
+  "settings.summaries.year": "ملخص السنة",
+  "settings.reset": "استعادة إعدادات العرض الافتراضية",
   "users.count": "{count} مستخدم",
   "users.add": "إضافة مستخدم",
   "users.name": "الاسم",
@@ -277,6 +301,8 @@ const ar = {
 
   // Messages the API sends in English, shown in Arabic. Keys are the exact server messages.
   __serverErrors: {
+    "Invalid preferences": "إعدادات غير صالحة",
+    "At least one column must stay visible": "يجب أن يبقى عمود واحد على الأقل ظاهراً",
     "Email and password are required": "البريد الإلكتروني وكلمة المرور مطلوبان",
     "Invalid email or password": "البريد الإلكتروني أو كلمة المرور غير صحيحة",
     "Too many failed attempts. Try again in 15 minutes.": "محاولات فاشلة كثيرة. حاول مرة أخرى بعد 15 دقيقة.",

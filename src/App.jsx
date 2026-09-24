@@ -8,9 +8,11 @@ import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 // Add page imports here
 import Dashboard from "./pages/Dashboard";
 import UsersPage from "./pages/UsersPage";
+import SettingsPage from "./pages/SettingsPage";
 import LoginPage from "@/components/auth/LoginPage";
 import { PERMISSIONS } from "@/lib/permissions";
 import { LanguageProvider, useI18n } from "@/lib/i18n";
+import { PreferencesProvider } from "@/lib/PreferencesContext";
 
 // Route guard for pages that need a permission (the API enforces the same rule).
 export const RequirePermission = ({ permission, children }) => {
@@ -58,6 +60,8 @@ const AuthenticatedApp = () => {
       <Route
         path="/users"
         element={<RequirePermission permission={PERMISSIONS.USERS_MANAGE}><UsersPage /></RequirePermission>} />
+      {/* Every signed-in user has their own settings. */}
+      <Route path="/settings" element={<SettingsPage />} />
       {/* Add your page Route elements here */}
       <Route path="*" element={<PageNotFound />} />
     </Routes>
@@ -70,12 +74,14 @@ function App() {
   return (
     <LanguageProvider>
       <AuthProvider>
-        <QueryClientProvider client={queryClientInstance}>
-          <Router>
-            <AuthenticatedApp />
-          </Router>
-          <Toaster />
-        </QueryClientProvider>
+        <PreferencesProvider>
+          <QueryClientProvider client={queryClientInstance}>
+            <Router>
+              <AuthenticatedApp />
+            </Router>
+            <Toaster />
+          </QueryClientProvider>
+        </PreferencesProvider>
       </AuthProvider>
     </LanguageProvider>
   )

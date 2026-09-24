@@ -12,6 +12,8 @@ import { useAuth } from "@/lib/AuthContext";
 import { PERMISSIONS } from "@/lib/permissions";
 import { useI18n } from "@/lib/i18n";
 import { NO_SORT, nextSort, sortTransactions } from "@/lib/transactionSort";
+import { usePreferences } from "@/lib/PreferencesContext";
+import { TABLE_COLUMNS } from "@/lib/preferences";
 
 // ═══ Type column: icon + sorting ═══
 // Cash In = green down-arrow, Cash Out = red up-arrow (same arrows as the Cash In / Cash Out buttons).
@@ -87,6 +89,12 @@ export default function TransactionsList({
   // Translation function is `tr` here: `t` is used throughout this file for a transaction.
   const { t: tr, dir, locale } = useI18n();
 
+  // ═══ Display preferences (Settings page): visible columns and row density ═══
+  const { preferences } = usePreferences();
+  const hiddenColumns = new Set(preferences.hiddenColumns);
+  const show = Object.fromEntries(TABLE_COLUMNS.map((key) => [key, !hiddenColumns.has(key)]));
+  const compact = preferences.density === "compact";
+
   // ═══ Sorting (display only: selection, bulk actions and "#" keep working from `transactions`) ═══
   const [sort, setSort] = useState(NO_SORT);
   // Each row's real place in the selected day's journal: shown in "#" and used to sort by it.
@@ -94,14 +102,16 @@ export default function TransactionsList({
     allTransactions.filter((tx) => (tx.transaction_date || new Date(tx.created_date).toISOString().split("T")[0]) === selectedDate)
       .map((tx, i) => [tx.id, i])
   );
-  const rows = sortTransactions(transactions, sort, {
+  const activeSort = sort.key && !show[sort.key] ? NO_SORT : sort;
+  const rows = sortTransactions(transactions, activeSort, {
     locale,
     indexOf: (t) => dayOrder.get(t.id) ?? transactions.indexOf(t),
   });
   const onSort = (column) => setSort((prev) => nextSort(prev, column));
   const sortTooltip = (next, column) => (next === "none" ? tr("list.sort.none") : tr(`list.sort.${next}`, { column }));
   const typeTooltip = (next) => (next === "none" ? tr("list.sort.none") : tr(`list.sortType.${next}`));
-  const headerProps = { sort, onSort, tooltips: sortTooltip };
+  const headerProps = { sort: activeSort, onSort, tooltips: sortTooltip };
+  const columnLabel = (key) => (key === "index" ? "#" : tr(`columns.${key}`));
   const canDelete = can(PERMISSIONS.TRANSACTIONS_DELETE);
 
   // ═══ التحديد المتعدد والإجراءات الجماعية ═══
@@ -437,7 +447,9 @@ export default function TransactionsList({
 
       <>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm text-start">
+          <table
+            className={`w-full text-sm text-start ${compact ? "[&_td]:!py-1.5 [&_th]:!py-1.5" : ""}`}
+            data-density={preferences.density}>
             <thead className="bg-gray-50 text-gray-600">
               <tr>
                 <th className="ps-4 pe-1 py-3 w-8">
@@ -449,17 +461,15 @@ export default function TransactionsList({
                     aria-label={tr("list.selectAll")}
                     className="w-4 h-4 accent-blue-600 cursor-pointer align-middle" />
                 </th>
-                <SortHeader column="index" label="#" sortName={tr("columns.number")} {...headerProps} />
-                <SortHeader column="type" label={tr("columns.type")} {...headerProps} tooltips={typeTooltip} />
-                <SortHeader column="sender" label={tr("columns.sender")} {...headerProps} />
-                <SortHeader column="receiver" label={tr("columns.receiver")} {...headerProps} />
-                <SortHeader column="amount" label={tr("columns.amount")} {...headerProps} />
-                <SortHeader column="commissionRate" label={tr("columns.commissionRate")} {...headerProps} />
-                <SortHeader column="commission" label={tr("columns.commission")} {...headerProps} />
-                <SortHeader column="reference" label={tr("columns.reference")} {...headerProps} />
-                <SortHeader column="service" label={tr("columns.service")} {...headerProps} />
-                <SortHeader column="note" label={tr("columns.note")} {...headerProps} />
-                <SortHeader column="date" label={tr("columns.date")} {...headerProps} />
+                {TABLE_COLUMNS.filter((key) => show[key]).map((key) =>
+                  <SortHeader
+                    key={key}
+                    column={key}
+                    label={columnLabel(key)}
+                    sortName={key === "index" ? tr("columns.number") : undefined}
+                    {...headerProps}
+                    tooltips={key === "type" ? typeTooltip : sortTooltip} />
+                )}
                 <th className="px-4 py-3"></th>
               </tr>
             </thead>
@@ -478,57 +488,79 @@ export default function TransactionsList({
                           aria-label={tr("list.selectRow", { n: displayIndex })}
                           className="w-4 h-4 accent-blue-600 cursor-pointer align-middle" />
                   </td>
-                  <td className="px-4 py-3 text-gray-400">{displayIndex}</td>
-                  <td className="px-4 py-3">
-                    <TypeIcon type={t.type} />
-                  </td>
-                  <td className="px-4 py-3 font-medium">{t.sender_name || "-"}</td>
-                  <td className="px-4 py-3 font-medium">
-                    {(() => {
-                          const isPhone = (v) => /^\+?\d{7,}$/.test((v || "").trim());
-                          const normalize = (v) => (v || "").replace(/\D/g, "").slice(-8); // آخر 8 أرقام للمقارنة
-                          const rName = t.receiver_name && t.receiver_name !== "null" ? t.receiver_name.trim() : "";
-                          const cNum = t.customer_number && t.customer_number !== "null" ? t.customer_number.trim() : "";
-                          const rIsPhone = isPhone(rName);
-                          const cIsPhone = isPhone(cNum);
-                          // إذا كلاهما رقم هاتف أو متطابقان جزئياً، اعرض واحداً فقط
-                          const areSimilar = rIsPhone && cIsPhone && normalize(rName) === normalize(cNum);
-                          if (rIsPhone && cNum) {
-                            // receiver هو رقم، اعرض customer_number فقط
-                            return <div className="text-gray-700">{cNum}</div>;
-                          }
-                          if (cIsPhone && rName && areSimilar) {
-                            // نفس الرقم في كليهما، اعرض مرة واحدة
-                            return <div className="text-gray-700">{cNum}</div>;
-                          }
-                          return (
-                            <>
-                          {rName && !rIsPhone && <div>{rName}</div>}
-                          {cNum && !cIsPhone && <div className="text-gray-700">{cNum}</div>}
-                          {cNum && cIsPhone && !rName && <div className="text-[hsl(var(--foreground))]">{cNum}</div>}
-                        </>);
-
-                        })()}
-                  </td>
-                  <td className="px-4 py-3 font-bold text-gray-800">${(t.amount || 0).toFixed(2)}</td>
-                  <td className="px-4 py-3 font-bold text-blue-600">
-                    {t.amount > 0 ? (t.commission / t.amount * 100).toFixed(2) + "%" : "-"}
-                  </td>
-                  <td className={`px-4 py-3 font-bold ${t.type === "cash_out" ? "text-red-700" : "text-green-700"}`}>${(t.commission || 0).toFixed(3)}</td>
-                  <td className="px-4 py-3 text-gray-700 text-xs font-bold">{t.reference_number || "-"}</td>
-                  <td className="px-4 py-3">
-                    {t.service ?
-                        <span className="inline-block bg-blue-50 text-blue-700 text-xs font-semibold px-2 py-0.5 rounded-full border border-blue-200 whitespace-nowrap">
-                        {t.service}
-                      </span> :
-                        "-"}
-                  </td>
-                  <td className="text-black-500 py-3 px-1">{t.note || "-"}</td>
-                  <td className="px-4 py-3 text-xs opacity-100 text-black-400 whitespace-nowrap">
-                    {t.transaction_date ?
-                        t.transaction_date :
-                        format(new Date(t.created_date), "yyyy/MM/dd HH:mm")}
-                  </td>
+                  {show.index &&
+                    <td className="px-4 py-3 text-gray-400">{displayIndex}</td>
+                  }
+                  {show.type &&
+                    <td className="px-4 py-3">
+                      <TypeIcon type={t.type} />
+                    </td>
+                  }
+                  {show.sender &&
+                    <td className="px-4 py-3 font-medium">{t.sender_name || "-"}</td>
+                  }
+                  {show.receiver &&
+                    <td className="px-4 py-3 font-medium">
+                      {(() => {
+                            const isPhone = (v) => /^\+?\d{7,}$/.test((v || "").trim());
+                            const normalize = (v) => (v || "").replace(/\D/g, "").slice(-8); // آخر 8 أرقام للمقارنة
+                            const rName = t.receiver_name && t.receiver_name !== "null" ? t.receiver_name.trim() : "";
+                            const cNum = t.customer_number && t.customer_number !== "null" ? t.customer_number.trim() : "";
+                            const rIsPhone = isPhone(rName);
+                            const cIsPhone = isPhone(cNum);
+                            // إذا كلاهما رقم هاتف أو متطابقان جزئياً، اعرض واحداً فقط
+                            const areSimilar = rIsPhone && cIsPhone && normalize(rName) === normalize(cNum);
+                            if (rIsPhone && cNum) {
+                              // receiver هو رقم، اعرض customer_number فقط
+                              return <div className="text-gray-700">{cNum}</div>;
+                            }
+                            if (cIsPhone && rName && areSimilar) {
+                              // نفس الرقم في كليهما، اعرض مرة واحدة
+                              return <div className="text-gray-700">{cNum}</div>;
+                            }
+                            return (
+                              <>
+                            {rName && !rIsPhone && <div>{rName}</div>}
+                            {cNum && !cIsPhone && <div className="text-gray-700">{cNum}</div>}
+                            {cNum && cIsPhone && !rName && <div className="text-[hsl(var(--foreground))]">{cNum}</div>}
+                          </>);
+  
+                          })()}
+                    </td>
+                  }
+                  {show.amount &&
+                    <td className="px-4 py-3 font-bold text-gray-800">${(t.amount || 0).toFixed(2)}</td>
+                  }
+                  {show.commissionRate &&
+                    <td className="px-4 py-3 font-bold text-blue-600">
+                      {t.amount > 0 ? (t.commission / t.amount * 100).toFixed(2) + "%" : "-"}
+                    </td>
+                  }
+                  {show.commission &&
+                    <td className={`px-4 py-3 font-bold ${t.type === "cash_out" ? "text-red-700" : "text-green-700"}`}>${(t.commission || 0).toFixed(3)}</td>
+                  }
+                  {show.reference &&
+                    <td className="px-4 py-3 text-gray-700 text-xs font-bold">{t.reference_number || "-"}</td>
+                  }
+                  {show.service &&
+                    <td className="px-4 py-3">
+                      {t.service ?
+                          <span className="inline-block bg-blue-50 text-blue-700 text-xs font-semibold px-2 py-0.5 rounded-full border border-blue-200 whitespace-nowrap">
+                          {t.service}
+                        </span> :
+                          "-"}
+                    </td>
+                  }
+                  {show.note &&
+                    <td className="text-black-500 py-3 px-1">{t.note || "-"}</td>
+                  }
+                  {show.date &&
+                    <td className="px-4 py-3 text-xs opacity-100 text-black-400 whitespace-nowrap">
+                      {t.transaction_date ?
+                          t.transaction_date :
+                          format(new Date(t.created_date), "yyyy/MM/dd HH:mm")}
+                    </td>
+                  }
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       {canEditTransaction(t) &&

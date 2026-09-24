@@ -68,6 +68,7 @@ export const initializeDb = () => {
       is_active INTEGER NOT NULL DEFAULT 1,
       last_login TEXT,        -- the most recent sign-in (the current one, once signed in)
       previous_login TEXT,    -- the sign-in before that, shown in the header as "last login"
+      preferences TEXT,       -- JSON display preferences (server/preferences.js); NULL = defaults
       created_date TEXT NOT NULL,
       updated_date TEXT NOT NULL
     );
@@ -89,6 +90,9 @@ export const initializeDb = () => {
   const userColumns = db.prepare("PRAGMA table_info(users)").all().map((column) => column.name);
   if (!userColumns.includes("previous_login")) {
     db.exec("ALTER TABLE users ADD COLUMN previous_login TEXT");
+  }
+  if (!userColumns.includes("preferences")) {
+    db.exec("ALTER TABLE users ADD COLUMN preferences TEXT");
   }
 };
 

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { usePreferences } from "@/lib/PreferencesContext";
 import { ArrowDownCircle, ArrowUpCircle, Percent, Wallet, Hash, ChevronDown } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 
@@ -87,6 +88,8 @@ export default function StatsCards({
   selectedDate,
 }) {
   const { t, dir, locale } = useI18n();
+  // Which blocks start open is a per-user setting (Settings page); default: month open, year closed.
+  const { summaries } = usePreferences().preferences;
   const periodCards =({ count, commissions, withdrawals, deposits, countLabel, commissionsLabel }) => [
     {
       label: countLabel,
@@ -140,7 +143,7 @@ export default function StatsCards({
         period={formatMonthLabel(selectedDate, locale)}
         cards={monthlyCards}
         collapsedSummary={t("summary.monthCollapsed", { net: fmt(netBalance), count: monthlyCount || 0, commissions: fmt(monthlyCommissions) })}
-        defaultOpen
+        defaultOpen={summaries.month}
         gridClassName="grid-cols-2 sm:grid-cols-3 lg:grid-cols-5"
       />
       <SummarySection
@@ -149,7 +152,7 @@ export default function StatsCards({
         period={String(selectedDate || "").slice(0, 4)}
         cards={yearlyCards}
         collapsedSummary={t("summary.yearCollapsed", { count: yearlyCount || 0, commissions: fmt(yearlyCommissions) })}
-        defaultOpen={false}
+        defaultOpen={summaries.year}
         gridClassName="grid-cols-2 lg:grid-cols-4"
       />
     </div>

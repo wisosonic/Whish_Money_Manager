@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { User, LogOut, Users, LayoutDashboard } from "lucide-react";
+import { User, LogOut, Users, LayoutDashboard, Settings } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 import { APP_NAME } from "@/lib/branding";
 import { useI18n } from "@/lib/i18n";
@@ -34,7 +34,10 @@ export default function Header() {
   const { user, logout, can } = useAuth();
   const { t, dir, lang } = useI18n();
   const location = useLocation();
+  const onDashboard = location.pathname === "/";
   const onUsersPage = location.pathname.startsWith("/users");
+  const onSettingsPage = location.pathname.startsWith("/settings");
+  const navLink = "flex items-center gap-2 whitespace-nowrap bg-white/10 hover:bg-white/20 rounded-2xl px-4 py-2 transition text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400";
 
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000);
@@ -107,8 +110,8 @@ export default function Header() {
         </button>
       </h1>
 
-      {/* Center: User */}
-      <div className="flex items-center gap-3">
+      {/* Center: User + navigation. Wraps on narrow screens (Admins have up to five items here). */}
+      <div className="flex flex-wrap items-center gap-2 md:gap-3">
         <div className="flex items-center gap-3 bg-white/10 backdrop-blur-sm rounded-2xl px-4 py-2 hover:bg-white/15 transition">
           <div className="text-start">
             <p className="font-semibold text-sm flex items-center gap-2">
@@ -127,16 +130,23 @@ export default function Header() {
             <User className="w-5 h-5" />
           </div>
         </div>
-        {can(PERMISSIONS.USERS_MANAGE) && (
-          onUsersPage ?
-          <Link to="/" className="flex items-center gap-2 bg-white/10 hover:bg-white/20 rounded-2xl px-4 py-2 transition text-sm font-medium">
-              <LayoutDashboard className="w-4 h-4" />
-              <span>{t("header.dashboard")}</span>
-            </Link> :
-          <Link to="/users" className="flex items-center gap-2 bg-white/10 hover:bg-white/20 rounded-2xl px-4 py-2 transition text-sm font-medium">
-              <Users className="w-4 h-4" />
-              <span>{t("header.users")}</span>
-            </Link>)
+        {/* Navigation: back to the dashboard from any other page, Users (Admin only), Settings (everyone). */}
+        {!onDashboard &&
+        <Link to="/" className={navLink}>
+            <LayoutDashboard className="w-4 h-4" />
+            <span>{t("header.dashboard")}</span>
+          </Link>
+        }
+        {can(PERMISSIONS.USERS_MANAGE) && !onUsersPage &&
+        <Link to="/users" className={navLink}>
+            <Users className="w-4 h-4" />
+            <span>{t("header.users")}</span>
+          </Link>
+        }
+        {!onSettingsPage &&
+        <Link to="/settings" className={`${navLink} px-3`} title={t("header.settings")} aria-label={t("header.settings")} data-testid="settings-link">
+            <Settings className="w-4 h-4" aria-hidden="true" />
+          </Link>
         }
         <button
           onClick={() => logout()}

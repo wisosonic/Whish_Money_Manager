@@ -19,7 +19,7 @@ It runs entirely on your machine: a React frontend and a small Node.js/Express A
   - Click a block's header to open or close it. A collapsed block still shows its key figures on one line, e.g. `624 عملية · عمولات $1,234.50`.
   - Opening and closing is animated (0.3 s): the block smoothly grows or shrinks to its natural height, the cards fade and slide into place, the arrow rotates, and the one-line summary fades in. Users with "reduce motion" turned on in their system settings get no animation.
   - The cards rearrange for smaller screens: monthly 2 → 3 → 5 columns, yearly 2 → 4.
-  - Both blocks open as described above each time the page loads.
+  - Both blocks open as described above each time the page loads. Each user can change which ones start open in [Settings](#settings).
 - **Opening balance per day**: set by hand, taken from an imported statement, or carried forward from the previous day's closing figure.
 - **Statement import (PDF or CSV)**: drop in the provider's account statement and the app extracts every transaction:
   - **PDF engine**: reads the statement table from the PDF text layer. Scanned or image-only PDFs aren't supported.
@@ -59,6 +59,7 @@ It runs entirely on your machine: a React frontend and a small Node.js/Express A
     - Rows with an empty value always go last, and rows with the same value keep their journal order.
   - The "#" column always shows each row's real number in the day's journal. Selecting rows and bulk actions work the same while sorted.
   - The sort resets when the page reloads.
+- **Personal settings** (⚙️ in the header): each user chooses their language, which table columns to show, compact or comfortable rows, and which summaries start open. Saved to their account. See [Settings](#settings).
 - **Manual entry**: Cash In / Cash Out forms, plus edit, delete, and "delete all for this day". Deleting a row happens as soon as you confirm it ("تأكيد"); there is no undo.
 - **Bulk actions (multi-select)**: tick the checkbox on any rows, or use the header checkbox to select every visible row. A partly-selected header shows a dash.
   - A blue bar appears above the table with the selection count and total amount, plus:
@@ -194,10 +195,29 @@ Everyone signs in with their own email and password. There are three roles:
   - **Arabic is the default.**
   - **The whole interface switches:** every label, message, month name, number of transactions (with English singular/plural) and the page direction. Arabic is right-to-left; English is left-to-right, with the layout mirrored.
   - **Server messages** (e.g. a wrong password) are shown in the chosen language.
-  - **The choice is saved in a cookie** (`wmm_lang`, kept for a year), so it survives reloads and applies from the first screen. Each browser remembers its own choice.
+  - **The choice is saved in a cookie** (`wmm_lang`, kept for a year), so it survives reloads and applies from the first screen.
+  - **When you're signed in, it's also saved to your account** (see [Settings](#settings)), so it follows you to other devices and is applied when you sign in there.
 - **Back to top:** click the logo or the app name in the header to scroll smoothly back to the top of the page (instantly if "reduce motion" is on). It also works from the keyboard: Tab to it, then press Enter.
 - **Header position:** the header (logo, user, logout, clock) stays **fixed at the top of the screen** while you scroll, on every page and screen size. Pop-up windows still appear above it. When the keyboard moves focus to a field lower down, the page scrolls so the field lands just below the header, not behind it.
 - **Header:** shows your name, your role, and **your last login**. That's the date and time of the sign-in *before* the current one (e.g. `آخر دخول: 2026/09/23 08:05 PM`), in your local time. It shows "أول تسجيل دخول" on your first ever sign-in. Because sessions don't expire, it changes only when you sign in again. Signing in on another device counts as a new sign-in.
+
+### Settings
+
+Every user has a **Settings** page: click the ⚙️ gear in the header (next to Log out). Changes apply **immediately** and are **saved to your account** on the server, so they follow you to any device or browser. A small status line at the top says "Saving…", then "Saved", or explains what went wrong. If a save fails, the previous value comes back.
+
+- **Language:** العربية or English. This is the same choice as the header switch.
+- **Table columns:** tick or untick any of the 11 columns of the transactions table:
+  - #, Type, Sender, Receiver, Amount, Commission rate, Commission, Reference, Service, Note, Date
+  - The row checkboxes and the edit/delete buttons always stay.
+  - At least one column must stay visible, so the last one can't be unticked.
+  - "Show all columns" brings them all back.
+  - Hiding a column you had sorted by returns the table to the journal order.
+- **Display:**
+  - **Row spacing:** *Comfortable* (the default) or *Compact*, which fits more transactions on screen.
+  - **Summaries open when the page loads:** whether "ملخص الشهر" and "ملخص السنة" start expanded. The defaults are month open and year closed. You can still open or close them on the dashboard at any time.
+- **Restore default display settings** resets the columns, row spacing and summaries in one step. Your language is left as it is.
+
+Settings are personal: they never change what other users see.
 
 ### Managing users (Admin)
 
@@ -296,6 +316,8 @@ tests/
 │   │                         # previous-login tracking + schema upgrade
 │   ├── permissions.test.js   # role matrix end to end: Admin / Manager / User on every endpoint,
 │   │                         # own-vs-others edits, live role changes
+│   ├── preferences.test.js   # per-user settings: defaults, partial saves, validation (400), per-account,
+│   │                         # tolerant reading of stored JSON, database upgrade
 │   ├── users.test.js         # Admin user management, deactivation/reset revoke sessions, last-Admin rules
 │   ├── seed.test.js          # default roles, first Admin, generated password, idempotency, data migration
 │   ├── startup.test.js       # auto-seed on server start when no users exist (runs the real server twice)
@@ -313,6 +335,8 @@ tests/
     │                                 # multi-select, select-all, bulk edit/delete flows,
     │                                 # type icons, sorting by every column
     ├── transactionSort.test.js       # sort cycle, stability, empty values last, natural/Arabic order
+    ├── SettingsPage.test.jsx         # settings page, saving (in order, errors), language on sign-in,
+    │                                 # header link, table columns/density and summaries following the settings
     ├── BulkEditModal.test.jsx        # opt-in fields, payload, commission rate, validation, errors
     ├── ReceiverReportModal.test.jsx  # receiver matching, totals, date filter
     ├── branding.test.jsx             # header (logo, name, role, last login, sticky), login page, tab title/icon, manifest
@@ -337,10 +361,13 @@ server/index.js               Express API routes (with permission checks), PDF +
 server/auth.js                Login/logout, JWT session cookie, authenticate + requirePermission middleware, user admin API
 server/permissions.js         Permission names and the three default roles (shared with the frontend)
 server/db.js                  SQLite connection and schema (transactions, daily_balances, roles, users, sessions)
+server/preferences.js         Per-user settings: column list, defaults, validation (shared with the frontend)
 server/seed.js                `npm run seed`: default roles + first Admin + legacy data migration
 src/api/base44Client.js       API client for the local Express API (name kept from the project's Base44 origins)
 src/pages/Dashboard.jsx       Main screen: totals, balances, day filter, search
 src/pages/UsersPage.jsx       Admin: users and roles
+src/pages/SettingsPage.jsx    Every user: language, visible table columns, row spacing, summaries
+src/lib/PreferencesContext.jsx  The signed-in user's settings: applied at once, saved in order to the account
 src/components/dashboard/     Stats cards, wallet summary, transactions table, monthly chart
 src/components/transactions/  Import, cash in/out, edit, sender/receiver/commission reports
 src/lib/                      Auth context (session, can()), permissions, search matching, file-type detection, chart data
@@ -365,7 +392,8 @@ All routes are under `/local-api`.
 |---|---|---|---|
 | POST | `/auth/login` | — | `{ email, password }` → sets the session cookie, returns the user with role, permissions, `last_login` (this sign-in) and `previous_login` (the one before) |
 | POST | `/auth/logout` | — | Deletes the session and clears the cookie |
-| GET | `/auth/me` | session | The signed-in user |
+| GET | `/auth/me` | session | The signed-in user, including their `preferences` |
+| PUT | `/auth/preferences` | session (own account only) | Partial change, e.g. `{ density: "compact" }` or `{ hiddenColumns: ["note"] }`, merged over what's stored. Keys: `language` (`ar`/`en`/`null`), `hiddenColumns` (column keys; at least one must stay visible), `density` (`comfortable`/`compact`), `summaries` (`{ month, year }` booleans). Unknown keys or values → 400. Returns the user |
 | GET | `/users` · `/roles` | `users:manage` | List users / roles |
 | POST | `/users` | `users:manage` | `{ email, full_name, password, role }` → create a user |
 | PUT | `/users/:id` | `users:manage` | `{ full_name?, role?, is_active?, password? }`. Deactivation and password reset end the user's sessions |
