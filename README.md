@@ -1,0 +1,366 @@
+# Whish Money Manager
+
+<img src="src/assets/images/logo.png" alt="Whish Money Manager logo" width="96" />
+
+Whish Money Manager is a web app for a money-transfer office to record daily transactions, reconcile them against the Whish Money account statement, and track balances and commissions. The interface is in Arabic (right-to-left). The project was previously called HawalaFlow.
+
+The app name and logo are defined once in `src/lib/branding.js`, and the header and login page read them from there. The browser tab (`index.html`) and the installed-app name (`public/manifest.json`) can't import code, so they repeat the name. The logo file is `src/assets/images/logo.png`.
+
+It runs entirely on your machine: a React frontend and a small Node.js/Express API that stores data in a local SQLite file.
+
+---
+
+## Features
+
+- **Daily journal**: every transaction for the selected day, with deposits (Cash In), withdrawals (Cash Out), commissions and the running wallet balance.
+- **Monthly and yearly summaries**: two collapsible blocks at the top of the dashboard. Both follow the month and year of the date selected in the date picker.
+  - **ملخص الشهر** (open by default): wallet net balance, number of transactions, commissions, withdrawals and deposits for the month.
+  - **ملخص السنة** (collapsed by default): number of transactions, commissions, withdrawals and deposits for the year.
+  - Click a block's header to open or close it. A collapsed block still shows its key figures on one line, e.g. `624 عملية · عمولات $1,234.50`.
+  - Opening and closing is animated (0.3 s): the block smoothly grows or shrinks to its natural height, the cards fade and slide into place, the arrow rotates, and the one-line summary fades in. Users with "reduce motion" turned on in their system settings get no animation.
+  - The cards rearrange for smaller screens: monthly 2 → 3 → 5 columns, yearly 2 → 4.
+  - Both blocks open as described above each time the page loads.
+- **Opening balance per day**: set by hand, taken from an imported statement, or carried forward from the previous day's closing figure.
+- **Statement import (PDF or CSV)**: drop in the provider's account statement and the app extracts every transaction:
+  - **PDF engine**: reads the statement table from the PDF text layer. Scanned or image-only PDFs aren't supported.
+  - **CSV engine**: reads the provider's CSV export directly (exact amounts, no guessing), and checks the totals and running balance against the file.
+  - The file type is detected automatically (PDF by its `%PDF-` signature, CSV by extension or MIME type).
+  - Rows can be reviewed and edited before saving.
+- **Duplicate protection**: re-importing a statement is detected by transaction reference number (e.g. `tr:626186571`). You choose to replace the existing entries or cancel. Manual entries are never touched.
+- **Search**: names, reference numbers, notes, service, phone and customer numbers (in any format, e.g. `+961 71 389 296` or `071389296`) and amounts (`50`, `50.00`, `$1,500`), within the selected day.
+- **Reports**: daily commission report, and two per-party reports with count, deposits, withdrawals and commissions over an optional date range:
+  - **تقرير مرسل** (sender report): all transactions whose sender name matches.
+  - **تقرير مستلم** (receiver report): all transactions whose receiver matches, by name or, when the receiver was stored as a phone number, by that number in any format (`71389296`, `+961 71 389 296`, `071389296`). The receiver is shown the same way as in the transactions table.
+- **Monthly chart (الرسم البياني)**: one bar-and-line chart for a whole year, built with [Recharts](https://recharts.org):
+  - **X-axis**: the 12 months. Phones show month numbers (1–12) instead of names.
+  - **Left y-axis**: profit, meaning the commissions earned each month, drawn as blue bars.
+  - **Right y-axis**: total cash in (solid green line) and total cash out (dashed red line).
+  - **Year selector**: defaults to the selected date's year and lists every year that has transactions.
+  - **Tooltip**: on hover, shows every series for that month. **Legend** below the chart.
+  - **Year totals**: profit, cash in, cash out and number of transactions.
+  - **Table view** ("عرض كجدول") with the same figures per month plus totals, for exact values and screen readers.
+  - **Future months** of the current year are left blank instead of drawn as $0.
+  - **Live**: recalculates whenever transactions change (import, add, edit, delete).
+  - **Responsive**: fills the width of its container and resizes with the screen.
+  - **Accessibility**:
+    - Colors were checked for color-blind readers, and cash out is also dashed, so no series relies on color alone.
+    - The animation is skipped for users who turn on "reduce motion".
+  - Because profit and cash flows use different scales on the two axes, compare each line against its own axis. The tooltip and table view give exact values.
+- **Manual entry**: Cash In / Cash Out forms, plus edit, delete, and "delete all for this day". Deleting a row happens as soon as you confirm it ("تأكيد"); there is no undo.
+- **Bulk actions (multi-select)**: tick the checkbox on any rows, or use the header checkbox to select every visible row. A partly-selected header shows a dash.
+  - A blue bar appears above the table with the selection count and total amount, plus:
+    - **تعديل المحدد** (edit selected): set the same values on every selected transaction. Tick "تغيير" next to each field you want to change; unticked fields stay as they are on every row, and a ticked field left empty clears it (e.g. remove all notes). Editable fields:
+      - type
+      - sender name, receiver name
+      - service
+      - note
+      - date (moves the transactions to another day)
+      - commission rate: each row's commission is recalculated from its own amount, e.g. 1.5% of $250 = $3.750
+    - Amount, reference number and phone differ per transaction, so they stay in the single-row editor.
+    - **حذف المحدد** (delete selected): deletes all selected transactions after a confirmation, in one request. It can't be undone.
+    - **إلغاء التحديد** (clear selection).
+  - **Only visible rows can be selected.** When you change the day or search, selected rows that are no longer shown are dropped from the selection, so an action never hits rows you can't see.
+  - **Opening balances:** when a bulk delete or date change leaves a day with no transactions, that day's opening balance is removed, the same as a single delete.
+
+The transactions table's toolbar has: الرسم البياني, تقرير مرسل, تقرير مستلم, تقرير العمولات, delete all, استيراد PDF / CSV, Cash Out and Cash In. These buttons have been removed:
+- statement review ("مراجعة الكشف")
+- between-row insertion ("إدراج هنا")
+- undo ("تراجع")
+- refresh ("تحديث"): the table already reloads after every change.
+
+## How it works
+
+```
+Browser (React + Vite, :5173)  ──/local-api (Vite proxy)──►  Express API (:3001)  ──►  SQLite (server/hawalaflow.db)
+src/api/base44Client.js                                       server/index.js
+```
+
+- `src/api/base44Client.js` is the app's API client (`base44.auth`, `base44.entities.*`, `base44.integrations.Core.*`, `base44.users`); it talks only to the local Express API. (The `base44` name is historical: the project started on the Base44 platform, which is no longer used.)
+- PDF and CSV parsing happen on the server. Both engines return the same result shape, so the import screen, the save step and the dashboard don't care which one was used.
+- Dashboard totals are calculated in the browser from the stored transactions and the opening balance for each day.
+
+---
+
+## Getting started
+
+### Requirements
+
+- **Node.js 20 or newer** (developed and tested on Node 24)
+- npm
+- `better-sqlite3` is a native module. Prebuilt binaries cover common platforms. Otherwise npm builds it, which needs Python and a C++ toolchain (on Windows: "Desktop development with C++" from Visual Studio Build Tools).
+
+### Install
+
+```bash
+npm install
+```
+
+No `.env` file is needed for local use. The optional settings are listed under Configuration.
+
+### Run
+
+```bash
+npm run dev
+```
+
+This starts both processes:
+
+| Process | Command | URL |
+|---|---|---|
+| Web app | `npm run dev:web` | http://localhost:5173 |
+| API | `npm run dev:api` | http://localhost:3001 (proxied at `/local-api`) |
+
+### First-time setup: the Admin account
+
+The app has real accounts. **On startup, the API checks for user accounts. If there are none, it seeds automatically:** it creates the three roles and an Admin, and prints the sign-in details in the terminal:
+
+```
+[local-api] No user accounts found — created the default roles and an Admin account:
+[local-api]   Email:    admin@whish.local
+[local-api]   Password: Xy7…                     ← generated, shown only once
+```
+
+- **Your own details:** set `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` and `SEED_ADMIN_NAME` before the first start. The password is then never printed.
+- **Lost the password:** run the seed script with a different email to create another Admin.
+- **Seeding manually:** you can create the roles and first Admin yourself before the first start:
+
+```bash
+npm run seed -- --email you@yourshop.com --password "a long password" --name "Your Name"
+```
+
+- **No password given:** the script generates a strong one and prints it **once**. Store it safely.
+- **Default email** (if you don't pass `--email`): `admin@whish.local`.
+- **Existing data:** transactions and opening balances created before accounts existed (by the old built-in `admin/admin` login) are handed to this Admin.
+- **Safe to run again:** it restores the three default roles' permissions, and never changes an existing Admin's password.
+
+Then start the app, sign in with that email and password, and add your team from the **المستخدمون** (Users) page.
+
+The database file `server/hawalaflow.db` is created on first start and is git-ignored. **Back it up**: it holds all your data.
+
+### Configuration
+
+| Variable | Used by | Default | Purpose |
+|---|---|---|---|
+| `API_PORT` | API | `3001` | Port the API listens on (update the proxy in `vite.config.js` if you change it) |
+| `HAWALAFLOW_DB_PATH` | API | `server/hawalaflow.db` | SQLite file to use (`:memory:` for a throwaway database) |
+| `JWT_SECRET` | API | generated once into `server/.jwt-secret` (git-ignored) | Secret used to sign session tokens. Set it explicitly in production. Changing it signs everyone out. |
+| `COOKIE_SECURE` | API | `false` (`true` when `NODE_ENV=production`) | Send the session cookie over HTTPS only. Turn on whenever the app is served over HTTPS. |
+| `BCRYPT_ROUNDS` | API | `12` | Password-hashing cost |
+| `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`, `SEED_ADMIN_NAME` | `npm run seed` | — | Alternatives to the `--email`, `--password` and `--name` flags |
+
+---
+
+## Accounts, roles and permissions
+
+Everyone signs in with their own email and password. There are three roles:
+
+| | Admin | Manager | User |
+|---|:-:|:-:|:-:|
+| See all office transactions, balances, reports and the chart | ✓ | ✓ | ✓ |
+| Add transactions (Cash In / Cash Out) | ✓ | ✓ | ✓ |
+| Import PDF / CSV statements | ✓ | ✓ | ✓ |
+| Edit transactions **they entered** (single and bulk) | ✓ | ✓ | ✓ |
+| Edit **anyone's** transactions | ✓ | ✓ | — |
+| Delete transactions (single, bulk, "delete all for this day") | ✓ | ✓ | — |
+| Replace an already-imported statement (deletes the old entries) | ✓ | ✓ | — |
+| Set or change opening balances | ✓ | ✓ | — |
+| Manage users and roles (المستخدمون page) | ✓ | — | — |
+
+- **Everyone sees everything.** The office shares one set of transactions; roles only limit what people may change.
+- **The server enforces every rule.** Buttons a user can't use are hidden, but the API also refuses the action (HTTP 403), so the rules can't be bypassed.
+- **"Entered by"** is the account that created the transaction, recorded automatically; users can't change it.
+
+### Signing in and staying signed in
+
+- **Session length:** sessions have **no expiry date**. You stay signed in until you press **خروج** (log out), even after closing the browser.
+- **Where the session lives:** in a secure cookie that page scripts can't read (`HttpOnly`) and that other websites can't send (`SameSite=Strict`).
+- **The browser cap:** browsers keep cookies for at most about 400 days. The app renews the cookie as you use it, so this only matters if nobody opens the app for 400 days.
+- **Logout:** ends that session on the server immediately. A copy of the token can't be reused, and other devices stay signed in.
+- **Brute-force protection:** after 10 wrong passwords for the same email, sign-in is blocked for 15 minutes.
+- **Back to top:** click the logo or the app name in the header to scroll smoothly back to the top of the page (instantly if "reduce motion" is on). It also works from the keyboard: Tab to it, then press Enter.
+- **Header position:** the header (logo, user, logout, clock) stays **fixed at the top of the screen** while you scroll, on every page and screen size. Pop-up windows still appear above it. When the keyboard moves focus to a field lower down, the page scrolls so the field lands just below the header, not behind it.
+- **Header:** shows your name, your role, and **your last login**. That's the date and time of the sign-in *before* the current one (e.g. `آخر دخول: 2026/09/23 08:05 PM`), in your local time. It shows "أول تسجيل دخول" on your first ever sign-in. Because sessions don't expire, it changes only when you sign in again. Signing in on another device counts as a new sign-in.
+
+### Managing users (Admin)
+
+Open **المستخدمون** in the header to:
+- **Add a user:** name, email, role and a password of at least 8 characters.
+- **Change a role:** takes effect on the user's next action; no re-login needed.
+- **Deactivate or reactivate:** deactivating signs the user out on every device and blocks sign-in. Their transactions are kept.
+- **Reset a password:** signs the user out on every device.
+
+Safety rules: there must always be at least one active Admin, and an Admin can't deactivate their own account.
+
+## Using the app
+
+### Daily workflow
+
+1. Pick the day with the date picker ("اليومية") or press "اليوم" for today.
+2. Import that day's statement ("استيراد PDF / CSV") or add entries with **Cash In** / **Cash Out**.
+3. Check the wallet summary: opening balance + deposits − withdrawals = net balance.
+4. Open **ملخص الشهر** / **ملخص السنة** at the top for totals across the whole month or year.
+
+### Importing a statement
+
+1. Click **استيراد PDF / CSV** and drop in the statement file.
+2. If transactions with the same reference numbers already exist, you're asked to either:
+   - **استبدال العمليات الموجودة** (replace): the existing entries are deleted and replaced when you save.
+   - **إلغاء الرفع** (cancel): nothing is saved.
+3. Review the rows. For CSV files, a banner shows whether the file reconciles: debit total, credit total, closing balance, and each row's balance. Fix or remove rows if needed.
+4. Click **حفظ الكل**. The statement's opening balance is stored for that day, and the dashboard jumps to it.
+
+### Import rules
+
+| Rule | Behaviour |
+|---|---|
+| Direction | Debit → **Cash Out**, credit → **Cash In** |
+| Commission (CSV) | 1% of every credit (rounded to 3 decimals). Debits have no commission. |
+| Commission (PDF) | 1% of credits, except descriptions containing "cashin" or "qr topup" and services containing "reversed". Debits have no commission. |
+| `NAME - 96171588017` | Split in both engines: name → sender/receiver, `phone` = `96171588017`, `customer_number` = `71588017` (without 961) |
+| Bare phone as receiver | Moved to `phone` / `customer_number` on save |
+| Duplicates | Same reference number for the same user |
+
+### CSV statement format
+
+The provider's CSV export has two sections in one file, separated by blank lines. Columns are matched by header name, so column order doesn't matter, and `,` or `;` delimiters both work.
+
+```csv
+statement_id,period_from,period_to,issued_on,full_name,phone_number,account_no,address,whish_card_last4,currency,opening_balance,total_debit,total_credit,closing_balance
+SOA-20260923-0001,"=""23/09/2026""","=""23/09/2026""","=""23/09/2026""",Vicario,961…,20200813,"…",**** 6965,USD,"10,648.51","41,091.65","40,447.67","10,004.53"
+
+statement_id,line_no,date,reference,service,description,debit,credit,balance
+SOA-20260923-0001,1,"=""2026-09-23""",tr:626186571,,+9613915112,50.00,0.00,"10,598.51"
+```
+
+- Required transaction columns: `date`, `debit`, `credit`, `balance`. Also used: `line_no`, `reference`, `service`, `description`.
+- The summary section is optional. Without it, opening and closing balances are taken from the first and last rows.
+- Excel's `="…"` wrapping and thousands separators are handled.
+- The provider rounds the displayed balance, so a row's balance may move ±0.01 from its amount. The check allows for this, and amounts always come from the debit/credit columns.
+
+A sample export is included: `AccountStatementCSV_20200813.csv` (also used as a test fixture).
+
+### Known limitations
+
+- **Scanned PDFs**: the PDF engine needs a text layer.
+- **Passwords:** there's no self-service "change my password" yet; an Admin resets passwords from the Users page.
+- **HTTPS:** served over plain HTTP, sessions can be intercepted on the network. Put the app behind HTTPS and set `COOKIE_SECURE=true` before using it anywhere other than the office's own computer or network.
+
+---
+
+## Development
+
+### Scripts
+
+| Command | What it does |
+|---|---|
+| `npm run dev` | Run web app and API together |
+| `npm run seed` | Create/restore the default roles and the first Admin (see First-time setup) |
+| `npm run build` | Production build of the frontend into `dist/` |
+| `npm run lint` | ESLint |
+| `npm test` | Run the test suite once |
+| `npm run test:watch` | Tests in watch mode |
+| `npm run verify` | Lint + tests + build (run this before every deploy) |
+
+### Tests
+
+Tests use [Vitest](https://vitest.dev) and live in `tests/`:
+
+```
+tests/
+├── setup.js                  # jest-dom matchers; jsdom stubs for Blob.text(), matchMedia, ResizeObserver
+├── fixtures/statement.csv    # real CSV statement export (127 rows)
+├── backend/
+│   ├── helpers.js            # test server, one account per role, cookie-keeping client
+│   ├── api.test.js           # HTTP API (as Admin): CRUD, office-wide data, created_by, filter safety,
+│   │                         # balances, import, duplicates/overwrite, bulk update/delete
+│   ├── auth.test.js          # login, cookie flags, JWT (no expiry), tampered/forged tokens, 401 on
+│   │                         # every route, logout revocation, never-expiring + sliding sessions, lockout,
+│   │                         # previous-login tracking + schema upgrade
+│   ├── permissions.test.js   # role matrix end to end: Admin / Manager / User on every endpoint,
+│   │                         # own-vs-others edits, live role changes
+│   ├── users.test.js         # Admin user management, deactivation/reset revoke sessions, last-Admin rules
+│   ├── seed.test.js          # default roles, first Admin, generated password, idempotency, data migration
+│   ├── startup.test.js       # auto-seed on server start when no users exist (runs the real server twice)
+│   ├── csvEngine.test.js     # CSV parser, fee rule, name/phone split, validation, format variations
+│   └── pdfEngine.test.js     # PDF engine on generated PDFs, balance-based direction correction
+└── frontend/
+    ├── authMock.js           # simulated signed-in user per role for component tests
+    ├── base44Client.test.js  # API client: cookie session (no identity header), 401 handling, errors
+    ├── AuthContext.test.jsx  # session restore, login/logout, session-ended, can(), route guard
+    ├── UsersPage.test.jsx    # Admin users screen: list, add, role change, deactivate, reset password
+    ├── fileType.test.js      # PDF/CSV detection
+    ├── transactionSearch.test.js
+    ├── ImportPDFModal.test.jsx   # PDF/CSV routing, preview, duplicate prompt, save payload
+    ├── TransactionsList.test.jsx     # table, report/chart buttons, removed buttons, immediate delete,
+    │                                 # multi-select, select-all, bulk edit/delete flows
+    ├── BulkEditModal.test.jsx        # opt-in fields, payload, commission rate, validation, errors
+    ├── ReceiverReportModal.test.jsx  # receiver matching, totals, date filter
+    ├── branding.test.jsx             # header (logo, name, role, last login, sticky), login page, tab title/icon, manifest
+    ├── StatsCards.test.jsx           # monthly/yearly summaries: defaults, collapse, layout, animation
+    ├── monthlyChartData.test.js      # per-month aggregation, future months, formatters
+    ├── MonthlyChartModal.test.jsx    # axes, bars/lines, legend, tooltip, table view, year switch,
+    │                                 # live updates, desktop vs phone layout, reduced motion
+    └── Dashboard.test.jsx            # search, and monthly/yearly totals following the date picker
+```
+
+- Backend tests start the API on a random port against an **in-memory SQLite database** (`HAWALAFLOW_DB_PATH=":memory:"`, set in `vitest.config.js`). Your real `server/hawalaflow.db` is never touched.
+- Frontend tests run in jsdom (`/** @vitest-environment jsdom */` at the top of the file) with the API client mocked. Screens that depend on the signed-in user use `authMock.js` to test each role.
+- Tests use a fixed `JWT_SECRET` and cheap password hashing (`BCRYPT_ROUNDS=4`), set in `vitest.config.js`.
+
+### Project structure
+
+```
+server/index.js               Express API routes (with permission checks), PDF + CSV engines, import/bulk endpoints
+server/auth.js                Login/logout, JWT session cookie, authenticate + requirePermission middleware, user admin API
+server/permissions.js         Permission names and the three default roles (shared with the frontend)
+server/db.js                  SQLite connection and schema (transactions, daily_balances, roles, users, sessions)
+server/seed.js                `npm run seed`: default roles + first Admin + legacy data migration
+src/api/base44Client.js       API client for the local Express API (name kept from the project's Base44 origins)
+src/pages/Dashboard.jsx       Main screen: totals, balances, day filter, search
+src/pages/UsersPage.jsx       Admin: users and roles
+src/components/dashboard/     Stats cards, wallet summary, transactions table, monthly chart
+src/components/transactions/  Import, cash in/out, edit, sender/receiver/commission reports
+src/lib/                      Auth context (session, can()), permissions, search matching, file-type detection, chart data
+src/assets/css/index.css      The app's only stylesheet: Tailwind directives + theme colour variables
+src/assets/images/logo.png    App logo: header, login page, browser tab icon
+src/lib/branding.js           App name, short name, tagline and logo (single source for components)
+src/assets/js/                Standalone scripts / vendored JS (none yet — app source stays in src/)
+public/manifest.json          Web app manifest (must stay in public/: served as-is at /manifest.json)
+tests/                        Test suite
+```
+
+### API
+
+All routes are under `/local-api`.
+- **Public:** only `/health`, `/auth/login` and `/auth/logout`. Everything else needs the session cookie (401 without it).
+- **Permissions:** the "Needs" column lists the permission required (403 without it).
+- **Writes:** must be `application/json`.
+
+| Method | Route | Needs | Purpose |
+|---|---|---|---|
+| POST | `/auth/login` | — | `{ email, password }` → sets the session cookie, returns the user with role, permissions, `last_login` (this sign-in) and `previous_login` (the one before) |
+| POST | `/auth/logout` | — | Deletes the session and clears the cookie |
+| GET | `/auth/me` | session | The signed-in user |
+| GET | `/users` · `/roles` | `users:manage` | List users / roles |
+| POST | `/users` | `users:manage` | `{ email, full_name, password, role }` → create a user |
+| PUT | `/users/:id` | `users:manage` | `{ full_name?, role?, is_active?, password? }`. Deactivation and password reset end the user's sessions |
+| POST | `/pdf/extract` · `/csv/extract` | `transactions:import` | Extract a statement |
+| POST | `/transactions/find-duplicates` | `transactions:import` | `{ references }` → existing transactions with those references (office-wide) |
+| POST | `/transactions/import` | `transactions:import` (+ `transactions:delete` when `overwrite`) | `{ records, overwrite }` |
+| POST | `/transactions/bulk-update` | `transactions:update:any`, or `:own` if every selected row is theirs | `{ ids, changes }` |
+| POST | `/transactions/bulk-delete` | `transactions:delete` | `{ ids }` |
+| POST | `/transactions/filter` · `/daily-balances/filter` | `transactions:read` / `balances:read` | List. Filter keys must be real columns |
+| POST | `/transactions/create` · `/bulk-create` | `transactions:create` / `transactions:import` | `created_by` is always the signed-in user |
+| PUT | `/transactions/:id` | `transactions:update:any`, or `:own` for their own rows | Update |
+| DELETE | `/transactions/:id` | `transactions:delete` | Delete |
+| POST / PUT / DELETE | `/daily-balances/…` | `balances:write` | One opening balance per date (creating an existing date updates it) |
+
+### Deploying
+
+1. Run `npm run verify`. Don't deploy unless it passes, and fix any failing test first.
+2. Set `JWT_SECRET` to a long random value and serve over HTTPS with `COOKIE_SECURE=true` (or `NODE_ENV=production`).
+3. Set `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` for the first start, so the automatic seed creates your Admin instead of printing a generated password in the server log.
+4. Build the frontend (`npm run build`) and serve `dist/`.
+5. Run the API (`node server/index.js`) next to it, with `/local-api` routed to it, and a persistent location for the SQLite file (`HAWALAFLOW_DB_PATH`).
+
+The project originally started on the Base44 platform. It no longer uses Base44 in any way: no Base44 packages, settings or hosting. It's a standalone React + Express app.
