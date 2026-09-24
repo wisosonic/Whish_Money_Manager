@@ -34,6 +34,8 @@ export function TypeIcon({ type }) {
   );
 }
 
+const txDateOfRow = (t) => t.transaction_date || new Date(t.created_date).toISOString().split("T")[0];
+
 // ═══ Sortable column header ═══
 // Clicking cycles: original order → ascending → descending → original (see src/lib/transactionSort.js).
 // The tooltip says what the next click does; aria-sort tells screen readers the current state.
@@ -71,7 +73,12 @@ export default function TransactionsList({
   onImportPDF,
   onRefresh,
   onResetOpeningBalance,
-  onDeleteDailyBalanceForDate
+  onDeleteDailyBalanceForDate,
+  // Search scope (Dashboard): "all" days or the selected "day"; searchingAllDays = results span days.
+  searchScope = "day",
+  setSearchScope,
+  searchingAllDays = false,
+  onOpenDay
 }) {
   const [deleting, setDeleting] = useState(false);
   const [deleteElapsed, setDeleteElapsed] = useState(0);
@@ -97,16 +104,22 @@ export default function TransactionsList({
 
   // ═══ Sorting (display only: selection, bulk actions and "#" keep working from `transactions`) ═══
   const [sort, setSort] = useState(NO_SORT);
-  // Each row's real place in the selected day's journal: shown in "#" and used to sort by it.
-  const dayOrder = new Map(
-    allTransactions.filter((tx) => (tx.transaction_date || new Date(tx.created_date).toISOString().split("T")[0]) === selectedDate)
-      .map((tx, i) => [tx.id, i])
-  );
+  // Each row's place in its own day's journal (shown in "#"), and in the whole journal (date, then
+  // import order — used to sort by "#", so results from several days sort by day first).
+  const journal = new Map();
+  const perDay = new Map();
+  allTransactions.forEach((tx, position) => {
+    const day = tx.transaction_date || new Date(tx.created_date).toISOString().split("T")[0];
+    const n = perDay.get(day) ?? 0;
+    perDay.set(day, n + 1);
+    journal.set(tx.id, { n, position });
+  });
   const activeSort = sort.key && !show[sort.key] ? NO_SORT : sort;
   const rows = sortTransactions(transactions, activeSort, {
     locale,
-    indexOf: (t) => dayOrder.get(t.id) ?? transactions.indexOf(t),
+    indexOf: (t) => journal.get(t.id)?.position ?? transactions.indexOf(t),
   });
+  const resultDays = searchingAllDays ? new Set(transactions.map(txDateOfRow)).size : 0;
   const onSort = (column) => setSort((prev) => nextSort(prev, column));
   const sortTooltip = (next, column) => (next === "none" ? tr("list.sort.none") : tr(`list.sort.${next}`, { column }));
   const typeTooltip = (next) => (next === "none" ? tr("list.sort.none") : tr(`list.sortType.${next}`));
@@ -243,6 +256,22 @@ export default function TransactionsList({
           
         </div>
 
+        {setSearchScope &&
+        <div className="flex items-center rounded-lg border bg-gray-50 p-0.5 text-sm" role="group" aria-label={tr("list.scope.label")} data-testid="search-scope">
+            {["all", "day"].map((scope) =>
+          <button
+            key={scope}
+            type="button"
+            onClick={() => setSearchScope(scope)}
+            aria-pressed={searchScope === scope}
+            data-testid={`search-scope-${scope}`}
+            className={`px-3 py-1 rounded-md font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${searchScope === scope ? "bg-white shadow text-blue-700" : "text-gray-600 hover:text-gray-800"}`}>
+                {tr(`list.scope.${scope}`)}
+              </button>
+          )}
+          </div>
+        }
+
         <div className="flex items-center gap-2 text-sm text-gray-600">
           <span className="font-medium text-[hsl(var(--foreground))]">{tr("list.journal")}:</span>
           <input
@@ -295,6 +324,13 @@ export default function TransactionsList({
         </div>
       }
 
+      {searchingAllDays &&
+      <div className="px-4 py-2 border-b bg-blue-50 text-sm text-blue-800 flex flex-wrap items-center gap-x-2" role="status" data-testid="all-days-results">
+          <span className="font-bold">{tr("list.allDaysResults", { count: transactions.length, days: resultDays })}</span>
+          {transactions.length > 0 && <span className="text-blue-700">{tr("list.allDaysHint")}</span>}
+        </div>
+      }
+
       {/* Actions row */}
       <div className="px-4 py-3 border-b flex flex-wrap items-center justify-between gap-3">
         <span className="text-[hsl(var(--foreground))] font-bold bg-[hsl(var(--background))] text-base text-start">{tr("list.count", { count: transactions.length })}</span>
@@ -327,7 +363,7 @@ export default function TransactionsList({
             <Percent className="w-4 h-4" />
             {tr("list.commissionReport")}
           </button>
-          {canDelete && transactions.length > 0 &&
+          {canDelete && transactions.length > 0 && !searchingAllDays &&
           <button
             onClick={() => setShowConfirm(true)}
             disabled={deleting}
@@ -441,8 +477,8 @@ export default function TransactionsList({
       <div className="p-12 text-center text-gray-400">{tr("common.loading")}</div> :
       transactions.length === 0 ?
       <div className="p-12 text-center">
-          <p className="text-gray-500 text-lg font-medium">{tr("list.empty")}</p>
-          <p className="text-gray-400 text-sm mt-1">{tr("list.emptyHint")}</p>
+          <p className="text-gray-500 text-lg font-medium">{searchingAllDays ? tr("list.emptyAllDays") : tr("list.empty")}</p>
+          <p className="text-gray-400 text-sm mt-1">{searchingAllDays ? tr("list.emptyAllDaysHint") : tr("list.emptyHint")}</p>
         </div> :
 
       <>
@@ -476,7 +512,7 @@ export default function TransactionsList({
             <tbody className="divide-y divide-gray-100">
               {rows.map((t, i) => {
                 // الرقم الحقيقي للعملية في اليوم (ترتيب allTransactions نفسه، مهما كان ترتيب العرض)
-                const realIndex = dayOrder.get(t.id) ?? -1;
+                const realIndex = journal.get(t.id)?.n ?? -1;
                 const displayIndex = realIndex >= 0 ? realIndex + 1 : i + 1;
                 return (
                   <tr key={t.id} className={`transition ${selectedIds.has(t.id) ? "bg-blue-50 hover:bg-blue-100" : "hover:bg-gray-50"}`} aria-selected={selectedIds.has(t.id)}>
@@ -485,7 +521,10 @@ export default function TransactionsList({
                           type="checkbox"
                           checked={selectedIds.has(t.id)}
                           onChange={() => toggleSelected(t.id)}
-                          aria-label={tr("list.selectRow", { n: displayIndex })}
+                          // Rows from another day (all-days search) say which day, so labels stay unique.
+                          aria-label={txDateOfRow(t) === selectedDate ?
+                            tr("list.selectRow", { n: displayIndex }) :
+                            tr("list.selectRowOnDay", { n: displayIndex, date: txDateOfRow(t) })}
                           className="w-4 h-4 accent-blue-600 cursor-pointer align-middle" />
                   </td>
                   {show.index &&
@@ -556,7 +595,15 @@ export default function TransactionsList({
                   }
                   {show.date &&
                     <td className="px-4 py-3 text-xs opacity-100 text-black-400 whitespace-nowrap">
-                      {t.transaction_date ?
+                      {searchingAllDays && onOpenDay ?
+                          <button
+                            type="button"
+                            onClick={() => onOpenDay(txDateOfRow(t))}
+                            title={tr("list.openDay")}
+                            className="text-blue-700 underline underline-offset-2 hover:text-blue-800 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400">
+                            {t.transaction_date || format(new Date(t.created_date), "yyyy/MM/dd HH:mm")}
+                          </button> :
+                        t.transaction_date ?
                           t.transaction_date :
                           format(new Date(t.created_date), "yyyy/MM/dd HH:mm")}
                     </td>

@@ -39,6 +39,8 @@ export default function Dashboard() {
     setSelectedDate(date);
   };
   const [search, setSearch] = useState("");
+  // Where a search looks: "all" days (default) or only the selected "day".
+  const [searchScope, setSearchScope] = useState("all");
   const [openingBalance, setOpeningBalance] = useState(0);
   const [dailyBalances, setDailyBalances] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
@@ -92,11 +94,18 @@ export default function Dashboard() {
 
 
 
+  // The selected day's transactions matching the search. The day's totals below always come from
+  // these, whatever the search scope, so an all-days search never mixes other days into them.
   const filtered = transactions.filter((t) => {
     const tDate = t.transaction_date || new Date(t.created_date).toISOString().split("T")[0];
     const matchDate = tDate === selectedDate;
     return matchDate && matchesSearch(t, search);
   });
+
+  // What the table shows: with a search in "all days" scope, every matching transaction on any day
+  // (in journal order: date, then import order); otherwise the selected day.
+  const searchingAllDays = searchScope === "all" && search.trim() !== "";
+  const tableRows = searchingAllDays ? transactions.filter((t) => matchesSearch(t, search)) : filtered;
 
   const totalDeposits = filtered.
   filter((t) => t.type === "cash_in").
@@ -253,11 +262,15 @@ export default function Dashboard() {
           onSaveOpeningBalance={canWriteBalances ? (val) => handleSetOpeningBalance(val, selectedDate) : undefined} />
         
         <TransactionsList
-          transactions={filtered}
+          transactions={tableRows}
           allTransactions={transactions}
           loading={loading}
           search={search}
           setSearch={setSearch}
+          searchScope={searchScope}
+          setSearchScope={setSearchScope}
+          searchingAllDays={searchingAllDays}
+          onOpenDay={(date) => {setSearch("");handleSetSelectedDate(date);}}
           selectedDate={selectedDate}
           setSelectedDate={handleSetSelectedDate}
           onToday={handleToday}

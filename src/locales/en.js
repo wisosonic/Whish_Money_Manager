@@ -101,6 +101,14 @@ const en = {
 
   // Transactions table
   "list.searchPlaceholder": "Search by name, amount, number or note...",
+  "list.scope.label": "Search in",
+  "list.scope.all": "All days",
+  "list.scope.day": "This day",
+  "list.allDaysResults": { one: "{count} result across {days} day", other: "{count} results across {days} days" },
+  "list.allDaysHint": "Click a date to open that day.",
+  "list.emptyAllDays": "No matching transactions on any day",
+  "list.emptyAllDaysHint": "Try a different name, number or amount.",
+  "list.openDay": "Open this day",
   "list.journal": "Day",
   "list.today": "Today",
   "list.count": { one: "{count} transaction", other: "{count} transactions" },
@@ -129,6 +137,7 @@ const en = {
   "list.emptyHint": "Add a transaction to get started",
   "list.selectAll": "Select all visible transactions",
   "list.selectRow": "Select transaction {n}",
+  "list.selectRowOnDay": "Select transaction {n} of {date}",
   "list.deleting": "Deleting transactions...",
   "list.pleaseWait": "Please wait until it finishes",
 

@@ -237,7 +237,8 @@ describe("TransactionsList — bulk actions", () => {
     const onDeleteDailyBalanceForDate = vi.fn();
     renderList({ transactions: rows3, allTransactions: rows3, onRefresh, onDeleteDailyBalanceForDate });
     fireEvent.click(rowBox(1));
-    fireEvent.click(rowBox(3));
+    // The third row is from another day: its checkbox names that day (its own day's row 1).
+    fireEvent.click(screen.getByLabelText("تحديد العملية 1 بتاريخ 2026-09-22"));
     fireEvent.click(screen.getByRole("button", { name: /حذف المحدد/ }));
 
     const dialog = screen.getByRole("alertdialog", { name: "تأكيد حذف المحدد" });

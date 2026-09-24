@@ -96,6 +96,14 @@ const ar = {
 
   // Transactions table
   "list.searchPlaceholder": "ابحث عن اسم أو مبلغ أو رقم أو ملاحظة...",
+  "list.scope.label": "البحث في",
+  "list.scope.all": "كل الأيام",
+  "list.scope.day": "هذا اليوم",
+  "list.allDaysResults": "{count} نتيجة في {days} يوم",
+  "list.allDaysHint": "اضغط على التاريخ لفتح ذلك اليوم.",
+  "list.emptyAllDays": "لا توجد معاملات مطابقة في أي يوم",
+  "list.emptyAllDaysHint": "جرّب اسماً أو رقماً أو مبلغاً آخر.",
+  "list.openDay": "فتح هذا اليوم",
   "list.journal": "اليومية",
   "list.today": "اليوم",
   "list.count": "{count} عملية",
@@ -124,6 +132,7 @@ const ar = {
   "list.emptyHint": "أضف معاملة جديدة للبدء",
   "list.selectAll": "تحديد كل العمليات الظاهرة",
   "list.selectRow": "تحديد العملية {n}",
+  "list.selectRowOnDay": "تحديد العملية {n} بتاريخ {date}",
   "list.deleting": "جاري مسح العمليات...",
   "list.pleaseWait": "يرجى الانتظار حتى اكتمال العملية",
 

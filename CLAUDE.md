@@ -58,7 +58,15 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
 - `NAME - 96171588017` descriptions are split in **both** engines (`splitNamePhone`): the name goes to sender/receiver, `phone` gets the number as printed, and `customer_number` gets it without the `961` / `+961` prefix.
 - Duplicates are matched by `reference_number` **across the whole office** (everyone shares one set of transactions). On re-import the user chooses **overwrite** (delete same-reference rows, then insert, in one database transaction) or **cancel**. Rows without a reference are never matched or deleted.
 - Manual insertion between table rows ("+ إدراج هنا") was removed at the user's request. Cash In / Cash Out buttons stay. `InsertTransactionModal.jsx` still exists but nothing uses it.
-- Search covers only the selected day (intentional: the table is a daily journal).
+- **Search scope** (changed at the user's request on 2026-09-24; it used to cover only the selected day):
+  - A switch next to the search box, **كل الأيام** (default) / **هذا اليوم**. `searchScope` state lives in `Dashboard.jsx`.
+  - With a search in "all" scope, the table gets every matching transaction (`tableRows`). Otherwise it gets the selected day's matches (`filtered`).
+  - **The day's totals always come from `filtered`** (the selected day plus the search), so other days never leak into them.
+  - In all-days results:
+    - "#" is the row's number within its own day (`journal` map in `TransactionsList`); sorting by "#" uses the global journal position.
+    - Dates are buttons that call `onOpenDay` (set the day, clear the search).
+    - Rows from another day get `list.selectRowOnDay` checkbox labels, so labels stay unique.
+    - "Delete all for this day" is hidden.
 - **Receiver report** ("تقرير مستلم", `ReceiverReportModal.jsx`) searches all days. It matches `receiver_name`, and matches `phone` / `customer_number` only when `receiver_name` is empty or a phone number (`matchesReceiver` in `src/lib/transactionSearch.js`). This is because `phone` / `customer_number` belong to the other party: on a cash-in from "NAME - 961…" they're the sender's. The receiver is displayed with `receiverDisplay`, following the same rule as the table's receiver column.
 - **Summaries** (`StatsCards.jsx`):
   - "ملخص الشهر" is expanded by default and "ملخص السنة" is collapsed by default. The user specified these defaults.
@@ -242,6 +250,7 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - Added `StatsCards.test.jsx` and Dashboard summary tests. Total now 104.
 ### 2026-09-24
 - **PDF one-cent overwrite fixed:** the balance cross-check now works in whole cents. A difference of exactly 1 cent is the provider's rounding and keeps the printed amount; anything larger is still corrected from the balance, and corrected amounts no longer carry float residue (20.19999999999999 → 20.2). 3 regression tests use values found by search that trigger the old float bug (e.g. 1100.36 − 100.37 − 1000). Two of them failed before the fix.
+- **Search across all days:** a scope switch (all days by default / this day), a results line, dates that open their day, per-day "#" and unique row labels. The day's totals are unchanged by the scope. Tests: 9 new Dashboard tests; the day-only tests now select "this day".
 - **Settings page** (per-user preferences):
   - **Server:** `server/preferences.js`, a `users.preferences` column with an upgrade step, and `PUT /auth/preferences`.
   - **Frontend:** `PreferencesContext`, `/settings`, and a header gear link.

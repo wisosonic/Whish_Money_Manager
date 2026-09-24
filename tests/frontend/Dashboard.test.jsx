@@ -57,7 +57,11 @@ afterEach(cleanup);
 const rowCount = (container) => container.querySelectorAll("tbody tr").length;
 const search = (value) => fireEvent.change(screen.getByPlaceholderText(/ابحث عن اسم/), { target: { value } });
 
-describe("Dashboard search", () => {
+const thisDayOnly = () => fireEvent.click(screen.getByTestId("search-scope-day"));
+const allDays = () => fireEvent.click(screen.getByTestId("search-scope-all"));
+const senders = (container) => [...container.querySelectorAll("tbody tr")].map((tr) => tr.children[3].textContent);
+
+describe("Dashboard search — this day", () => {
   it("shows only the selected day's transactions", async () => {
     const { container } = render(<Dashboard />);
     await waitFor(() => expect(rowCount(container)).toBe(2));
@@ -74,6 +78,7 @@ describe("Dashboard search", () => {
   ])("finds %s", async (_label, term, expected) => {
     const { container } = render(<Dashboard />);
     await waitFor(() => expect(rowCount(container)).toBe(2));
+    thisDayOnly();
     search(term);
     await waitFor(() => expect(rowCount(container)).toBe(expected));
   });
@@ -81,8 +86,112 @@ describe("Dashboard search", () => {
   it("shows the empty state when nothing matches", async () => {
     const { container } = render(<Dashboard />);
     await waitFor(() => expect(rowCount(container)).toBe(2));
+    thisDayOnly();
     search("no-such-thing");
     expect(await screen.findByText("لا توجد معاملات")).toBeInTheDocument();
+  });
+});
+
+describe("Dashboard search — all days", () => {
+  it("searches every day by default; the switch shows which scope is active", async () => {
+    const { container } = render(<Dashboard />);
+    await waitFor(() => expect(rowCount(container)).toBe(2));
+    expect(screen.getByTestId("search-scope-all")).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByTestId("search-scope-day")).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("group", { name: "البحث في" })).toBeInTheDocument();
+
+    search("vicario");
+    // The account holder is on all 5 rows, over 4 days, in journal order (oldest day first).
+    await waitFor(() => expect(rowCount(container)).toBe(5));
+    expect(screen.getByTestId("all-days-results")).toHaveTextContent("5 نتيجة في 4 يوم");
+    expect(senders(container)).toEqual(["Vicario", "EARLIER MONTH", "OTHER DAY", "Vicario", "MOUNIR TOSKA"]);
+  });
+
+  it("finds a transaction that isn't on the selected day", async () => {
+    const { container } = render(<Dashboard />);
+    await waitFor(() => expect(rowCount(container)).toBe(2));
+    search("EARLIER");
+    await waitFor(() => expect(rowCount(container)).toBe(1));
+    expect(screen.getByText("EARLIER MONTH")).toBeInTheDocument();
+    expect(screen.getByTestId("all-days-results")).toHaveTextContent("1 نتيجة في 1 يوم");
+  });
+
+  it("without a search, the table still shows just the selected day", async () => {
+    const { container } = render(<Dashboard />);
+    await waitFor(() => expect(rowCount(container)).toBe(2));
+    expect(screen.queryByTestId("all-days-results")).not.toBeInTheDocument();
+    expect(screen.queryByText("OTHER DAY")).not.toBeInTheDocument();
+  });
+
+  it("switching to 'this day' narrows the results, and back again widens them", async () => {
+    const { container } = render(<Dashboard />);
+    await waitFor(() => expect(rowCount(container)).toBe(2));
+    search("vicario");
+    await waitFor(() => expect(rowCount(container)).toBe(5));
+    thisDayOnly();
+    await waitFor(() => expect(rowCount(container)).toBe(2));
+    expect(screen.queryByTestId("all-days-results")).not.toBeInTheDocument();
+    allDays();
+    await waitFor(() => expect(rowCount(container)).toBe(5));
+  });
+
+  it("'#' shows each row's number within its own day, and rows from other days name their day", async () => {
+    const { container } = render(<Dashboard />);
+    await waitFor(() => expect(rowCount(container)).toBe(2));
+    search("vicario");
+    await waitFor(() => expect(rowCount(container)).toBe(5));
+    const numbers = [...container.querySelectorAll("tbody tr")].map((tr) => tr.children[1].textContent);
+    expect(numbers).toEqual(["1", "1", "1", "1", "2"]);
+    expect(screen.getByLabelText("تحديد العملية 1 بتاريخ 2026-09-22")).toBeInTheDocument();
+    expect(screen.getByLabelText("تحديد العملية 2")).toBeInTheDocument();
+  });
+
+  it("clicking a result's date opens that day and clears the search", async () => {
+    const { container } = render(<Dashboard />);
+    await waitFor(() => expect(rowCount(container)).toBe(2));
+    search("OTHER DAY");
+    await waitFor(() => expect(rowCount(container)).toBe(1));
+    fireEvent.click(screen.getByRole("button", { name: "2026-09-22" }));
+    await waitFor(() => expect(screen.getByDisplayValue("2026-09-22")).toBeInTheDocument());
+    expect(screen.getByPlaceholderText(/ابحث عن اسم/)).toHaveValue("");
+    expect(screen.queryByTestId("all-days-results")).not.toBeInTheDocument();
+    expect(senders(container)).toEqual(["OTHER DAY"]);
+  });
+
+  it("the day's totals never include other days' results", async () => {
+    const { container } = render(<Dashboard />);
+    await waitFor(() => expect(rowCount(container)).toBe(2));
+    const card = () => screen.getByText("إيداعات اليوم").parentElement.textContent;
+    const before = card();
+    search("EARLIER"); // matches a $300 deposit in June, none on the selected day
+    await waitFor(() => expect(rowCount(container)).toBe(1));
+    // With a search, the day card shows the selected day's matches (none), never June's $300.
+    expect(card()).not.toContain("300");
+    expect(before).toContain("50");
+    thisDayOnly();
+    await waitFor(() => expect(rowCount(container)).toBe(0));
+    // Same figure in both scopes: the scope only changes the table.
+    const dayScope = card();
+    allDays();
+    await waitFor(() => expect(rowCount(container)).toBe(1));
+    expect(card()).toBe(dayScope);
+  });
+
+  it("'delete all for this day' is hidden while showing results from all days", async () => {
+    const { container } = render(<Dashboard />);
+    await waitFor(() => expect(rowCount(container)).toBe(2));
+    expect(screen.getByRole("button", { name: /مسح الكل/ })).toBeInTheDocument();
+    search("vicario");
+    await waitFor(() => expect(rowCount(container)).toBe(5));
+    expect(screen.queryByRole("button", { name: /مسح الكل/ })).not.toBeInTheDocument();
+  });
+
+  it("shows an all-days empty state when nothing matches anywhere", async () => {
+    const { container } = render(<Dashboard />);
+    await waitFor(() => expect(rowCount(container)).toBe(2));
+    search("no-such-thing");
+    expect(await screen.findByText("لا توجد معاملات مطابقة في أي يوم")).toBeInTheDocument();
+    expect(screen.getByTestId("all-days-results")).toHaveTextContent("0 نتيجة في 0 يوم");
   });
 });
 
