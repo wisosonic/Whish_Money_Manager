@@ -76,9 +76,12 @@ const ar = {
 
   // Table columns (shared)
   "columns.type": "النوع",
-  "list.sortType.cash_in": "ترتيب حسب النوع: Cash In أولاً",
-  "list.sortType.cash_out": "ترتيب حسب النوع: Cash Out أولاً",
-  "list.sortType.none": "العودة إلى الترتيب الأصلي",
+  "columns.number": "الرقم",
+  "list.sort.asc": "ترتيب حسب {column}: تصاعدي",
+  "list.sort.desc": "ترتيب حسب {column}: تنازلي",
+  "list.sort.none": "العودة إلى الترتيب الأصلي",
+  "list.sortType.asc": "ترتيب حسب النوع: Cash In أولاً",
+  "list.sortType.desc": "ترتيب حسب النوع: Cash Out أولاً",
   "columns.sender": "المرسل",
   "columns.receiver": "المستلم",
   "columns.amount": "المبلغ",

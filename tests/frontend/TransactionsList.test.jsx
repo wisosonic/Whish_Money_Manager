@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import TransactionsList, { sortByType } from "@/components/dashboard/TransactionsList";
+import TransactionsList from "@/components/dashboard/TransactionsList";
 import { base44 } from "@/api/base44Client";
 import { setAuthRole } from "./authMock";
 
@@ -417,10 +417,75 @@ describe("TransactionsList — type column (icons + sorting)", () => {
     expect(senders(container)[0]).toBe("IN-A");
   });
 
-  it("sortByType is stable and doesn't change the input", () => {
-    const input = [...mixed];
-    expect(sortByType(input, "none")).toBe(input);
-    expect(sortByType(input, "cash_out").map((t) => t.id)).toEqual([11, 13, 12, 14]);
-    expect(input.map((t) => t.id)).toEqual([11, 12, 13, 14]);
+});
+
+describe("TransactionsList — every column is sortable", () => {
+  const day = [
+    { id: 21, type: "cash_out", amount: 500, commission: 0, sender_name: "charlie", receiver_name: "Zed", customer_number: "", service: "W2W", note: "", reference_number: "tr:10", transaction_date: "2026-09-23", created_date: "2026-09-23T09:00:00Z" },
+    { id: 22, type: "cash_in", amount: 25.25, commission: 0.253, sender_name: "Alpha", receiver_name: "", customer_number: "71588017", service: "", note: "late", reference_number: "tr:9", transaction_date: "2026-09-23", created_date: "2026-09-23T12:00:00Z" },
+    { id: 23, type: "cash_in", amount: 100, commission: 2, sender_name: "bravo", receiver_name: "Mia", customer_number: "", service: "QR", note: "", reference_number: "tr:100", transaction_date: "2026-09-23", created_date: "2026-09-23T10:30:00Z" },
+  ];
+  const ids = (container) => bodyRows(container).map((row) => row.querySelector("td:nth-child(2)").textContent);
+  const setup = () => renderList({ transactions: day, allTransactions: day });
+
+  it("every data column has a sort button with aria-sort; the checkbox and actions columns don't", () => {
+    const { container } = setup();
+    const headers = [...container.querySelectorAll("thead th")];
+    const sortable = headers.filter((th) => th.hasAttribute("aria-sort"));
+    expect(sortable.map((th) => th.querySelector("button").dataset.testid)).toEqual([
+      "sort-index", "sort-type", "sort-sender", "sort-receiver", "sort-amount", "sort-commissionRate",
+      "sort-commission", "sort-reference", "sort-service", "sort-note", "sort-date",
+    ]);
+    expect(headers[0].hasAttribute("aria-sort")).toBe(false);
+    expect(headers.at(-1).hasAttribute("aria-sort")).toBe(false);
+    sortable.forEach((th) => expect(th).toHaveAttribute("aria-sort", "none"));
+  });
+
+  it.each([
+    ["sort-index", ["1", "2", "3"], ["3", "2", "1"]],
+    ["sort-sender", ["2", "3", "1"], ["1", "3", "2"]], // Alpha, bravo, charlie (case-insensitive)
+    ["sort-receiver", ["2", "3", "1"], ["1", "3", "2"]], // 71588017 (the shown customer number), Mia, Zed
+    ["sort-amount", ["2", "3", "1"], ["1", "3", "2"]], // 25.25, 100, 500
+    ["sort-commissionRate", ["1", "2", "3"], ["3", "2", "1"]], // 0%, 1%, 2%
+    ["sort-commission", ["1", "2", "3"], ["3", "2", "1"]],
+    ["sort-reference", ["2", "1", "3"], ["3", "1", "2"]], // tr:9, tr:10, tr:100 (natural number order)
+    ["sort-service", ["3", "1", "2"], ["1", "3", "2"]], // QR, W2W; the empty one stays last both ways
+    ["sort-note", ["2", "1", "3"], ["2", "1", "3"]], // one note; the empty ones keep journal order
+    ["sort-date", ["1", "3", "2"], ["2", "3", "1"]], // same day: by the time entered
+  ])("%s: ascending, descending, then back to the journal order", (testId, asc, desc) => {
+    const { container } = setup();
+    const button = screen.getByTestId(testId);
+    fireEvent.click(button);
+    expect(button.closest("th")).toHaveAttribute("aria-sort", "ascending");
+    expect(ids(container)).toEqual(asc);
+    fireEvent.click(button);
+    expect(button.closest("th")).toHaveAttribute("aria-sort", "descending");
+    expect(ids(container)).toEqual(desc);
+    fireEvent.click(button);
+    expect(button.closest("th")).toHaveAttribute("aria-sort", "none");
+    expect(ids(container)).toEqual(["1", "2", "3"]);
+  });
+
+  it("only one column is sorted at a time; clicking another starts it ascending", () => {
+    const { container } = setup();
+    fireEvent.click(screen.getByTestId("sort-amount"));
+    fireEvent.click(screen.getByTestId("sort-amount"));
+    fireEvent.click(screen.getByTestId("sort-sender"));
+    expect(screen.getByTestId("sort-amount").closest("th")).toHaveAttribute("aria-sort", "none");
+    expect(screen.getByTestId("sort-sender").closest("th")).toHaveAttribute("aria-sort", "ascending");
+    expect(screen.getByTestId("sort-sender")).toHaveClass("text-blue-700");
+    expect(screen.getByTestId("sort-amount")).not.toHaveClass("text-blue-700");
+    expect(ids(container)).toEqual(["2", "3", "1"]);
+  });
+
+  it("tooltips say what the next click does, in the interface language", () => {
+    setup();
+    const amount = screen.getByTestId("sort-amount");
+    expect(amount).toHaveAttribute("title", "ترتيب حسب المبلغ: تصاعدي");
+    fireEvent.click(amount);
+    expect(amount).toHaveAttribute("title", "ترتيب حسب المبلغ: تنازلي");
+    fireEvent.click(amount);
+    expect(amount).toHaveAttribute("title", "العودة إلى الترتيب الأصلي");
+    expect(screen.getByTestId("sort-index")).toHaveAttribute("title", "ترتيب حسب الرقم: تصاعدي");
   });
 });

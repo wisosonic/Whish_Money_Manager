@@ -66,9 +66,19 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
 - **Type column** (user's request): `TypeIcon` in `TransactionsList.jsx` shows a green `ArrowDown` (Cash In) or a red `ArrowUp` (Cash Out) in a tinted circle, with `role="img"` + `aria-label`/`title` so it's never color-alone.
   - The arrow is `text-green-700` (not 600), for at least 3:1 contrast on `bg-green-100`.
   - The names stay the English "Cash In"/"Cash Out" in both languages, like the toolbar buttons.
-  - **Sorting:** the header button cycles `TYPE_SORT_CYCLE`: none → cash_in first (`aria-sort="ascending"`) → cash_out first (`"descending"`) → none.
-  - `sortByType` is stable and returns the input unchanged for "none". It only reorders what's displayed: selection, bulk actions and "#" (the real journal number) still work from `transactions`.
-  - The sort is component state, not saved.
+- **Sorting, every column** (user's request): the logic is in `src/lib/transactionSort.js`; `SortHeader` in `TransactionsList.jsx` renders each header. The checkbox and actions columns aren't sortable.
+  - **One sort state** `{ key, dir }`. `nextSort` cycles none → asc → desc → none, and clicking another column starts it at asc.
+  - **`SORT_VALUES`** defines how each column is read:
+    - `index` is the real journal position (the `dayOrder` map, which also feeds "#").
+    - `type` makes asc mean Cash In first.
+    - `receiver` uses `receiverDisplay`, so it sorts by what's shown.
+    - `commissionRate` is commission ÷ amount.
+    - `date` is transaction_date plus created_date.
+    - Add new sortable columns there.
+  - **Comparison rules:** stable. Empty values (`""`, null, `-`, `"null"`) are always last. Text uses `Intl.Collator(locale, { numeric: true, sensitivity: "base" })`, so comparison is case-insensitive, `tr:9` sorts before `tr:10`, and Arabic sorts alphabetically.
+  - **Display only:** it only reorders the displayed rows. Selection, bulk actions and "#" still work from `transactions`. The sort is component state, not saved.
+  - **Tooltips:** `list.sort.asc/desc` (with `{column}`), `list.sort.none`, and type-specific `list.sortType.asc/desc`. The "#" tooltip uses `columns.number`.
+  - **Layout:** header cells are `px-1`, since the button adds `px-2`, and the date cell is `whitespace-nowrap`. With the sort icons, wider padding made English cells wrap at 1280px.
 - **Bulk actions** (`TransactionsList.jsx` selection + `BulkEditModal.jsx`; server `POST /transactions/bulk-update` and `/bulk-delete`):
   - **Selection** is a `Set` of ids, limited to the currently visible rows. A `useEffect` on `transactions` drops ids that disappear through a day change or search, so bulk actions never hit hidden rows.
   - **Bulk edit is opt-in per field** (a "تغيير" checkbox). Only ticked fields are sent, and ticked + empty clears the field.
@@ -213,6 +223,10 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - `Dashboard` computes `yearly*` figures.
   - Added `StatsCards.test.jsx` and Dashboard summary tests. Total now 104.
 ### 2026-09-24
+- **Every table column sortable**: generalized the Type-only sort into `src/lib/transactionSort.js` plus `SortHeader` (11 columns, asc → desc → original, stable, empty values last, locale-aware).
+  - "#" now comes from a map built once, instead of filtering all transactions for every row.
+  - Checked in Edge in both languages. The first English check showed cells wrapping, which was fixed with tighter header padding and a no-wrap date.
+  - Tests: `transactionSort.test.js` (7) and 13 table tests covering every column, the single active sort, and tooltips. The old Type-only unit test was replaced (total 381).
 - **Type column icons + sorting**: "Cash In"/"Cash Out" text replaced by green/red arrow icons, and the Type header sorts (Cash In first / Cash Out first / original). Checked in Edge in both languages and all three sort states. Added 4 tests (total 362).
 - **Language button → switch** (user's request): the toggle is now a sliding ع / EN switch (`role="switch"`), in the header and on the login page. Checked in Edge in both languages, on the login page and at phone width. Tests: the toggle tests now check switch semantics, the knob position, the active label and the fixed left-to-right track, plus 1 new test (total 358).
 - **Scroll position kept after saving** (user-reported):

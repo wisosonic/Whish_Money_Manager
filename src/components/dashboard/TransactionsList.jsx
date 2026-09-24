@@ -11,6 +11,7 @@ import DailyCommissionReport from "@/components/transactions/DailyCommissionRepo
 import { useAuth } from "@/lib/AuthContext";
 import { PERMISSIONS } from "@/lib/permissions";
 import { useI18n } from "@/lib/i18n";
+import { NO_SORT, nextSort, sortTransactions } from "@/lib/transactionSort";
 
 // ═══ Type column: icon + sorting ═══
 // Cash In = green down-arrow, Cash Out = red up-arrow (same arrows as the Cash In / Cash Out buttons).
@@ -31,15 +32,28 @@ export function TypeIcon({ type }) {
   );
 }
 
-// Clicking the Type header cycles: original order → Cash In first → Cash Out first → original.
-export const TYPE_SORT_CYCLE = { none: "cash_in", cash_in: "cash_out", cash_out: "none" };
-
-// Stable: rows of the same type keep their journal order.
-export const sortByType = (rows, sort) => {
-  if (sort === "none") return rows;
-  const rank = (t) => ((t.type === "cash_in") === (sort === "cash_in") ? 0 : 1);
-  return rows.map((t, i) => [t, i]).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map(([t]) => t);
-};
+// ═══ Sortable column header ═══
+// Clicking cycles: original order → ascending → descending → original (see src/lib/transactionSort.js).
+// The tooltip says what the next click does; aria-sort tells screen readers the current state.
+function SortHeader({ column, label, sortName, sort, onSort, tooltips, className = "" }) {
+  const active = sort.key === column;
+  const dir = active ? sort.dir : "none";
+  const next = nextSort(sort, column).dir;
+  const Icon = dir === "asc" ? ChevronUp : dir === "desc" ? ChevronDown : ArrowUpDown;
+  return (
+    <th className={`px-1 py-3 ${className}`} aria-sort={dir === "asc" ? "ascending" : dir === "desc" ? "descending" : "none"}>
+      <button
+        type="button"
+        onClick={() => onSort(column)}
+        title={tooltips(next, sortName || label)}
+        data-testid={`sort-${column}`}
+        className={`inline-flex items-center gap-1 rounded-md px-2 py-1 whitespace-nowrap font-[inherit] hover:bg-gray-200 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${active ? "text-blue-700" : ""}`}>
+        {label}
+        <Icon className={`w-3.5 h-3.5 shrink-0 ${active ? "" : "opacity-40"}`} aria-hidden="true" />
+      </button>
+    </th>
+  );
+}
 
 export default function TransactionsList({
   transactions,
@@ -67,14 +81,27 @@ export default function TransactionsList({
   const [showReceiverReport, setShowReceiverReport] = useState(false);
   const [showCommissionReport, setShowCommissionReport] = useState(false);
   const [showChart, setShowChart] = useState(false);
-  const [typeSort, setTypeSort] = useState("none");
-  const rows = sortByType(transactions, typeSort);
-  const TypeSortIcon = typeSort === "cash_in" ? ChevronDown : typeSort === "cash_out" ? ChevronUp : ArrowUpDown;
 
   // Permissions (the API enforces the same rules; this only hides what the user can't do).
   const { can, canEditTransaction } = useAuth();
   // Translation function is `tr` here: `t` is used throughout this file for a transaction.
-  const { t: tr, dir } = useI18n();
+  const { t: tr, dir, locale } = useI18n();
+
+  // ═══ Sorting (display only: selection, bulk actions and "#" keep working from `transactions`) ═══
+  const [sort, setSort] = useState(NO_SORT);
+  // Each row's real place in the selected day's journal: shown in "#" and used to sort by it.
+  const dayOrder = new Map(
+    allTransactions.filter((tx) => (tx.transaction_date || new Date(tx.created_date).toISOString().split("T")[0]) === selectedDate)
+      .map((tx, i) => [tx.id, i])
+  );
+  const rows = sortTransactions(transactions, sort, {
+    locale,
+    indexOf: (t) => dayOrder.get(t.id) ?? transactions.indexOf(t),
+  });
+  const onSort = (column) => setSort((prev) => nextSort(prev, column));
+  const sortTooltip = (next, column) => (next === "none" ? tr("list.sort.none") : tr(`list.sort.${next}`, { column }));
+  const typeTooltip = (next) => (next === "none" ? tr("list.sort.none") : tr(`list.sortType.${next}`));
+  const headerProps = { sort, onSort, tooltips: sortTooltip };
   const canDelete = can(PERMISSIONS.TRANSACTIONS_DELETE);
 
   // ═══ التحديد المتعدد والإجراءات الجماعية ═══
@@ -422,40 +449,24 @@ export default function TransactionsList({
                     aria-label={tr("list.selectAll")}
                     className="w-4 h-4 accent-blue-600 cursor-pointer align-middle" />
                 </th>
-                <th className="px-4 py-3">#</th>
-                <th
-                  className="px-2 py-3"
-                  aria-sort={typeSort === "none" ? "none" : typeSort === "cash_in" ? "ascending" : "descending"}>
-                  <button
-                    type="button"
-                    onClick={() => setTypeSort(TYPE_SORT_CYCLE[typeSort])}
-                    title={tr(`list.sortType.${TYPE_SORT_CYCLE[typeSort]}`)}
-                    data-testid="sort-type"
-                    className={`inline-flex items-center gap-1 rounded-md px-2 py-1 font-[inherit] hover:bg-gray-200 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${typeSort === "none" ? "" : "text-blue-700"}`}>
-                    {tr("columns.type")}
-                    <TypeSortIcon className={`w-3.5 h-3.5 ${typeSort === "none" ? "opacity-50" : ""}`} aria-hidden="true" />
-                  </button>
-                </th>
-                <th className="px-4 py-3">{tr("columns.sender")}</th>
-                <th className="px-4 py-3">{tr("columns.receiver")}</th>
-                <th className="px-4 py-3">{tr("columns.amount")}</th>
-                <th className="px-4 py-3">{tr("columns.commissionRate")}</th>
-                <th className="px-4 py-3">{tr("columns.commission")}</th>
-
-                <th className="px-4 py-3">{tr("columns.reference")}</th>
-                <th className="px-4 py-3">{tr("columns.service")}</th>
-                <th className="px-4 py-3">{tr("columns.note")}</th>
-                <th className="px-4 py-3">{tr("columns.date")}</th>
+                <SortHeader column="index" label="#" sortName={tr("columns.number")} {...headerProps} />
+                <SortHeader column="type" label={tr("columns.type")} {...headerProps} tooltips={typeTooltip} />
+                <SortHeader column="sender" label={tr("columns.sender")} {...headerProps} />
+                <SortHeader column="receiver" label={tr("columns.receiver")} {...headerProps} />
+                <SortHeader column="amount" label={tr("columns.amount")} {...headerProps} />
+                <SortHeader column="commissionRate" label={tr("columns.commissionRate")} {...headerProps} />
+                <SortHeader column="commission" label={tr("columns.commission")} {...headerProps} />
+                <SortHeader column="reference" label={tr("columns.reference")} {...headerProps} />
+                <SortHeader column="service" label={tr("columns.service")} {...headerProps} />
+                <SortHeader column="note" label={tr("columns.note")} {...headerProps} />
+                <SortHeader column="date" label={tr("columns.date")} {...headerProps} />
                 <th className="px-4 py-3"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {rows.map((t, i) => {
-                // الرقم الحقيقي للعملية في اليوم (من allTransactions مرتبة بنفس ترتيب الجدول)
-                const realIndex = allTransactions.filter((tx) => {
-                  const d = tx.transaction_date || new Date(tx.created_date).toISOString().split("T")[0];
-                  return d === selectedDate;
-                }).findIndex((tx) => tx.id === t.id);
+                // الرقم الحقيقي للعملية في اليوم (ترتيب allTransactions نفسه، مهما كان ترتيب العرض)
+                const realIndex = dayOrder.get(t.id) ?? -1;
                 const displayIndex = realIndex >= 0 ? realIndex + 1 : i + 1;
                 return (
                   <tr key={t.id} className={`transition ${selectedIds.has(t.id) ? "bg-blue-50 hover:bg-blue-100" : "hover:bg-gray-50"}`} aria-selected={selectedIds.has(t.id)}>
@@ -513,7 +524,7 @@ export default function TransactionsList({
                         "-"}
                   </td>
                   <td className="text-black-500 py-3 px-1">{t.note || "-"}</td>
-                  <td className="px-4 py-3 text-xs opacity-100 text-black-400">
+                  <td className="px-4 py-3 text-xs opacity-100 text-black-400 whitespace-nowrap">
                     {t.transaction_date ?
                         t.transaction_date :
                         format(new Date(t.created_date), "yyyy/MM/dd HH:mm")}

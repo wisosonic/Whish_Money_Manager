@@ -48,8 +48,17 @@ It runs entirely on your machine: a React frontend and a small Node.js/Express A
   - Because profit and cash flows use different scales on the two axes, compare each line against its own axis. The tooltip and table view give exact values.
 - **Your place is kept:** after editing, deleting, a bulk action, Cash In/Out or an import, the table updates in place and the page stays exactly where you had scrolled. It doesn't jump back to the top. "Loading..." appears only the first time the page opens.
 - **Type column**: each row shows an icon instead of text: a **green ↓** for Cash In and a **red ↑** for Cash Out (the same arrows as the Cash In / Cash Out buttons). Hover over an icon to see its name; screen readers read it out.
-  - **Sorting:** click the "Type" header to show Cash In first, click again for Cash Out first, and a third time to go back to the original order. The small arrow next to the header shows the current sort.
-  - Rows of the same type keep their original order, and the "#" column keeps each row's real number in the day's journal.
+- **Sorting (every column)**: click any column header (#, Type, Sender, Receiver, Amount, Commission rate, Commission, Reference, Service, Note, Date) to sort by it. Click once for ascending, again for descending, and a third time to go back to the journal order.
+  - The sorted column is highlighted in blue, with ▲ or ▼ next to its name. Hovering over a header tells you what the next click will do.
+  - Only one column is sorted at a time; clicking another column starts it ascending.
+  - **Ascending means:** A→Z, smallest first, oldest first. For Type, it means Cash In first.
+  - **How values compare:**
+    - Names ignore upper/lower case, and Arabic names sort in Arabic alphabetical order.
+    - References compare their numbers naturally (`tr:9` before `tr:10`).
+    - Receiver sorts by what the column shows.
+    - Rows with an empty value always go last, and rows with the same value keep their journal order.
+  - The "#" column always shows each row's real number in the day's journal. Selecting rows and bulk actions work the same while sorted.
+  - The sort resets when the page reloads.
 - **Manual entry**: Cash In / Cash Out forms, plus edit, delete, and "delete all for this day". Deleting a row happens as soon as you confirm it ("تأكيد"); there is no undo.
 - **Bulk actions (multi-select)**: tick the checkbox on any rows, or use the header checkbox to select every visible row. A partly-selected header shows a dash.
   - A blue bar appears above the table with the selection count and total amount, plus:
@@ -302,7 +311,8 @@ tests/
     ├── ImportPDFModal.test.jsx   # PDF/CSV routing, preview, duplicate prompt, save payload
     ├── TransactionsList.test.jsx     # table, report/chart buttons, removed buttons, immediate delete,
     │                                 # multi-select, select-all, bulk edit/delete flows,
-    │                                 # type icons and sorting by type
+    │                                 # type icons, sorting by every column
+    ├── transactionSort.test.js       # sort cycle, stability, empty values last, natural/Arabic order
     ├── BulkEditModal.test.jsx        # opt-in fields, payload, commission rate, validation, errors
     ├── ReceiverReportModal.test.jsx  # receiver matching, totals, date filter
     ├── branding.test.jsx             # header (logo, name, role, last login, sticky), login page, tab title/icon, manifest
