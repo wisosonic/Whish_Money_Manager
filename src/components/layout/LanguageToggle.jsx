@@ -36,7 +36,7 @@ export default function LanguageToggle({ className = "" }) {
       <span
         aria-hidden="true"
         data-testid="language-toggle-knob"
-        className={`absolute top-1 bottom-1 left-1 w-[38px] rounded-full bg-white shadow transition-transform duration-200 ease-out motion-reduce:transition-none ${isEnglish ? "translate-x-[38px]" : "translate-x-0"}`}
+        className={`theme-fixed absolute top-1 bottom-1 left-1 w-[38px] rounded-full bg-white shadow transition-transform duration-200 ease-out motion-reduce:transition-none ${isEnglish ? "translate-x-[38px]" : "translate-x-0"}`}
       />
       {label("ar", !isEnglish)}
       {label("en", isEnglish)}

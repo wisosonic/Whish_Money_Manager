@@ -7,11 +7,18 @@
 // Changes apply at once (optimistically) and are saved in the background; if the server refuses,
 // the previous values come back and `status` becomes "error".
 // Components rendered without a <PreferencesProvider> (e.g. in unit tests) get the defaults.
+//
+// Theme: "dark" (or "system" while the device is in dark mode) puts the `dark` class on <html>;
+// the dark palette lives in src/assets/css/index.css. The choice is mirrored to the `wmm_theme`
+// cookie so index.html can apply it before the first paint (no white flash on reload).
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
 import { useI18n } from "@/lib/i18n";
 import { DEFAULT_PREFERENCES, resolvePreferences } from "@/lib/preferences";
+
+export const THEME_COOKIE = "wmm_theme";
+const ONE_YEAR_SECONDS = 365 * 24 * 60 * 60;
 
 const PreferencesContext = createContext({
   preferences: resolvePreferences(DEFAULT_PREFERENCES),
@@ -19,10 +26,16 @@ const PreferencesContext = createContext({
   setLanguage: null,
   status: "idle",
   error: "",
+  isDark: false,
 });
 
+const prefersDarkQuery = () =>
+  typeof window !== "undefined" && typeof window.matchMedia === "function"
+    ? window.matchMedia("(prefers-color-scheme: dark)")
+    : null;
+
 export function PreferencesProvider({ children }) {
-  const { user } = useAuth();
+  const { user, isLoadingAuth } = useAuth();
   const { setLang } = useI18n();
   const [preferences, setPreferences] = useState(() => resolvePreferences(user?.preferences));
   const [status, setStatus] = useState("idle");
@@ -77,6 +90,29 @@ export function PreferencesProvider({ children }) {
     return queue.current;
   }, [userId]);
 
+  // ═══ Theme ═══
+  const [isDark, setIsDark] = useState(false);
+  const theme = preferences.theme;
+  useEffect(() => {
+    // While the session is still being checked, keep whatever index.html applied from the cookie.
+    if (isLoadingAuth) return undefined;
+    const root = document.documentElement;
+    const media = theme === "system" ? prefersDarkQuery() : null;
+    const apply = () => {
+      const dark = theme === "dark" || Boolean(media?.matches);
+      root.classList.toggle("dark", dark);
+      root.style.colorScheme = dark ? "dark" : "light";
+      setIsDark(dark);
+    };
+    apply();
+    if (userId) {
+      const secure = location.protocol === "https:" ? "; Secure" : "";
+      document.cookie = `${THEME_COOKIE}=${theme}; Path=/; Max-Age=${ONE_YEAR_SECONDS}; SameSite=Lax${secure}`;
+    }
+    media?.addEventListener?.("change", apply);
+    return () => media?.removeEventListener?.("change", apply);
+  }, [theme, userId, isLoadingAuth]);
+
   // Switching language anywhere (header switch, Settings page) also remembers it for the account.
   const setLanguage = useCallback((lang) => {
     setLang(lang);
@@ -84,8 +120,8 @@ export function PreferencesProvider({ children }) {
   }, [setLang, savePreferences, userId]);
 
   const value = useMemo(
-    () => ({ preferences, savePreferences, setLanguage, status, error }),
-    [preferences, savePreferences, setLanguage, status, error]
+    () => ({ preferences, savePreferences, setLanguage, status, error, isDark }),
+    [preferences, savePreferences, setLanguage, status, error, isDark]
   );
   return <PreferencesContext.Provider value={value}>{children}</PreferencesContext.Provider>;
 }

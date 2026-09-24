@@ -34,6 +34,7 @@ describe("preferences API", () => {
       hiddenColumns: [],
       density: "comfortable",
       summaries: { month: true, year: false },
+      theme: "light",
     });
   });
 
@@ -46,6 +47,7 @@ describe("preferences API", () => {
       hiddenColumns: ["note", "service"],
       density: "compact",
       summaries: { month: true, year: false },
+      theme: "light",
     });
 
     res = await save("user", { summaries: { year: true }, language: "en" });
@@ -71,6 +73,12 @@ describe("preferences API", () => {
     expect(stored("admin@test.local")).toBeNull();
   });
 
+  it.each(["dark", "system", "light"])("saves the theme %s", async (theme) => {
+    const res = await save("manager", { theme });
+    expect(res.status).toBe(200);
+    expect(res.body.preferences.theme).toBe(theme);
+  });
+
   it("can clear the saved language back to null", async () => {
     await save("manager", { language: "ar" });
     const res = await save("manager", { language: null });
@@ -78,7 +86,8 @@ describe("preferences API", () => {
   });
 
   it.each([
-    ["unknown setting", { theme: "dark" }, "Invalid preferences"],
+    ["unknown setting", { fontSize: 20 }, "Invalid preferences"],
+    ["bad theme", { theme: "blue" }, "Invalid preferences"],
     ["unknown column", { hiddenColumns: ["password_hash"] }, "Invalid preferences"],
     ["columns not a list", { hiddenColumns: "note" }, "Invalid preferences"],
     ["every column hidden", { hiddenColumns: TABLE_COLUMNS }, "At least one column must stay visible"],
@@ -106,11 +115,11 @@ describe("preferences API", () => {
 
 describe("preferences rules (shared with the UI)", () => {
   it("resolvePreferences reads stored JSON tolerantly, falling back to defaults for anything invalid", () => {
-    expect(resolvePreferences(null)).toEqual({ ...DEFAULT_PREFERENCES, hiddenColumns: [], summaries: { month: true, year: false } });
+    expect(resolvePreferences(null)).toEqual({ ...DEFAULT_PREFERENCES, hiddenColumns: [], summaries: { month: true, year: false }, theme: "light" });
     expect(resolvePreferences("not json")).toEqual(resolvePreferences(null));
     expect(resolvePreferences(JSON.stringify({
-      language: "fr", hiddenColumns: ["note", "note", "bogus"], density: "tiny", summaries: { month: false, year: "x" },
-    }))).toEqual({ language: null, hiddenColumns: ["note"], density: "comfortable", summaries: { month: false, year: false } });
+      language: "fr", hiddenColumns: ["note", "note", "bogus"], density: "tiny", summaries: { month: false, year: "x" }, theme: "neon",
+    }))).toEqual({ language: null, hiddenColumns: ["note"], density: "comfortable", summaries: { month: false, year: false }, theme: "light" });
     // A stored "hide everything" can never blank the table.
     expect(resolvePreferences({ hiddenColumns: TABLE_COLUMNS }).hiddenColumns).toEqual([]);
   });

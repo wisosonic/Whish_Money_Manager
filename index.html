@@ -2,13 +2,19 @@
 <html lang="ar" dir="rtl">
   <head>
     <meta charset="UTF-8" />
-    <!-- Apply the saved interface language (wmm_lang cookie) before the first paint, so English
+    <!-- Apply the saved interface language (wmm_lang cookie) and theme (wmm_theme) before the first paint, so English
          users don't see a right-to-left flash. Arabic is the default; src/lib/i18n.jsx takes over. -->
     <script>
       try {
         if (/(?:^|;\s*)wmm_lang=en(?:;|$)/.test(document.cookie)) {
           document.documentElement.lang = "en";
           document.documentElement.dir = "ltr";
+        }
+        // Dark mode before the first paint (the signed-in user's theme, mirrored by PreferencesContext).
+        var theme = (document.cookie.match(/(?:^|;\s*)wmm_theme=(light|dark|system)(?:;|$)/) || [])[1];
+        if (theme === "dark" || (theme === "system" && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches)) {
+          document.documentElement.classList.add("dark");
+          document.documentElement.style.colorScheme = "dark";
         }
       } catch (e) {}
     </script>

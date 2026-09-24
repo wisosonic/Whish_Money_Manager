@@ -5,6 +5,7 @@
 //   hiddenColumns  column keys           transactions table columns the user turned off
 //   density        "comfortable" | "compact"
 //   summaries      { month, year }       whether each summary block starts expanded
+//   theme          "light" | "dark" | "system"   "system" follows the device's light/dark setting
 
 // Transactions table data columns, in display order (the checkbox and actions columns always show).
 export const TABLE_COLUMNS = [
@@ -14,6 +15,7 @@ export const TABLE_COLUMNS = [
 
 export const PREFERENCE_LANGUAGES = ["ar", "en"];
 export const DENSITIES = ["comfortable", "compact"];
+export const THEMES = ["light", "dark", "system"];
 
 // The defaults reproduce the app as it was before settings existed (monthly summary open,
 // yearly closed, every column visible, roomy rows).
@@ -22,6 +24,7 @@ export const DEFAULT_PREFERENCES = Object.freeze({
   hiddenColumns: Object.freeze([]),
   density: "comfortable",
   summaries: Object.freeze({ month: true, year: false }),
+  theme: "light",
 });
 
 const isPlainObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
@@ -51,6 +54,7 @@ export const resolvePreferences = (stored) => {
       month: typeof summaries.month === "boolean" ? summaries.month : DEFAULT_PREFERENCES.summaries.month,
       year: typeof summaries.year === "boolean" ? summaries.year : DEFAULT_PREFERENCES.summaries.year,
     },
+    theme: THEMES.includes(source.theme) ? source.theme : DEFAULT_PREFERENCES.theme,
   };
 };
 
@@ -76,6 +80,10 @@ export const applyPreferenceChanges = (current, changes) => {
       case "density":
         if (!DENSITIES.includes(value)) return { error: "Invalid preferences" };
         next.density = value;
+        break;
+      case "theme":
+        if (!THEMES.includes(value)) return { error: "Invalid preferences" };
+        next.theme = value;
         break;
       case "summaries":
         if (!isPlainObject(value)) return { error: "Invalid preferences" };

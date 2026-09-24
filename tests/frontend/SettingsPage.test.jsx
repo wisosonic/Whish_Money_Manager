@@ -135,12 +135,12 @@ describe("Settings page", () => {
   });
 
   it("restores the default display settings in one save (the language is left alone)", async () => {
-    setAuthRole("user", { preferences: { language: "ar", hiddenColumns: ["note"], density: "compact", summaries: { month: false, year: true } } });
+    setAuthRole("user", { preferences: { language: "ar", hiddenColumns: ["note"], density: "compact", summaries: { month: false, year: true }, theme: "dark" } });
     renderSettings();
     fireEvent.click(box("settings-reset"));
     await waitFor(() => expect(base44.auth.updatePreferences).toHaveBeenCalledTimes(1));
     expect(base44.auth.updatePreferences).toHaveBeenCalledWith({
-      hiddenColumns: [], density: "comfortable", summaries: { month: true, year: false },
+      hiddenColumns: [], theme: "light", density: "comfortable", summaries: { month: true, year: false },
     });
     await waitFor(() => expect(box("settings-reset")).toBeDisabled());
   });

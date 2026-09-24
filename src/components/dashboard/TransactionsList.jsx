@@ -333,7 +333,7 @@ export default function TransactionsList({
 
       {/* Actions row */}
       <div className="px-4 py-3 border-b flex flex-wrap items-center justify-between gap-3">
-        <span className="text-[hsl(var(--foreground))] font-bold bg-[hsl(var(--background))] text-base text-start">{tr("list.count", { count: transactions.length })}</span>
+        <span className="text-[hsl(var(--foreground))] font-bold text-base text-start">{tr("list.count", { count: transactions.length })}</span>
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => setShowChart(true)}

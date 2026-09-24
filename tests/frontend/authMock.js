@@ -7,7 +7,7 @@
 import { vi } from "vitest";
 import { DEFAULT_ROLES, canUpdateTransaction, hasPermission } from "@/lib/permissions";
 
-const state = { user: null, logout: vi.fn(), login: vi.fn() };
+const state = { user: null, logout: vi.fn(), login: vi.fn(), isLoadingAuth: false };
 
 export const userWithRole = (role, overrides = {}) => {
   const definition = DEFAULT_ROLES.find((r) => r.name === role);
@@ -27,7 +27,13 @@ export const setAuthRole = (role, overrides) => {
   state.user = role ? userWithRole(role, overrides) : null;
   state.logout = vi.fn();
   state.login = vi.fn();
+  state.isLoadingAuth = false;
   return state.user;
+};
+
+// Simulate the session check that runs when the app starts (before the user is known).
+export const setAuthLoading = (loading) => {
+  state.isLoadingAuth = loading;
 };
 
 export const authMocks = () => state;
@@ -36,6 +42,7 @@ export const authContextMock = {
   useAuth: () => ({
     user: state.user,
     isAuthenticated: Boolean(state.user),
+    isLoadingAuth: state.isLoadingAuth,
     logout: state.logout,
     login: state.login,
     can: (permission) => hasPermission(state.user, permission),

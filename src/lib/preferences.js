@@ -4,6 +4,7 @@ export {
   TABLE_COLUMNS,
   PREFERENCE_LANGUAGES,
   DENSITIES,
+  THEMES,
   DEFAULT_PREFERENCES,
   resolvePreferences,
   applyPreferenceChanges,

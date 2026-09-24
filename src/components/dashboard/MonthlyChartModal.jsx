@@ -5,6 +5,7 @@ import {
 } from "recharts";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useI18n } from "@/lib/i18n";
+import { usePreferences } from "@/lib/PreferencesContext";
 import ar from "@/locales/ar";
 import {
   availableYears, buildMonthlyChartData, formatCompactMoney, formatMoney, sumChartData,
@@ -12,11 +13,20 @@ import {
 
 // Colors validated for color-vision deficiency (all pairs ΔE ≥ 17) and ≥ 3:1 contrast on white,
 // kept on the app's blue / green / red meaning. Cash out is also dashed, so it never relies on color alone.
+// Dark mode has its own steps (`darkColor`), validated against the dark card (#1e293b): all checks
+// pass (lightness band, chroma, CVD ΔE ≥ 8.8, ≥ 3:1 contrast). Red had to become pink there — every
+// red light enough for the dark background was too close to the green for colour-blind readers.
 export const CHART_SERIES = {
   // `name` is the Arabic default (for non-React code and tests); the UI shows t(nameKey).
-  profit: { nameKey: "chart.series.profit", name: ar["chart.series.profit"], color: "#1d4ed8" },
-  cashIn: { nameKey: "chart.series.cashIn", name: ar["chart.series.cashIn"], color: "#16a34a" },
-  cashOut: { nameKey: "chart.series.cashOut", name: ar["chart.series.cashOut"], color: "#991b1b", dashed: true },
+  profit: { nameKey: "chart.series.profit", name: ar["chart.series.profit"], color: "#1d4ed8", darkColor: "#3b82f6" },
+  cashIn: { nameKey: "chart.series.cashIn", name: ar["chart.series.cashIn"], color: "#16a34a", darkColor: "#16a34a" },
+  cashOut: { nameKey: "chart.series.cashOut", name: ar["chart.series.cashOut"], color: "#991b1b", darkColor: "#ec4899", dashed: true },
+};
+
+// Axis, grid and caption inks per theme.
+export const CHART_INK = {
+  light: { tick: "#4b5563", caption: "#374151", grid: "#e5e7eb", axis: "#d1d5db", dot: "#ffffff", cursor: "rgba(29, 78, 216, 0.06)" },
+  dark: { tick: "#cbd5e1", caption: "#e2e8f0", grid: "#334155", axis: "#475569", dot: "#1e293b", cursor: "rgba(148, 163, 184, 0.12)" },
 };
 
 const SeriesKey = ({ dataKey, color }) =>
@@ -65,12 +75,12 @@ export function ChartLegend({ payload }) {
 
 // Horizontal axis caption above an axis, anchored to its outer edge so it never runs off the chart
 // (rotated Arabic axis titles are hard to read).
-const axisCaption = (text, side, fontSize) => {
+const axisCaption = (text, side, fontSize, fill) => {
   const AxisCaption = ({ viewBox }) => {
     if (!viewBox) return null;
     const x = side === "left" ? viewBox.x : viewBox.x + viewBox.width;
     return (
-      <text x={x} y={viewBox.y - 10} textAnchor={side === "left" ? "start" : "end"} fill="#374151" fontSize={fontSize}>
+      <text x={x} y={viewBox.y - 10} textAnchor={side === "left" ? "start" : "end"} fill={fill} fontSize={fontSize}>
         {text}
       </text>
     );
@@ -84,6 +94,9 @@ const prefersReducedMotion = () =>
 
 export default function MonthlyChartModal({ allTransactions, selectedDate, onClose }) {
   const { t, dir } = useI18n();
+  const { isDark } = usePreferences();
+  const ink = isDark ? CHART_INK.dark : CHART_INK.light;
+  const colorOf = (key) => (isDark ? CHART_SERIES[key].darkColor : CHART_SERIES[key].color);
   const seriesName = (key) => t(CHART_SERIES[key].nameKey);
   const isMobile = useIsMobile();
   const animate = !prefersReducedMotion();
@@ -195,41 +208,41 @@ export default function MonthlyChartModal({ allTransactions, selectedDate, onClo
                   data={data}
                   margin={isMobile ? { top: 20, right: 0, bottom: 0, left: 0 } : { top: 24, right: 8, bottom: 8, left: 8 }}
                 >
-                  <CartesianGrid vertical={false} stroke="#e5e7eb" />
+                  <CartesianGrid vertical={false} stroke={ink.grid} />
                   <XAxis
                     dataKey={isMobile ? "month" : "label"}
-                    tick={{ fontSize: isMobile ? 11 : 12, fill: "#4b5563" }}
+                    tick={{ fontSize: isMobile ? 11 : 12, fill: ink.tick }}
                     tickLine={false}
-                    axisLine={{ stroke: "#d1d5db" }}
+                    axisLine={{ stroke: ink.axis }}
                     interval={0}
                   />
                   <YAxis
                     yAxisId="profit"
                     orientation="left"
                     tickFormatter={formatCompactMoney}
-                    tick={{ fontSize: isMobile ? 10 : 12, fill: "#4b5563" }}
+                    tick={{ fontSize: isMobile ? 10 : 12, fill: ink.tick }}
                     tickLine={false}
                     axisLine={false}
                     width={isMobile ? 48 : 64}
-                    label={axisCaption(isMobile ? t("chart.axisProfitShort") : t("chart.axisProfit"), "left", isMobile ? 10 : 12)}
+                    label={axisCaption(isMobile ? t("chart.axisProfitShort") : t("chart.axisProfit"), "left", isMobile ? 10 : 12, ink.caption)}
                   />
                   <YAxis
                     yAxisId="flow"
                     orientation="right"
                     tickFormatter={formatCompactMoney}
-                    tick={{ fontSize: isMobile ? 10 : 12, fill: "#4b5563" }}
+                    tick={{ fontSize: isMobile ? 10 : 12, fill: ink.tick }}
                     tickLine={false}
                     axisLine={false}
                     width={isMobile ? 52 : 72}
-                    label={axisCaption(isMobile ? t("chart.axisFlowShort") : t("chart.axisFlow"), "right", isMobile ? 10 : 12)}
+                    label={axisCaption(isMobile ? t("chart.axisFlowShort") : t("chart.axisFlow"), "right", isMobile ? 10 : 12, ink.caption)}
                   />
-                  <Tooltip content={<ChartTooltip />} cursor={{ fill: "rgba(29, 78, 216, 0.06)" }} />
+                  <Tooltip content={<ChartTooltip />} cursor={{ fill: ink.cursor }} />
                   <Legend verticalAlign="bottom" content={<ChartLegend />} />
                   <Bar
                     yAxisId="profit"
                     dataKey="profit"
                     name={seriesName("profit")}
-                    fill={CHART_SERIES.profit.color}
+                    fill={colorOf("profit")}
                     radius={[4, 4, 0, 0]}
                     maxBarSize={32}
                     isAnimationActive={animate}
@@ -239,9 +252,9 @@ export default function MonthlyChartModal({ allTransactions, selectedDate, onClo
                     type="linear"
                     dataKey="cashIn"
                     name={seriesName("cashIn")}
-                    stroke={CHART_SERIES.cashIn.color}
+                    stroke={colorOf("cashIn")}
                     strokeWidth={2}
-                    dot={{ r: 4, strokeWidth: 2, fill: "#ffffff" }}
+                    dot={{ r: 4, strokeWidth: 2, fill: ink.dot }}
                     activeDot={{ r: 6 }}
                     isAnimationActive={animate}
                   />
@@ -250,10 +263,10 @@ export default function MonthlyChartModal({ allTransactions, selectedDate, onClo
                     type="linear"
                     dataKey="cashOut"
                     name={seriesName("cashOut")}
-                    stroke={CHART_SERIES.cashOut.color}
+                    stroke={colorOf("cashOut")}
                     strokeWidth={2}
                     strokeDasharray="6 4"
-                    dot={{ r: 4, strokeWidth: 2, fill: "#ffffff" }}
+                    dot={{ r: 4, strokeWidth: 2, fill: ink.dot }}
                     activeDot={{ r: 6 }}
                     isAnimationActive={animate}
                   />

@@ -2,7 +2,7 @@ import { Languages, Columns3, LayoutList, RotateCcw, CheckCircle2, Loader2, Aler
 import Header from "@/components/layout/Header";
 import { LANGUAGES, useI18n } from "@/lib/i18n";
 import { usePreferences } from "@/lib/PreferencesContext";
-import { DEFAULT_PREFERENCES, DENSITIES, TABLE_COLUMNS } from "@/lib/preferences";
+import { DEFAULT_PREFERENCES, DENSITIES, TABLE_COLUMNS, THEMES } from "@/lib/preferences";
 
 // Per-user settings: language, which transactions-table columns show, and display options.
 // Every change applies immediately and is saved to the account (PreferencesContext).
@@ -58,12 +58,14 @@ export default function SettingsPage() {
 
   const isDefaultDisplay =
     hidden.size === 0 &&
+    preferences.theme === DEFAULT_PREFERENCES.theme &&
     preferences.density === DEFAULT_PREFERENCES.density &&
     preferences.summaries.month === DEFAULT_PREFERENCES.summaries.month &&
     preferences.summaries.year === DEFAULT_PREFERENCES.summaries.year;
 
   const resetDisplay = () => savePreferences({
     hiddenColumns: [],
+    theme: DEFAULT_PREFERENCES.theme,
     density: DEFAULT_PREFERENCES.density,
     summaries: { ...DEFAULT_PREFERENCES.summaries },
   });
@@ -136,6 +138,21 @@ export default function SettingsPage() {
         </Section>
 
         <Section id="settings-display" icon={LayoutList} title={t("settings.display.title")} description={t("settings.display.description")}>
+          <h3 className="text-sm font-semibold text-gray-700 mb-2" id="theme-label">{t("settings.theme.title")}</h3>
+          <div className="grid gap-2 sm:grid-cols-3 mb-5" role="radiogroup" aria-labelledby="theme-label">
+            {THEMES.map((theme) =>
+              <Choice
+                key={theme}
+                type="radio"
+                name="theme"
+                checked={preferences.theme === theme}
+                onChange={() => savePreferences({ theme })}
+                label={t(`settings.theme.${theme}`)}
+                hint={t(`settings.theme.${theme}Hint`)}
+                testId={`theme-${theme}`} />
+            )}
+          </div>
+
           <h3 className="text-sm font-semibold text-gray-700 mb-2" id="density-label">{t("settings.density.title")}</h3>
           <div className="grid gap-2 sm:grid-cols-2 mb-5" role="radiogroup" aria-labelledby="density-label">
             {DENSITIES.map((density) =>

@@ -218,9 +218,13 @@ Every user has a **Settings** page: click the ⚙️ gear in the header (next to
   - "Show all columns" brings them all back.
   - Hiding a column you had sorted by returns the table to the journal order.
 - **Display:**
+  - **Theme:** *Light* (the default), *Dark*, or *Match system*, which follows the device's light/dark setting and switches with it (e.g. at sunset, if the device does).
+    - Dark mode covers every screen, pop-up and the chart, which uses its own colours checked for colour-blind readers on the dark background.
+    - The header and login page are dark in both themes.
+    - The theme is also remembered in this browser (cookie `wmm_theme`), so a dark page doesn't flash white while loading.
   - **Row spacing:** *Comfortable* (the default) or *Compact*, which fits more transactions on screen.
   - **Summaries open when the page loads:** whether "ملخص الشهر" and "ملخص السنة" start expanded. The defaults are month open and year closed. You can still open or close them on the dashboard at any time.
-- **Restore default display settings** resets the columns, row spacing and summaries in one step. Your language is left as it is.
+- **Restore default display settings** resets the theme, columns, row spacing and summaries in one step. Your language is left as it is.
 
 Settings are personal: they never change what other users see.
 
@@ -340,6 +344,7 @@ tests/
     │                                 # multi-select, select-all, bulk edit/delete flows,
     │                                 # type icons, sorting by every column
     ├── transactionSort.test.js       # sort cycle, stability, empty values last, natural/Arabic order
+    ├── theme.test.jsx                # dark mode: saved/system theme, pre-paint script, stylesheet mappings, chart
     ├── SettingsPage.test.jsx         # settings page, saving (in order, errors), language on sign-in,
     │                                 # header link, table columns/density and summaries following the settings
     ├── BulkEditModal.test.jsx        # opt-in fields, payload, commission rate, validation, errors

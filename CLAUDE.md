@@ -43,6 +43,14 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
     - `StatsCards` takes `defaultOpen` from `preferences.summaries`.
   - Without a provider (unit tests), `usePreferences()` returns the defaults, so existing component tests are unaffected.
   - **Header:** the nav row is `flex-wrap` and the links are `whitespace-nowrap`. Admins have up to 5 items there, and the non-wrapping row made the page 663px wide on a ~500px phone (measured in Edge via `scrollWidth`).
+- **Dark mode** (Settings → Display → Theme: `light` default / `dark` / `system`):
+  - `PreferencesContext` puts the `dark` class and `color-scheme` on `<html>`. "system" listens to `prefers-color-scheme`.
+  - While `isLoadingAuth`, it leaves the page alone: `index.html` has already applied the `wmm_theme` cookie before first paint, and the provider mirrors the theme there when signed in.
+  - **Styling:** one remapping layer at the end of `src/assets/css/index.css` (`.dark .bg-white { … }` and so on), instead of `dark:` variants in every component. The shadcn `.dark` variables were retuned to the same slate palette.
+  - **`theme.test.jsx` fails if a screen uses a light colour class with no dark mapping**, so add the mapping when you add such a class.
+  - The header, login page and language switch are dark in both themes and are exempt. The switch knob is `theme-fixed`, so it stays white.
+  - Text colours were checked at ≥ 4.5:1 on the dark card.
+  - **Chart:** `CHART_SERIES[*].darkColor` = `#3b82f6` / `#16a34a` / `#ec4899`, validated with the dataviz script against `#1e293b` (all checks pass). Every red light enough for the dark background failed colour-blind separation from the green, hence pink for cash out (still dashed). Axis and grid inks are in `CHART_INK`.
 - `src/lib/permissions.js` **re-exports `server/permissions.js`**, so the UI and the API share one definition. Never duplicate the rules.
 - `src/components/transactions/ImportPDFModal.jsx`: the single import screen for both engines. Steps: upload → (duplicates) → preview → saving → done.
 - `src/pages/Dashboard.jsx`: all totals and balances are calculated in the browser. Search logic is in `src/lib/transactionSearch.js`.
@@ -251,6 +259,7 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
 ### 2026-09-24
 - **PDF one-cent overwrite fixed:** the balance cross-check now works in whole cents. A difference of exactly 1 cent is the provider's rounding and keeps the printed amount; anything larger is still corrected from the balance, and corrected amounts no longer carry float residue (20.19999999999999 → 20.2). 3 regression tests use values found by search that trigger the old float bug (e.g. 1100.36 − 100.37 − 1000). Two of them failed before the fix.
 - **Search across all days:** a scope switch (all days by default / this day), a results line, dates that open their day, per-day "#" and unique row labels. The day's totals are unchanged by the scope. Tests: 9 new Dashboard tests; the day-only tests now select "this day".
+- **Dark mode:** a `theme` preference (light / dark / system), the CSS remapping layer, pre-paint cookie, dark chart palette (validated) and a Theme option in Settings. The guard test caught two unmapped hover classes during the work. Tests: `theme.test.jsx` (17), plus preference tests.
 - **Settings page** (per-user preferences):
   - **Server:** `server/preferences.js`, a `users.preferences` column with an upgrade step, and `PUT /auth/preferences`.
   - **Frontend:** `PreferencesContext`, `/settings`, and a header gear link.
