@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { X, Calendar } from "lucide-react";
+import { useI18n } from "@/lib/i18n";
 
 export default function EditTransactionModal({ transaction, onClose, onSaved }) {
+  const { t, dir } = useI18n();
   const commissionRate = transaction.amount > 0
     ? ((transaction.commission / transaction.amount) * 100).toFixed(2)
     : "1";
@@ -48,40 +50,40 @@ export default function EditTransactionModal({ transaction, onClose, onSaved }) 
     }
   };
 
-  const inputCls = "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-200 text-right placeholder-gray-300";
-  const labelCls = "block text-sm text-gray-600 mb-1 text-right";
+  const inputCls = "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-200 text-start placeholder-gray-300";
+  const labelCls = "block text-sm text-gray-600 mb-1 text-start";
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" dir="rtl">
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" dir={dir}>
       <div className="bg-[#F3F5FA] rounded-2xl shadow-xl w-full max-w-lg p-6">
         {/* Header */}
         <div className="flex items-center justify-between mb-5">
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
             <X className="w-4 h-4" />
           </button>
-          <h2 className="text-lg font-bold text-gray-800">تعديل العملية</h2>
+          <h2 className="text-lg font-bold text-gray-800">{t("edit.title")}</h2>
         </div>
 
         <div className="space-y-3">
           {/* النوع - full width */}
           <div>
-            <div className="flex items-center justify-end gap-2">
+            <div className="flex items-center justify-start gap-2">
+              <label className="text-sm text-gray-600 font-medium">{t("columns.type")}:</label>
               <select
                 value={form.type}
                 onChange={(e) => setForm({ ...form, type: e.target.value })}
-                className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-200 text-right"
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-200 text-start"
               >
                 <option value="cash_in">Cash In</option>
                 <option value="cash_out">Cash Out</option>
               </select>
-              <label className="text-sm text-gray-600 font-medium">:النوع</label>
             </div>
           </div>
 
           {/* اسم المرسل | اسم المستلم */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={labelCls}>اسم المستلم</label>
+              <label className={labelCls}>{t("form.receiverName")}</label>
               <input
                 type="text"
                 value={form.receiver_name}
@@ -90,7 +92,7 @@ export default function EditTransactionModal({ transaction, onClose, onSaved }) 
               />
             </div>
             <div>
-              <label className={labelCls}>اسم المرسل</label>
+              <label className={labelCls}>{t("form.senderName")}</label>
               <input
                 type="text"
                 value={form.sender_name}
@@ -103,7 +105,7 @@ export default function EditTransactionModal({ transaction, onClose, onSaved }) 
           {/* المبلغ | رقم الهاتف */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={labelCls}>المبلغ ($)</label>
+              <label className={labelCls}>{t("form.amount")}</label>
               <input
                 type="number"
                 value={form.amount}
@@ -120,7 +122,7 @@ export default function EditTransactionModal({ transaction, onClose, onSaved }) 
               />
             </div>
             <div>
-              <label className={labelCls}>رقم الهاتف</label>
+              <label className={labelCls}>{t("form.phone")}</label>
               <input
                 type="text"
                 value={form.phone}
@@ -133,7 +135,7 @@ export default function EditTransactionModal({ transaction, onClose, onSaved }) 
           {/* نسبة العمولة | العمولة — two separate fields per column */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={labelCls}>العمولة ($)</label>
+              <label className={labelCls}>{t("form.commission")}</label>
               <input
                 type="number"
                 placeholder="0.00"
@@ -143,7 +145,7 @@ export default function EditTransactionModal({ transaction, onClose, onSaved }) 
               />
             </div>
             <div>
-              <label className={labelCls}>نسبة العمولة (%)</label>
+              <label className={labelCls}>{t("bulk.commissionRate")}</label>
               <input
                 type="number"
                 placeholder="1"
@@ -165,7 +167,7 @@ export default function EditTransactionModal({ transaction, onClose, onSaved }) 
           {/* رقم العملية | رقم الزبون */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={labelCls}>رقم الزبون</label>
+              <label className={labelCls}>{t("form.customerNumber")}</label>
               <input
                 type="text"
                 value={form.customer_number}
@@ -174,7 +176,7 @@ export default function EditTransactionModal({ transaction, onClose, onSaved }) 
               />
             </div>
             <div>
-              <label className={labelCls}>رقم العملية</label>
+              <label className={labelCls}>{t("columns.reference")}</label>
               <input
                 type="text"
                 value={form.reference_number}
@@ -186,7 +188,7 @@ export default function EditTransactionModal({ transaction, onClose, onSaved }) 
 
           {/* ملاحظة - full width */}
           <div>
-            <label className={labelCls}>ملاحظة</label>
+            <label className={labelCls}>{t("columns.note")}</label>
             <textarea
               value={form.note}
               onChange={(e) => setForm({ ...form, note: e.target.value })}
@@ -204,26 +206,26 @@ export default function EditTransactionModal({ transaction, onClose, onSaved }) 
                 disabled={saving}
                 className="bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-lg px-4 py-2 text-sm font-medium transition disabled:opacity-50"
               >
-                {saving ? "جاري الحفظ..." : "زر حفظ التعديل"}
+                {saving ? t("common.saving") : t("edit.save")}
               </button>
               <button
                 onClick={onClose}
                 className="bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-lg px-4 py-2 text-sm font-medium transition"
               >
-                زر إلغاء
+                {t("common.cancel")}
               </button>
             </div>
 
             {/* التاريخ يمين */}
-            <div className="text-right">
-              <label className={labelCls}>التاريخ</label>
+            <div className="text-start">
+              <label className={labelCls}>{t("columns.date")}</label>
               <div className="relative">
-                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                <Calendar className="absolute end-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                 <input
                   type="date"
                   value={form.transaction_date}
                   onChange={(e) => setForm({ ...form, transaction_date: e.target.value })}
-                  className="border border-gray-200 rounded-lg pl-9 pr-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-200 text-right w-44"
+                  className="border border-gray-200 rounded-lg pe-9 ps-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-200 text-start w-44"
                 />
               </div>
             </div>

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Wallet, TrendingUp, ArrowDownCircle, ArrowUpCircle, Percent, Pencil, Check, X } from "lucide-react";
+import { useI18n } from "@/lib/i18n";
 
 export default function WalletSummary({
   openingBalance,
@@ -10,6 +11,7 @@ export default function WalletSummary({
   netBalance,
   onSaveOpeningBalance
 }) {
+  const { t, dir } = useI18n();
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState("");
 
@@ -29,7 +31,7 @@ export default function WalletSummary({
   const handleCancel = () => setEditing(false);
 
   return (
-    <div className="bg-white rounded-lg shadow-sm p-4 md:p-5 border border-gray-100 w-full" dir="rtl">
+    <div className="bg-white rounded-lg shadow-sm p-4 md:p-5 border border-gray-100 w-full" dir={dir}>
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4">
         {/* الصافي */}
         <div className="flex items-center gap-3">
@@ -37,7 +39,7 @@ export default function WalletSummary({
             <Wallet className="w-6 h-6 text-blue-600" />
           </div>
           <div>
-            <p className="text-xs md:text-sm font-medium text-[hsl(var(--foreground))]">الصافي</p>
+            <p className="text-xs md:text-sm font-medium text-[hsl(var(--foreground))]">{t("wallet.net")}</p>
             <p className="text-gray-900 font-bold text-sm md:text-base">
               ${formatAmount(netBalance)}
             </p>
@@ -50,7 +52,7 @@ export default function WalletSummary({
             <Percent className="w-6 h-6 text-orange-500" />
           </div>
           <div>
-            <p className="text-xs md:text-sm font-medium text-[hsl(var(--foreground))]">عمولات اليوم</p>
+            <p className="text-xs md:text-sm font-medium text-[hsl(var(--foreground))]">{t("wallet.commissions")}</p>
             <p className="text-gray-900 font-bold text-sm md:text-base">
               ${formatAmount(totalCommissions)}
             </p>
@@ -63,7 +65,7 @@ export default function WalletSummary({
             <ArrowUpCircle className="w-6 h-6 text-red-500" />
           </div>
           <div>
-            <p className="text-xs md:text-sm font-medium text-right text-[hsl(var(--foreground))]">سحوبات اليوم</p>
+            <p className="text-xs md:text-sm font-medium text-start text-[hsl(var(--foreground))]">{t("wallet.withdrawals")}</p>
             <p className="text-gray-900 font-bold text-sm md:text-base">
               ${formatAmount(totalWithdrawals)}
             </p>
@@ -76,7 +78,7 @@ export default function WalletSummary({
             <ArrowDownCircle className="w-6 h-6 text-green-500" />
           </div>
           <div>
-            <p className="md:text-sm font-medium text-[hsl(var(--foreground))] text-sm">إيداعات اليوم</p>
+            <p className="md:text-sm font-medium text-[hsl(var(--foreground))] text-sm">{t("wallet.deposits")}</p>
             <p className="text-gray-900 font-bold text-sm md:text-base">
               ${formatAmount(totalDeposits)}
             </p>
@@ -89,7 +91,7 @@ export default function WalletSummary({
             <TrendingUp className="w-6 h-6 text-indigo-600" />
           </div>
           <div className="flex-1">
-            <p className="text-xs md:text-sm font-medium text-[hsl(var(--foreground))]">رصيد البداية</p>
+            <p className="text-xs md:text-sm font-medium text-[hsl(var(--foreground))]">{t("wallet.openingBalance")}</p>
             {editing ?
             <div className="flex items-center gap-1 mt-0.5">
                 <input
@@ -107,7 +109,7 @@ export default function WalletSummary({
             <div className="flex items-center gap-1">
                 <p className="text-gray-900 font-bold text-sm md:text-base">${formatAmount(openingBalance)}</p>
                 {onSaveOpeningBalance &&
-                <button onClick={handleEdit} className="text-gray-300 hover:text-indigo-500 transition" aria-label="تعديل رصيد البداية"><Pencil className="w-3.5 h-3.5" /></button>
+                <button onClick={handleEdit} className="text-gray-300 hover:text-indigo-500 transition" aria-label={t("wallet.editOpeningBalance")}><Pencil className="w-3.5 h-3.5" /></button>
                 }
               </div>
             }

@@ -1,11 +1,14 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
-import { APP_NAME, APP_TAGLINE } from '@/lib/branding';
+import { APP_NAME } from '@/lib/branding';
+import { useI18n } from '@/lib/i18n';
+import LanguageToggle from '@/components/layout/LanguageToggle';
 import AppLogo from '@/components/layout/AppLogo';
 
 export default function LoginPage() {
   const { login } = useAuth();
+  const { t, dir, errorText } = useI18n();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -20,24 +23,27 @@ export default function LoginPage() {
       await login(email, password);
       navigate('/');
     } catch (err) {
-      setError(err?.message || 'Login failed');
+      setError(err?.message ? errorText(err.message) : t('login.failed'));
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white p-6" dir="rtl">
+    <div className="relative min-h-screen flex items-center justify-center bg-slate-950 text-white p-6" dir={dir}>
+      <div className="absolute top-4 end-4">
+        <LanguageToggle />
+      </div>
       <form onSubmit={handleSubmit} className="w-full max-w-md rounded-3xl bg-white/10 backdrop-blur p-8 shadow-2xl border border-white/10">
         <div className="flex flex-col items-center text-center mb-6">
           <AppLogo className="w-20 h-20 shadow-lg mb-3" />
           <p className="text-2xl font-bold" dir="ltr">{APP_NAME}</p>
-          <p className="text-slate-400 text-sm">{APP_TAGLINE}</p>
+          <p className="text-slate-400 text-sm">{t('app.tagline')}</p>
         </div>
-        <h1 className="text-3xl font-bold mb-2">تسجيل الدخول</h1>
-        <p className="text-slate-300 mb-6">أدخل بريدك الإلكتروني وكلمة المرور. تبقى مسجلاً حتى تضغط "خروج".</p>
+        <h1 className="text-3xl font-bold mb-2">{t('login.title')}</h1>
+        <p className="text-slate-300 mb-6">{t('login.intro')}</p>
 
-        <label htmlFor="login-email" className="block text-sm text-slate-300 mb-2">البريد الإلكتروني</label>
+        <label htmlFor="login-email" className="block text-sm text-slate-300 mb-2">{t('login.email')}</label>
         <input
           id="login-email"
           type="email"
@@ -50,7 +56,7 @@ export default function LoginPage() {
           placeholder="name@example.com"
         />
 
-        <label htmlFor="login-password" className="block text-sm text-slate-300 mb-2">كلمة المرور</label>
+        <label htmlFor="login-password" className="block text-sm text-slate-300 mb-2">{t('login.password')}</label>
         <input
           id="login-password"
           type="password"
@@ -69,7 +75,7 @@ export default function LoginPage() {
           disabled={loading}
           className="w-full rounded-xl bg-sky-500 hover:bg-sky-400 disabled:opacity-60 text-slate-950 font-bold py-3 transition"
         >
-          {loading ? 'جاري الدخول...' : 'دخول'}
+          {loading ? t('login.submitting') : t('login.submit')}
         </button>
       </form>
     </div>

@@ -107,7 +107,7 @@ describe("BulkEditModal", () => {
     const { onSaved } = renderModal();
     enable("الخدمة");
     fireEvent.click(saveButton());
-    expect(await screen.findByText("No transactions selected")).toBeInTheDocument();
+    expect(await screen.findByText("لم يتم تحديد أي عملية")).toBeInTheDocument(); // API message, translated
     expect(onSaved).not.toHaveBeenCalled();
     expect(saveButton()).toBeEnabled();
   });

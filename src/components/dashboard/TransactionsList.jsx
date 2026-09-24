@@ -10,6 +10,7 @@ import EditTransactionModal from "@/components/transactions/EditTransactionModal
 import DailyCommissionReport from "@/components/transactions/DailyCommissionReport";
 import { useAuth } from "@/lib/AuthContext";
 import { PERMISSIONS } from "@/lib/permissions";
+import { useI18n } from "@/lib/i18n";
 
 export default function TransactionsList({
   transactions,
@@ -40,6 +41,8 @@ export default function TransactionsList({
 
   // Permissions (the API enforces the same rules; this only hides what the user can't do).
   const { can, canEditTransaction } = useAuth();
+  // Translation function is `tr` here: `t` is used throughout this file for a transaction.
+  const { t: tr, dir } = useI18n();
   const canDelete = can(PERMISSIONS.TRANSACTIONS_DELETE);
 
   // ═══ التحديد المتعدد والإجراءات الجماعية ═══
@@ -104,7 +107,7 @@ export default function TransactionsList({
       clearSelection();
       onRefresh();
     } catch (err) {
-      setBulkError(err?.message || "تعذر حذف العمليات المحددة");
+      setBulkError(err?.message || tr("list.bulkDeleteFailed"));
     } finally {
       setBulkWorking(false);
     }
@@ -157,22 +160,22 @@ export default function TransactionsList({
   };
 
   return (
-    <div className="bg-white rounded-xl shadow" dir="rtl">
+    <div className="bg-white rounded-xl shadow" dir={dir}>
       {/* Search & filters row */}
       <div className="p-4 border-b flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2 flex-1 min-w-[200px] bg-gray-50 border rounded-lg px-3 py-2">
           <Search className="w-4 h-4 text-gray-400" />
           <input
             type="text"
-            placeholder="ابحث عن اسم أو مبلغ أو رقم أو ملاحظة..."
+            placeholder={tr("list.searchPlaceholder")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="bg-transparent outline-none w-full text-right text-base font-normal" />
+            className="bg-transparent outline-none w-full text-start text-base font-normal" />
           
         </div>
 
         <div className="flex items-center gap-2 text-sm text-gray-600">
-          <span className="font-medium text-[hsl(var(--foreground))]">اليومية:</span>
+          <span className="font-medium text-[hsl(var(--foreground))]">{tr("list.journal")}:</span>
           <input
             type="date"
             value={selectedDate}
@@ -183,40 +186,40 @@ export default function TransactionsList({
             onClick={onToday}
             className="bg-gray-100 hover:bg-gray-200 px-3 py-1 rounded-lg text-sm font-medium transition text-[hsl(var(--popover-foreground))]">
             
-            اليوم
+            {tr("list.today")}
           </button>
         </div>
       </div>
 
       {/* Confirm Delete Dialog */}
       {showConfirm &&
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" dir="rtl">
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" dir={dir}>
           <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full mx-4">
             <div className="flex items-center gap-3 mb-3">
               <div className="bg-red-100 rounded-full p-2">
                 <Trash2 className="w-5 h-5 text-red-600" />
               </div>
-              <h3 className="font-bold text-gray-800 text-lg">تأكيد المسح</h3>
+              <h3 className="font-bold text-gray-800 text-lg">{tr("list.deleteAllTitle")}</h3>
             </div>
             <p className="text-gray-600 mb-1">
-              هل أنت متأكد من مسح <span className="font-bold text-red-600">{transactions.length} عملية</span> للفترة:
+              {tr("list.deleteAllBefore")}<span className="font-bold text-red-600">{tr("list.count", { count: transactions.length })}</span>{tr("list.deleteAllAfter")}
             </p>
             <p className="text-gray-500 text-sm mb-5 bg-gray-50 rounded-lg px-3 py-2">
               {selectedDate}
             </p>
-            <p className="text-xs text-red-500 mb-5">⚠️ لا يمكن التراجع عن هذا الإجراء</p>
+            <p className="text-xs text-red-500 mb-5">⚠️ {tr("common.cannotUndo")}</p>
             <div className="flex gap-3">
               <button
               onClick={() => setShowConfirm(false)}
               className="flex-1 border rounded-lg py-2 text-gray-600 hover:bg-gray-50">
               
-                إلغاء
+                {tr("common.cancel")}
               </button>
               <button
               onClick={handleDeleteAll}
               className="flex-1 bg-red-600 hover:bg-red-700 text-white rounded-lg py-2 font-semibold transition">
               
-                مسح الكل
+                {tr("list.deleteAll")}
               </button>
             </div>
           </div>
@@ -225,35 +228,35 @@ export default function TransactionsList({
 
       {/* Actions row */}
       <div className="px-4 py-3 border-b flex flex-wrap items-center justify-between gap-3">
-        <span className="text-[hsl(var(--foreground))] font-bold bg-[hsl(var(--background))] text-base text-right capitalize">{transactions.length} عملية</span>
+        <span className="text-[hsl(var(--foreground))] font-bold bg-[hsl(var(--background))] text-base text-start">{tr("list.count", { count: transactions.length })}</span>
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => setShowChart(true)}
             className="flex items-center gap-1 border border-indigo-200 rounded-lg px-3 py-1.5 text-sm text-indigo-600 hover:bg-indigo-50 transition">
 
             <BarChart3 className="w-4 h-4" />
-            الرسم البياني
+            {tr("list.chart")}
           </button>
           <button
             onClick={() => setShowSenderReport(true)}
             className="flex items-center gap-1 border border-blue-200 rounded-lg px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50 transition">
             
             <UserSearch className="w-4 h-4" />
-            تقرير مرسل
+            {tr("list.senderReport")}
           </button>
           <button
             onClick={() => setShowReceiverReport(true)}
             className="flex items-center gap-1 border border-green-200 rounded-lg px-3 py-1.5 text-sm text-green-600 hover:bg-green-50 transition">
 
             <UserCheck className="w-4 h-4" />
-            تقرير مستلم
+            {tr("list.receiverReport")}
           </button>
           <button
             onClick={() => setShowCommissionReport(true)}
             className="flex items-center gap-1 border border-orange-200 rounded-lg px-3 py-1.5 text-sm text-orange-600 hover:bg-orange-50 transition">
             
             <Percent className="w-4 h-4" />
-            تقرير العمولات
+            {tr("list.commissionReport")}
           </button>
           {canDelete && transactions.length > 0 &&
           <button
@@ -262,7 +265,7 @@ export default function TransactionsList({
             className="flex items-center gap-1 border border-red-200 rounded-lg px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 transition disabled:opacity-50">
             
               <Trash2 className="w-4 h-4" />
-              مسح الكل
+              {tr("list.deleteAll")}
             </button>
           }
           <button
@@ -270,7 +273,7 @@ export default function TransactionsList({
             className="flex items-center gap-1 border rounded-lg px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50 transition">
             
             <FileText className="w-4 h-4" />
-            استيراد PDF / CSV
+            {tr("list.import")}
           </button>
           <button
             onClick={onCashOut}
@@ -293,11 +296,11 @@ export default function TransactionsList({
       {selectedTransactions.length > 0 &&
       <div
         role="region"
-        aria-label="إجراءات جماعية"
+        aria-label={tr("list.bulkRegion")}
         className="px-4 py-2.5 border-b bg-blue-50 flex flex-wrap items-center justify-between gap-2">
           <span className="text-sm font-bold text-blue-800" data-testid="bulk-selected-count">
-            {selectedTransactions.length} عملية محددة
-            <span className="font-normal text-blue-700 mr-2" dir="ltr">
+            {tr("list.selectedCount", { count: selectedTransactions.length })}
+            <span className="font-normal text-blue-700 ms-2" dir="ltr">
               (${selectedTransactions.reduce((s, t) => s + (t.amount || 0), 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
             </span>
           </span>
@@ -308,7 +311,7 @@ export default function TransactionsList({
             disabled={bulkWorking}
             className="flex items-center gap-1 bg-white border border-blue-200 rounded-lg px-3 py-1.5 text-sm text-blue-700 hover:bg-blue-100 transition disabled:opacity-50">
               <Pencil className="w-4 h-4" />
-              تعديل المحدد
+              {tr("list.bulkEdit")}
             </button>
             }
             {canDelete &&
@@ -317,17 +320,17 @@ export default function TransactionsList({
             disabled={bulkWorking}
             className="flex items-center gap-1 bg-white border border-red-200 rounded-lg px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 transition disabled:opacity-50">
               {bulkWorking ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-              حذف المحدد
+              {tr("list.bulkDelete")}
             </button>
             }
             {!canBulkEdit && !canDelete &&
-            <span className="text-xs text-blue-700">يمكنك تعديل العمليات التي أدخلتها فقط</span>
+            <span className="text-xs text-blue-700">{tr("list.ownOnly")}</span>
             }
             <button
             onClick={clearSelection}
             className="flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm text-gray-600 hover:bg-white transition">
               <X className="w-4 h-4" />
-              إلغاء التحديد
+              {tr("list.clearSelection")}
             </button>
           </div>
           {bulkError && <p className="w-full text-sm text-red-600">{bulkError}</p>}
@@ -336,28 +339,28 @@ export default function TransactionsList({
 
       {/* Bulk delete confirmation */}
       {showBulkDeleteConfirm &&
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" dir="rtl">
-          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full mx-4" role="alertdialog" aria-label="تأكيد حذف المحدد">
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" dir={dir}>
+          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full mx-4" role="alertdialog" aria-label={tr("list.bulkDeleteDialog")}>
             <div className="flex items-center gap-3 mb-3">
               <div className="bg-red-100 rounded-full p-2">
                 <Trash2 className="w-5 h-5 text-red-600" />
               </div>
-              <h3 className="font-bold text-gray-800 text-lg">حذف العمليات المحددة</h3>
+              <h3 className="font-bold text-gray-800 text-lg">{tr("list.bulkDeleteTitle")}</h3>
             </div>
             <p className="text-gray-600 mb-1">
-              هل أنت متأكد من حذف <span className="font-bold text-red-600">{selectedTransactions.length} عملية</span>؟
+              {tr("list.bulkDeleteBefore")}<span className="font-bold text-red-600">{tr("list.count", { count: selectedTransactions.length })}</span>{tr("list.bulkDeleteAfter")}
             </p>
-            <p className="text-xs text-red-500 mb-5">⚠️ لا يمكن التراجع عن هذا الإجراء</p>
+            <p className="text-xs text-red-500 mb-5">⚠️ {tr("common.cannotUndo")}</p>
             <div className="flex gap-3">
               <button
               onClick={() => setShowBulkDeleteConfirm(false)}
               className="flex-1 border rounded-lg py-2 text-gray-600 hover:bg-gray-50">
-                إلغاء
+                {tr("common.cancel")}
               </button>
               <button
               onClick={handleBulkDelete}
               className="flex-1 bg-red-600 hover:bg-red-700 text-white rounded-lg py-2 font-semibold transition">
-                حذف {selectedTransactions.length} عملية
+                {tr("list.bulkDeleteConfirm", { count: selectedTransactions.length })}
               </button>
             </div>
           </div>
@@ -366,39 +369,39 @@ export default function TransactionsList({
 
       {/* Table / Empty */}
       {loading ?
-      <div className="p-12 text-center text-gray-400">جاري التحميل...</div> :
+      <div className="p-12 text-center text-gray-400">{tr("common.loading")}</div> :
       transactions.length === 0 ?
       <div className="p-12 text-center">
-          <p className="text-gray-500 text-lg font-medium">لا توجد معاملات</p>
-          <p className="text-gray-400 text-sm mt-1">أضف معاملة جديدة للبدء</p>
+          <p className="text-gray-500 text-lg font-medium">{tr("list.empty")}</p>
+          <p className="text-gray-400 text-sm mt-1">{tr("list.emptyHint")}</p>
         </div> :
 
       <>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm text-right">
+          <table className="w-full text-sm text-start">
             <thead className="bg-gray-50 text-gray-600">
               <tr>
-                <th className="pr-4 pl-1 py-3 w-8">
+                <th className="ps-4 pe-1 py-3 w-8">
                   <input
                     ref={selectAllRef}
                     type="checkbox"
                     checked={allVisibleSelected}
                     onChange={toggleSelectAll}
-                    aria-label="تحديد كل العمليات الظاهرة"
+                    aria-label={tr("list.selectAll")}
                     className="w-4 h-4 accent-blue-600 cursor-pointer align-middle" />
                 </th>
                 <th className="px-4 py-3">#</th>
-                <th className="px-4 py-3">النوع</th>
-                <th className="px-4 py-3">المرسل</th>
-                <th className="px-4 py-3">المستلم</th>
-                <th className="px-4 py-3">المبلغ</th>
-                <th className="px-4 py-3">نسبة العمولة</th>
-                <th className="px-4 py-3">العمولة</th>
+                <th className="px-4 py-3">{tr("columns.type")}</th>
+                <th className="px-4 py-3">{tr("columns.sender")}</th>
+                <th className="px-4 py-3">{tr("columns.receiver")}</th>
+                <th className="px-4 py-3">{tr("columns.amount")}</th>
+                <th className="px-4 py-3">{tr("columns.commissionRate")}</th>
+                <th className="px-4 py-3">{tr("columns.commission")}</th>
 
-                <th className="px-4 py-3">رقم العملية</th>
-                <th className="px-4 py-3">الخدمة</th>
-                <th className="px-4 py-3">ملاحظة</th>
-                <th className="px-4 py-3">التاريخ</th>
+                <th className="px-4 py-3">{tr("columns.reference")}</th>
+                <th className="px-4 py-3">{tr("columns.service")}</th>
+                <th className="px-4 py-3">{tr("columns.note")}</th>
+                <th className="px-4 py-3">{tr("columns.date")}</th>
                 <th className="px-4 py-3"></th>
               </tr>
             </thead>
@@ -412,12 +415,12 @@ export default function TransactionsList({
                 const displayIndex = realIndex >= 0 ? realIndex + 1 : i + 1;
                 return (
                   <tr key={t.id} className={`transition ${selectedIds.has(t.id) ? "bg-blue-50 hover:bg-blue-100" : "hover:bg-gray-50"}`} aria-selected={selectedIds.has(t.id)}>
-                  <td className="pr-4 pl-1 py-3">
+                  <td className="ps-4 pe-1 py-3">
                     <input
                           type="checkbox"
                           checked={selectedIds.has(t.id)}
                           onChange={() => toggleSelected(t.id)}
-                          aria-label={`تحديد العملية ${displayIndex}`}
+                          aria-label={tr("list.selectRow", { n: displayIndex })}
                           className="w-4 h-4 accent-blue-600 cursor-pointer align-middle" />
                   </td>
                   <td className="px-4 py-3 text-gray-400">{displayIndex}</td>
@@ -485,7 +488,7 @@ export default function TransactionsList({
                       <button
                             onClick={() => setEditingTransaction(t)}
                             className="text-gray-400 hover:text-blue-500 transition"
-                            title="تعديل">
+                            title={tr("common.edit")}>
                             
                         <Pencil className="w-4 h-4 text-[hsl(var(--sidebar-ring))]" />
                       </button>
@@ -496,7 +499,7 @@ export default function TransactionsList({
                               onClick={() => handleDeleteOne(t)}
                               className="text-xs bg-red-500 hover:bg-red-600 text-white px-2 py-0.5 rounded font-semibold transition">
                               
-                            تأكيد
+                            {tr("common.confirm")}
                           </button>
                           <button
                               onClick={() => setConfirmDeleteId(null)}
@@ -509,7 +512,7 @@ export default function TransactionsList({
                           <button
                             onClick={() => setConfirmDeleteId(t.id)}
                             className="text-gray-400 hover:text-red-500 transition"
-                            title="مسح">
+                            title={tr("common.delete")}>
                             
                           <Trash2 className="w-4 h-4 text-[hsl(var(--destructive))]" />
                         </button>
@@ -528,15 +531,15 @@ export default function TransactionsList({
 
       {/* شريط تقدم المسح */}
       {deleting &&
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" dir="rtl">
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" dir={dir}>
           <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-sm w-full mx-4 text-center">
             <Loader2 className="w-10 h-10 text-red-500 animate-spin mx-auto mb-4" />
-            <p className="font-bold text-gray-800 text-lg mb-1">جاري مسح العمليات...</p>
-            <p className="text-gray-500 text-sm mb-5">يرجى الانتظار حتى اكتمال العملية</p>
+            <p className="font-bold text-gray-800 text-lg mb-1">{tr("list.deleting")}</p>
+            <p className="text-gray-500 text-sm mb-5">{tr("list.pleaseWait")}</p>
             <div className="w-full">
               <div className="flex justify-between text-xs text-gray-500 mb-1">
-                <span>الوقت المنقضي: {deleteElapsed}ث</span>
-                <span>{transactions.length} عملية</span>
+                <span>{tr("common.elapsed", { seconds: deleteElapsed })}</span>
+                <span>{tr("list.count", { count: transactions.length })}</span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
                 <div

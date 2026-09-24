@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { ArrowDownCircle, ArrowUpCircle, Percent, Wallet, Hash, ChevronDown } from "lucide-react";
+import { useI18n } from "@/lib/i18n";
 
 const fmt = (n) => (n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-// "سبتمبر 2026" — Arabic month name with Latin digits, like the rest of the UI.
-const formatMonthLabel = (selectedDate) => {
+// "سبتمبر 2026" / "September 2026" — month name in the interface language, Latin digits.
+const formatMonthLabel = (selectedDate, locale) => {
   const [year, month] = String(selectedDate || "").split("-").map(Number);
   if (!year || !month) return "";
-  return new Intl.DateTimeFormat("ar-u-nu-latn", { month: "long", year: "numeric" }).format(new Date(year, month - 1, 1));
+  return new Intl.DateTimeFormat(locale, { month: "long", year: "numeric" }).format(new Date(year, month - 1, 1));
 };
 
 function StatCard({ label, value, icon, iconBg }) {
@@ -26,6 +27,7 @@ function StatCard({ label, value, icon, iconBg }) {
 
 // Collapsible summary block. When collapsed, the header still shows the key figures inline.
 function SummarySection({ id, title, period, cards, collapsedSummary, defaultOpen, gridClassName }) {
+  const { dir } = useI18n();
   const [open, setOpen] = useState(defaultOpen);
   const contentId = `${id}-content`;
 
@@ -36,15 +38,15 @@ function SummarySection({ id, title, period, cards, collapsedSummary, defaultOpe
         onClick={() => setOpen((prev) => !prev)}
         aria-expanded={open}
         aria-controls={contentId}
-        className="w-full flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-3 md:px-4 py-2.5 text-right"
+        className="w-full flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-3 md:px-4 py-2.5 text-start"
       >
         <span className="flex items-baseline gap-2">
           <span className="font-bold text-gray-800 text-sm md:text-base">{title}</span>
           {period && <span className="text-xs md:text-sm text-gray-500">{period}</span>}
         </span>
-        <span className="flex items-center gap-3 mr-auto">
+        <span className="flex items-center gap-3 ms-auto">
           {!open && (
-            <span className="text-xs md:text-sm text-gray-600 animate-in fade-in slide-in-from-left-1 duration-300 motion-reduce:animate-none" data-testid={`${id}-collapsed`}>
+            <span className={`text-xs md:text-sm text-gray-600 animate-in fade-in ${dir === "rtl" ? "slide-in-from-left-1" : "slide-in-from-right-1"} duration-300 motion-reduce:animate-none`} data-testid={`${id}-collapsed`}>
               {collapsedSummary}
             </span>
           )}
@@ -84,7 +86,8 @@ export default function StatsCards({
   yearlyCommissions, yearlyCount, yearlyDeposits, yearlyWithdrawals,
   selectedDate,
 }) {
-  const periodCards = ({ count, commissions, withdrawals, deposits, countLabel, commissionsLabel }) => [
+  const { t, dir, locale } = useI18n();
+  const periodCards =({ count, commissions, withdrawals, deposits, countLabel, commissionsLabel }) => [
     {
       label: countLabel,
       value: count || 0,
@@ -98,13 +101,13 @@ export default function StatsCards({
       iconBg: "bg-orange-500",
     },
     {
-      label: "مجموع السحوبات",
+      label: t("summary.withdrawals"),
       value: `$${fmt(withdrawals)}`,
       icon: <ArrowUpCircle className="w-6 h-6 text-white" />,
       iconBg: "bg-red-500",
     },
     {
-      label: "مجموع الإيداعات",
+      label: t("summary.deposits"),
       value: `$${fmt(deposits)}`,
       icon: <ArrowDownCircle className="w-6 h-6 text-white" />,
       iconBg: "bg-green-500",
@@ -113,39 +116,39 @@ export default function StatsCards({
 
   const monthlyCards = [
     {
-      label: "صافي المحفظة",
+      label: t("summary.netWallet"),
       value: `$${fmt(netBalance)}`,
       icon: <Wallet className="w-6 h-6 text-white" />,
       iconBg: "bg-blue-600",
     },
     ...periodCards({
       count: monthlyCount, commissions: monthlyCommissions, withdrawals: monthlyWithdrawals, deposits: monthlyDeposits,
-      countLabel: "عمليات الشهر", commissionsLabel: "عمولات الشهر",
+      countLabel: t("summary.monthCount"), commissionsLabel: t("summary.monthCommissions"),
     }),
   ];
 
   const yearlyCards = periodCards({
     count: yearlyCount, commissions: yearlyCommissions, withdrawals: yearlyWithdrawals, deposits: yearlyDeposits,
-    countLabel: "عمليات السنة", commissionsLabel: "عمولات السنة",
+    countLabel: t("summary.yearCount"), commissionsLabel: t("summary.yearCommissions"),
   });
 
   return (
-    <div className="w-full space-y-2 md:space-y-3" dir="rtl">
+    <div className="w-full space-y-2 md:space-y-3" dir={dir}>
       <SummarySection
         id="monthly-summary"
-        title="ملخص الشهر"
-        period={formatMonthLabel(selectedDate)}
+        title={t("summary.monthTitle")}
+        period={formatMonthLabel(selectedDate, locale)}
         cards={monthlyCards}
-        collapsedSummary={`صافي المحفظة $${fmt(netBalance)} · ${monthlyCount || 0} عملية · عمولات $${fmt(monthlyCommissions)}`}
+        collapsedSummary={t("summary.monthCollapsed", { net: fmt(netBalance), count: monthlyCount || 0, commissions: fmt(monthlyCommissions) })}
         defaultOpen
         gridClassName="grid-cols-2 sm:grid-cols-3 lg:grid-cols-5"
       />
       <SummarySection
         id="yearly-summary"
-        title="ملخص السنة"
+        title={t("summary.yearTitle")}
         period={String(selectedDate || "").slice(0, 4)}
         cards={yearlyCards}
-        collapsedSummary={`${yearlyCount || 0} عملية · عمولات $${fmt(yearlyCommissions)}`}
+        collapsedSummary={t("summary.yearCollapsed", { count: yearlyCount || 0, commissions: fmt(yearlyCommissions) })}
         defaultOpen={false}
         gridClassName="grid-cols-2 lg:grid-cols-4"
       />

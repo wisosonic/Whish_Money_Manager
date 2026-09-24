@@ -1,7 +1,9 @@
 import { useState, useMemo } from "react";
 import { X, Search, User, ArrowDownCircle, ArrowUpCircle, Percent, Hash } from "lucide-react";
+import { useI18n } from "@/lib/i18n";
 
 export default function SenderReportModal({ allTransactions, onClose }) {
+  const { t: tr, dir } = useI18n();
   const [senderQuery, setSenderQuery] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -31,13 +33,13 @@ export default function SenderReportModal({ allTransactions, onClose }) {
   }, [results]);
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" dir="rtl">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" dir={dir}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b">
           <div className="flex items-center gap-2">
             <User className="w-5 h-5 text-blue-600" />
-            <h2 className="text-lg font-bold text-gray-800">تقرير المرسل</h2>
+            <h2 className="text-lg font-bold text-gray-800">{tr("reports.senderTitle")}</h2>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition">
             <X className="w-5 h-5" />
@@ -47,21 +49,21 @@ export default function SenderReportModal({ allTransactions, onClose }) {
         {/* Filters */}
         <div className="p-4 border-b bg-gray-50 flex flex-wrap gap-3 items-end">
           <div className="flex-1 min-w-[200px]">
-            <label className="text-xs text-gray-500 mb-1 block">اسم المرسل</label>
+            <label className="text-xs text-gray-500 mb-1 block">{tr("reports.senderName")}</label>
             <div className="flex items-center gap-2 bg-white border rounded-lg px-3 py-2">
               <Search className="w-4 h-4 text-gray-400 flex-shrink-0" />
               <input
                 type="text"
-                placeholder="اكتب اسم المرسل..."
+                placeholder={tr("reports.senderPlaceholder")}
                 value={senderQuery}
                 onChange={(e) => { setSenderQuery(e.target.value); setSearched(true); }}
-                className="bg-transparent outline-none text-sm w-full text-right"
+                className="bg-transparent outline-none text-sm w-full text-start"
                 autoFocus
               />
             </div>
           </div>
           <div>
-            <label className="text-xs text-gray-500 mb-1 block">من تاريخ</label>
+            <label className="text-xs text-gray-500 mb-1 block">{tr("reports.from")}</label>
             <input
               type="date"
               value={dateFrom}
@@ -70,7 +72,7 @@ export default function SenderReportModal({ allTransactions, onClose }) {
             />
           </div>
           <div>
-            <label className="text-xs text-gray-500 mb-1 block">إلى تاريخ</label>
+            <label className="text-xs text-gray-500 mb-1 block">{tr("reports.to")}</label>
             <input
               type="date"
               value={dateTo}
@@ -83,7 +85,7 @@ export default function SenderReportModal({ allTransactions, onClose }) {
               onClick={() => { setDateFrom(""); setDateTo(""); }}
               className="text-xs text-gray-400 hover:text-red-500 transition mt-4"
             >
-              مسح الفلتر
+              {tr("reports.clearFilter")}
             </button>
           )}
         </div>
@@ -94,28 +96,28 @@ export default function SenderReportModal({ allTransactions, onClose }) {
             <div className="bg-white rounded-lg p-3 border border-gray-100 flex items-center gap-3">
               <div className="bg-purple-100 rounded-lg p-2"><Hash className="w-5 h-5 text-purple-600" /></div>
               <div>
-                <p className="text-xs text-gray-500">عدد الحوالات</p>
+                <p className="text-xs text-gray-500">{tr("reports.count")}</p>
                 <p className="text-lg font-bold text-gray-800">{stats.count}</p>
               </div>
             </div>
             <div className="bg-white rounded-lg p-3 border border-gray-100 flex items-center gap-3">
               <div className="bg-green-100 rounded-lg p-2"><ArrowDownCircle className="w-5 h-5 text-green-600" /></div>
               <div>
-                <p className="text-xs text-gray-500">إجمالي الإيداعات</p>
+                <p className="text-xs text-gray-500">{tr("reports.deposits")}</p>
                 <p className="text-lg font-bold text-green-700">${fmt(stats.deposits)}</p>
               </div>
             </div>
             <div className="bg-white rounded-lg p-3 border border-gray-100 flex items-center gap-3">
               <div className="bg-red-100 rounded-lg p-2"><ArrowUpCircle className="w-5 h-5 text-red-500" /></div>
               <div>
-                <p className="text-xs text-gray-500">إجمالي السحوبات</p>
+                <p className="text-xs text-gray-500">{tr("reports.withdrawals")}</p>
                 <p className="text-lg font-bold text-red-600">${fmt(stats.withdrawals)}</p>
               </div>
             </div>
             <div className="bg-white rounded-lg p-3 border border-gray-100 flex items-center gap-3">
               <div className="bg-orange-100 rounded-lg p-2"><Percent className="w-5 h-5 text-orange-500" /></div>
               <div>
-                <p className="text-xs text-gray-500">إجمالي العمولات</p>
+                <p className="text-xs text-gray-500">{tr("reports.commissions")}</p>
                 <p className="text-lg font-bold text-orange-600">${fmt(stats.commissions)}</p>
               </div>
             </div>
@@ -127,24 +129,24 @@ export default function SenderReportModal({ allTransactions, onClose }) {
           {!searched || !senderQuery.trim() ? (
             <div className="p-12 text-center text-gray-400">
               <User className="w-10 h-10 mx-auto mb-3 text-gray-300" />
-              <p>اكتب اسم المرسل للبحث</p>
+              <p>{tr("reports.senderPrompt")}</p>
             </div>
           ) : results.length === 0 ? (
             <div className="p-12 text-center text-gray-400">
-              <p>لا توجد نتائج للبحث عن "{senderQuery}"</p>
+              <p>{tr("reports.noResults", { query: senderQuery })}</p>
             </div>
           ) : (
-            <table className="w-full text-sm text-right">
+            <table className="w-full text-sm text-start">
               <thead className="bg-gray-50 text-gray-600 sticky top-0">
                 <tr>
                   <th className="px-4 py-3">#</th>
-                  <th className="px-4 py-3">المرسل</th>
-                  <th className="px-4 py-3">النوع</th>
-                  <th className="px-4 py-3">المبلغ</th>
-                  <th className="px-4 py-3">العمولة</th>
-                  <th className="px-4 py-3">رقم العملية</th>
-                  <th className="px-4 py-3">الخدمة</th>
-                  <th className="px-4 py-3">التاريخ</th>
+                  <th className="px-4 py-3">{tr("columns.sender")}</th>
+                  <th className="px-4 py-3">{tr("columns.type")}</th>
+                  <th className="px-4 py-3">{tr("columns.amount")}</th>
+                  <th className="px-4 py-3">{tr("columns.commission")}</th>
+                  <th className="px-4 py-3">{tr("columns.reference")}</th>
+                  <th className="px-4 py-3">{tr("columns.service")}</th>
+                  <th className="px-4 py-3">{tr("columns.date")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">

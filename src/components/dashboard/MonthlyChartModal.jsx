@@ -4,6 +4,8 @@ import {
   Bar, CartesianGrid, ComposedChart, Legend, Line, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useI18n } from "@/lib/i18n";
+import ar from "@/locales/ar";
 import {
   availableYears, buildMonthlyChartData, formatCompactMoney, formatMoney, sumChartData,
 } from "@/lib/monthlyChartData";
@@ -11,9 +13,10 @@ import {
 // Colors validated for color-vision deficiency (all pairs ΔE ≥ 17) and ≥ 3:1 contrast on white,
 // kept on the app's blue / green / red meaning. Cash out is also dashed, so it never relies on color alone.
 export const CHART_SERIES = {
-  profit: { name: "الربح (العمولات)", color: "#1d4ed8" },
-  cashIn: { name: "الإيداعات (Cash In)", color: "#16a34a" },
-  cashOut: { name: "السحوبات (Cash Out)", color: "#991b1b", dashed: true },
+  // `name` is the Arabic default (for non-React code and tests); the UI shows t(nameKey).
+  profit: { nameKey: "chart.series.profit", name: ar["chart.series.profit"], color: "#1d4ed8" },
+  cashIn: { nameKey: "chart.series.cashIn", name: ar["chart.series.cashIn"], color: "#16a34a" },
+  cashOut: { nameKey: "chart.series.cashOut", name: ar["chart.series.cashOut"], color: "#991b1b", dashed: true },
 };
 
 const SeriesKey = ({ dataKey, color }) =>
@@ -28,10 +31,11 @@ const SeriesKey = ({ dataKey, color }) =>
 
 // Tooltip: every series for the hovered month, value first, keyed with its mark.
 export function ChartTooltip({ active, payload, label }) {
+  const { dir } = useI18n();
   const items = (payload || []).filter((item) => item.value != null);
   if (!active || items.length === 0) return null;
   return (
-    <div className="bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2 text-sm" dir="rtl">
+    <div className="bg-white border border-gray-200 rounded-lg shadow-lg px-3 py-2 text-sm" dir={dir}>
       <p className="font-bold text-gray-800 mb-1">{items[0]?.payload?.label ?? label}</p>
       {items.map((item) => (
         <div key={item.dataKey} className="flex items-center gap-2 py-0.5">
@@ -46,8 +50,9 @@ export function ChartTooltip({ active, payload, label }) {
 
 // Legend in text ink (not series color), with keys mirroring the marks: box for bars, line for lines.
 export function ChartLegend({ payload }) {
+  const { dir } = useI18n();
   return (
-    <ul className="flex flex-wrap justify-center gap-x-5 gap-y-1 text-xs md:text-sm text-gray-700 pt-3" dir="rtl">
+    <ul className="flex flex-wrap justify-center gap-x-5 gap-y-1 text-xs md:text-sm text-gray-700 pt-3" dir={dir}>
       {(payload || []).map((item) => (
         <li key={item.dataKey} className="flex items-center gap-2">
           <SeriesKey dataKey={item.dataKey} color={item.color} />
@@ -78,6 +83,8 @@ const prefersReducedMotion = () =>
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 export default function MonthlyChartModal({ allTransactions, selectedDate, onClose }) {
+  const { t, dir } = useI18n();
+  const seriesName = (key) => t(CHART_SERIES[key].nameKey);
   const isMobile = useIsMobile();
   const animate = !prefersReducedMotion();
   const defaultYear = String(selectedDate || new Date().toISOString()).slice(0, 4);
@@ -85,21 +92,22 @@ export default function MonthlyChartModal({ allTransactions, selectedDate, onClo
   const [view, setView] = useState("chart"); // chart | table
 
   const years = useMemo(() => availableYears(allTransactions, defaultYear), [allTransactions, defaultYear]);
-  const data = useMemo(() => buildMonthlyChartData(allTransactions, year), [allTransactions, year]);
+  const monthLabels = useMemo(() => Array.from({ length: 12 }, (_, i) => t(`months.${i + 1}`)), [t]);
+  const data = useMemo(() => buildMonthlyChartData(allTransactions, year, new Date(), monthLabels), [allTransactions, year, monthLabels]);
   const totals = useMemo(() => sumChartData(data), [data]);
   const hasData = totals.count > 0;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 md:p-4" dir="rtl">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 md:p-4" dir={dir}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[95vh] flex flex-col">
         {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-3 p-4 md:p-5 border-b">
           <div className="flex items-center gap-2">
             <BarChart3 className="w-5 h-5 text-indigo-600" />
-            <h2 className="text-lg font-bold text-gray-800">الرسم البياني الشهري</h2>
+            <h2 className="text-lg font-bold text-gray-800">{t("chart.title")}</h2>
           </div>
-          <div className="flex items-center gap-2 mr-auto">
-            <label className="text-sm text-gray-600" htmlFor="chart-year">السنة</label>
+          <div className="flex items-center gap-2 ms-auto">
+            <label className="text-sm text-gray-600" htmlFor="chart-year">{t("chart.year")}</label>
             <select
               id="chart-year"
               value={year}
@@ -114,9 +122,9 @@ export default function MonthlyChartModal({ allTransactions, selectedDate, onClo
               className="flex items-center gap-1 border rounded-lg px-3 py-1 text-sm text-gray-600 hover:bg-gray-50 transition"
             >
               {view === "chart" ? <Table2 className="w-4 h-4" /> : <BarChart3 className="w-4 h-4" />}
-              {view === "chart" ? "عرض كجدول" : "عرض كرسم بياني"}
+              {view === "chart" ? t("chart.showTable") : t("chart.showChart")}
             </button>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition" aria-label="إغلاق">
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition" aria-label={t("common.close")}>
               <X className="w-5 h-5" />
             </button>
           </div>
@@ -125,10 +133,10 @@ export default function MonthlyChartModal({ allTransactions, selectedDate, onClo
         {/* Year totals */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3 p-3 md:p-4 border-b bg-gray-50">
           {[
-            { key: "profit", label: `الربح ${year}`, value: formatMoney(totals.profit) },
-            { key: "cashIn", label: "مجموع الإيداعات", value: formatMoney(totals.cashIn) },
-            { key: "cashOut", label: "مجموع السحوبات", value: formatMoney(totals.cashOut) },
-            { key: "count", label: "عدد العمليات", value: totals.count },
+            { key: "profit", label: t("chart.profitYear", { year }), value: formatMoney(totals.profit) },
+            { key: "cashIn", label: t("summary.deposits"), value: formatMoney(totals.cashIn) },
+            { key: "cashOut", label: t("summary.withdrawals"), value: formatMoney(totals.cashOut) },
+            { key: "count", label: t("chart.count"), value: totals.count },
           ].map((item) => (
             <div key={item.key} className="bg-white rounded-lg border border-gray-100 px-3 py-2">
               <p className="text-xs text-gray-500">{item.label}</p>
@@ -139,17 +147,17 @@ export default function MonthlyChartModal({ allTransactions, selectedDate, onClo
 
         <div className="flex-1 overflow-auto p-2 md:p-4">
           {!hasData ? (
-            <div className="p-12 text-center text-gray-400">لا توجد عمليات في سنة {year}</div>
+            <div className="p-12 text-center text-gray-400">{t("chart.emptyYear", { year })}</div>
           ) : view === "table" ? (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm text-right" data-testid="chart-table">
+              <table className="w-full text-sm text-start" data-testid="chart-table">
                 <thead className="bg-gray-50 text-gray-600">
                   <tr>
-                    <th className="px-3 py-2">الشهر</th>
-                    <th className="px-3 py-2">{CHART_SERIES.profit.name}</th>
-                    <th className="px-3 py-2">{CHART_SERIES.cashIn.name}</th>
-                    <th className="px-3 py-2">{CHART_SERIES.cashOut.name}</th>
-                    <th className="px-3 py-2">عدد العمليات</th>
+                    <th className="px-3 py-2">{t("chart.month")}</th>
+                    <th className="px-3 py-2">{seriesName("profit")}</th>
+                    <th className="px-3 py-2">{seriesName("cashIn")}</th>
+                    <th className="px-3 py-2">{seriesName("cashOut")}</th>
+                    <th className="px-3 py-2">{t("chart.count")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -165,7 +173,7 @@ export default function MonthlyChartModal({ allTransactions, selectedDate, onClo
                 </tbody>
                 <tfoot className="bg-gray-50 font-bold">
                   <tr>
-                    <td className="px-3 py-2">المجموع</td>
+                    <td className="px-3 py-2">{t("chart.total")}</td>
                     <td className="px-3 py-2">{formatMoney(totals.profit)}</td>
                     <td className="px-3 py-2">{formatMoney(totals.cashIn)}</td>
                     <td className="px-3 py-2">{formatMoney(totals.cashOut)}</td>
@@ -177,7 +185,7 @@ export default function MonthlyChartModal({ allTransactions, selectedDate, onClo
           ) : (
             <div
               role="img"
-              aria-label={`الربح والإيداعات والسحوبات لكل شهر في سنة ${year}`}
+              aria-label={t("chart.ariaLabel", { year })}
               data-testid="monthly-chart"
               data-layout={isMobile ? "mobile" : "desktop"}
               dir="ltr"
@@ -203,7 +211,7 @@ export default function MonthlyChartModal({ allTransactions, selectedDate, onClo
                     tickLine={false}
                     axisLine={false}
                     width={isMobile ? 48 : 64}
-                    label={axisCaption(isMobile ? "الربح" : "← الربح", "left", isMobile ? 10 : 12)}
+                    label={axisCaption(isMobile ? t("chart.axisProfitShort") : t("chart.axisProfit"), "left", isMobile ? 10 : 12)}
                   />
                   <YAxis
                     yAxisId="flow"
@@ -213,14 +221,14 @@ export default function MonthlyChartModal({ allTransactions, selectedDate, onClo
                     tickLine={false}
                     axisLine={false}
                     width={isMobile ? 52 : 72}
-                    label={axisCaption(isMobile ? "إيداع / سحب" : "الإيداعات / السحوبات →", "right", isMobile ? 10 : 12)}
+                    label={axisCaption(isMobile ? t("chart.axisFlowShort") : t("chart.axisFlow"), "right", isMobile ? 10 : 12)}
                   />
                   <Tooltip content={<ChartTooltip />} cursor={{ fill: "rgba(29, 78, 216, 0.06)" }} />
                   <Legend verticalAlign="bottom" content={<ChartLegend />} />
                   <Bar
                     yAxisId="profit"
                     dataKey="profit"
-                    name={CHART_SERIES.profit.name}
+                    name={seriesName("profit")}
                     fill={CHART_SERIES.profit.color}
                     radius={[4, 4, 0, 0]}
                     maxBarSize={32}
@@ -230,7 +238,7 @@ export default function MonthlyChartModal({ allTransactions, selectedDate, onClo
                     yAxisId="flow"
                     type="linear"
                     dataKey="cashIn"
-                    name={CHART_SERIES.cashIn.name}
+                    name={seriesName("cashIn")}
                     stroke={CHART_SERIES.cashIn.color}
                     strokeWidth={2}
                     dot={{ r: 4, strokeWidth: 2, fill: "#ffffff" }}
@@ -241,7 +249,7 @@ export default function MonthlyChartModal({ allTransactions, selectedDate, onClo
                     yAxisId="flow"
                     type="linear"
                     dataKey="cashOut"
-                    name={CHART_SERIES.cashOut.name}
+                    name={seriesName("cashOut")}
                     stroke={CHART_SERIES.cashOut.color}
                     strokeWidth={2}
                     strokeDasharray="6 4"

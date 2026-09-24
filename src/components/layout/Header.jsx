@@ -2,7 +2,9 @@ import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { User, LogOut, Users, LayoutDashboard } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
-import { APP_NAME, APP_TAGLINE } from "@/lib/branding";
+import { APP_NAME } from "@/lib/branding";
+import { useI18n } from "@/lib/i18n";
+import LanguageToggle from "@/components/layout/LanguageToggle";
 import { PERMISSIONS } from "@/lib/permissions";
 import AppLogo from "@/components/layout/AppLogo";
 
@@ -30,6 +32,7 @@ const ROLE_BADGE = {
 export default function Header() {
   const [time, setTime] = useState(new Date());
   const { user, logout, can } = useAuth();
+  const { t, dir, lang } = useI18n();
   const location = useLocation();
   const onUsersPage = location.pathname.startsWith("/users");
 
@@ -56,13 +59,14 @@ export default function Header() {
     };
   }, []);
 
+  // Arabic keeps its original "AM 08 : 05 : 09" order; English reads "08:05:09 AM".
   const formatTime = (d) => {
     let h = d.getHours();
     const m = String(d.getMinutes()).padStart(2, "0");
     const s = String(d.getSeconds()).padStart(2, "0");
     const ampm = h >= 12 ? "PM" : "AM";
-    h = h % 12 || 12;
-    return `${ampm} ${String(h).padStart(2, "0")} : ${m} : ${s}`;
+    h = String(h % 12 || 12).padStart(2, "0");
+    return lang === "ar" ? `${ampm} ${h} : ${m} : ${s}` : `${h}:${m}:${s} ${ampm}`;
   };
 
   const formatDate = (d) => {
@@ -75,8 +79,8 @@ export default function Header() {
   // The sign-in before the current one (recorded by the server at login) — not the current time.
   // The date is kept left-to-right so it isn't reordered inside the Arabic label.
   const lastLogin = !user ? null : user.previous_login ?
-  <>آخر دخول: <span dir="ltr">{formatLastLogin(user.previous_login)}</span></> :
-  "أول تسجيل دخول";
+  <>{t("header.lastLogin")}: <span dir="ltr">{formatLastLogin(user.previous_login)}</span></> :
+  t("header.firstLogin");
 
   return (
     // Sticky at the top while the page scrolls. z-40 keeps it above page content but below
@@ -84,21 +88,21 @@ export default function Header() {
     <header
       ref={headerRef}
       data-testid="app-header"
-      className="sticky top-0 z-40 bg-gradient-to-l from-gray-900 to-slate-800 text-white px-4 md:px-6 py-3 md:py-4 flex flex-wrap items-center justify-between gap-3 shadow-2xl"
-      dir="rtl">
+      className={`sticky top-0 z-40 ${dir === "rtl" ? "bg-gradient-to-l" : "bg-gradient-to-r"} from-gray-900 to-slate-800 text-white px-4 md:px-6 py-3 md:py-4 flex flex-wrap items-center justify-between gap-3 shadow-2xl`}
+      dir={dir}>
       {/* Right: Logo + title — clicking it scrolls back to the top of the page. The button sits
           inside the <h1> (a heading isn't allowed inside a button), so it stays the page heading. */}
       <h1 className="min-w-0">
         <button
           type="button"
           onClick={scrollToTop}
-          title="العودة إلى أعلى الصفحة"
+          title={t("header.backToTop")}
           data-testid="scroll-to-top"
-          className="flex items-center gap-3 text-right rounded-xl p-1 -m-1 cursor-pointer transition-opacity hover:opacity-85 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900">
+          className="flex items-center gap-3 text-start rounded-xl p-1 -m-1 cursor-pointer transition-opacity hover:opacity-85 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900">
           <AppLogo className="w-11 h-11 md:w-12 md:h-12 shadow-md" />
           <span className="min-w-0 flex flex-col">
             <span className="text-xl md:text-2xl font-bold whitespace-nowrap" dir="ltr">{APP_NAME}</span>
-            <span className="text-slate-300 text-sm font-normal">{APP_TAGLINE}</span>
+            <span className="text-slate-300 text-sm font-normal">{t("app.tagline")}</span>
           </span>
         </button>
       </h1>
@@ -106,16 +110,16 @@ export default function Header() {
       {/* Center: User */}
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-3 bg-white/10 backdrop-blur-sm rounded-2xl px-4 py-2 hover:bg-white/15 transition">
-          <div className="text-right">
-            <p className="font-semibold text-sm text-left flex items-center gap-2">
-              {user?.full_name || user?.email || "المستخدم"}
+          <div className="text-start">
+            <p className="font-semibold text-sm flex items-center gap-2">
+              {user?.full_name || user?.email || t("header.userFallback")}
               {user?.role_label &&
               <span className={`text-[10px] font-bold rounded-full px-2 py-0.5 ${ROLE_BADGE[user.role] || "bg-white/20"}`} data-testid="role-badge">
-                  {user.role_label}
+                  {t(`roles.${user.role}`)}
                 </span>
               }
             </p>
-            <p className="text-slate-300 text-xs font-bold" data-testid="last-login" dir="rtl">
+            <p className="text-slate-300 text-xs font-bold" data-testid="last-login">
               {lastLogin}
             </p>
           </div>
@@ -127,21 +131,22 @@ export default function Header() {
           onUsersPage ?
           <Link to="/" className="flex items-center gap-2 bg-white/10 hover:bg-white/20 rounded-2xl px-4 py-2 transition text-sm font-medium">
               <LayoutDashboard className="w-4 h-4" />
-              <span>لوحة التحكم</span>
+              <span>{t("header.dashboard")}</span>
             </Link> :
           <Link to="/users" className="flex items-center gap-2 bg-white/10 hover:bg-white/20 rounded-2xl px-4 py-2 transition text-sm font-medium">
               <Users className="w-4 h-4" />
-              <span>المستخدمون</span>
+              <span>{t("header.users")}</span>
             </Link>)
         }
         <button
           onClick={() => logout()}
           className="flex items-center gap-2 bg-red-500/30 hover:bg-red-500/50 backdrop-blur-sm rounded-2xl px-4 py-2 transition text-sm font-medium"
-          title="تسجيل الخروج">
+          title={t("header.logoutTitle")}>
           
           <LogOut className="w-4 h-4" />
-          <span>خروج</span>
+          <span>{t("header.logout")}</span>
         </button>
+        <LanguageToggle />
       </div>
 
       {/* Left: Clock */}

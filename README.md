@@ -177,6 +177,11 @@ Everyone signs in with their own email and password. There are three roles:
 - **The browser cap:** browsers keep cookies for at most about 400 days. The app renews the cookie as you use it, so this only matters if nobody opens the app for 400 days.
 - **Logout:** ends that session on the server immediately. A copy of the token can't be reused, and other devices stay signed in.
 - **Brute-force protection:** after 10 wrong passwords for the same email, sign-in is blocked for 15 minutes.
+- **Language (العربية / English):** the header has a language switch, and so does the login page, so it works before signing in. It shows the other language's name ("English" while in Arabic, "العربية" while in English).
+  - **Arabic is the default.**
+  - **The whole interface switches:** every label, message, month name, number of transactions (with English singular/plural) and the page direction. Arabic is right-to-left; English is left-to-right, with the layout mirrored.
+  - **Server messages** (e.g. a wrong password) are shown in the chosen language.
+  - **The choice is saved in a cookie** (`wmm_lang`, kept for a year), so it survives reloads and applies from the first screen. Each browser remembers its own choice.
 - **Back to top:** click the logo or the app name in the header to scroll smoothly back to the top of the page (instantly if "reduce motion" is on). It also works from the keyboard: Tab to it, then press Enter.
 - **Header position:** the header (logo, user, logout, clock) stays **fixed at the top of the screen** while you scroll, on every page and screen size. Pop-up windows still appear above it. When the keyboard moves focus to a field lower down, the page scrolls so the field lands just below the header, not behind it.
 - **Header:** shows your name, your role, and **your last login**. That's the date and time of the sign-in *before* the current one (e.g. `آخر دخول: 2026/09/23 08:05 PM`), in your local time. It shows "أول تسجيل دخول" on your first ever sign-in. Because sessions don't expire, it changes only when you sign in again. Signing in on another device counts as a new sign-in.
@@ -296,6 +301,8 @@ tests/
     ├── BulkEditModal.test.jsx        # opt-in fields, payload, commission rate, validation, errors
     ├── ReceiverReportModal.test.jsx  # receiver matching, totals, date filter
     ├── branding.test.jsx             # header (logo, name, role, last login, sticky), login page, tab title/icon, manifest
+    ├── i18n.test.jsx                 # language toggle: dictionaries match, no untranslated text, cookie,
+    │                                 # page direction, main screens in English
     ├── StatsCards.test.jsx           # monthly/yearly summaries: defaults, collapse, layout, animation
     ├── monthlyChartData.test.js      # per-month aggregation, future months, formatters
     ├── MonthlyChartModal.test.jsx    # axes, bars/lines, legend, tooltip, table view, year switch,
@@ -324,6 +331,8 @@ src/lib/                      Auth context (session, can()), permissions, search
 src/assets/css/index.css      The app's only stylesheet: Tailwind directives + theme colour variables
 src/assets/images/logo.png    App logo: header, login page, browser tab icon
 src/lib/branding.js           App name, short name, tagline and logo (single source for components)
+src/lib/i18n.jsx              Language provider, t() lookup, wmm_lang cookie, page direction
+src/locales/ar.js, en.js      All interface text: Arabic (default) and English, same keys
 src/assets/js/                Standalone scripts / vendored JS (none yet — app source stays in src/)
 public/manifest.json          Web app manifest (must stay in public/: served as-is at /manifest.json)
 tests/                        Test suite

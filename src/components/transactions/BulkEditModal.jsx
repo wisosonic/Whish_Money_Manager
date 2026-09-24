@@ -1,20 +1,22 @@
 import { useState } from "react";
 import { X, Pencil, AlertCircle } from "lucide-react";
 import { base44 } from "@/api/base44Client";
+import { useI18n } from "@/lib/i18n";
 
 // Fields that make sense to set on many transactions at once. Per-row values (amount, reference,
 // phone) stay in the single-row editor. The commission rate is applied to each row's own amount.
 const FIELDS = [
-  { key: "type", label: "النوع", kind: "type", initial: "cash_in" },
-  { key: "commission_rate", label: "نسبة العمولة (%)", kind: "number", initial: "1", hint: "تُحسب العمولة لكل عملية من مبلغها" },
-  { key: "service", label: "الخدمة", kind: "text", initial: "" },
-  { key: "sender_name", label: "اسم المرسل", kind: "text", initial: "" },
-  { key: "receiver_name", label: "اسم المستلم", kind: "text", initial: "" },
-  { key: "transaction_date", label: "التاريخ", kind: "date", initial: "" },
-  { key: "note", label: "ملاحظة", kind: "textarea", initial: "" },
+  { key: "type", labelKey: "columns.type", kind: "type", initial: "cash_in" },
+  { key: "commission_rate", labelKey: "bulk.commissionRate", kind: "number", initial: "1", hintKey: "bulk.commissionRateHint" },
+  { key: "service", labelKey: "columns.service", kind: "text", initial: "" },
+  { key: "sender_name", labelKey: "bulk.senderName", kind: "text", initial: "" },
+  { key: "receiver_name", labelKey: "bulk.receiverName", kind: "text", initial: "" },
+  { key: "transaction_date", labelKey: "columns.date", kind: "date", initial: "" },
+  { key: "note", labelKey: "columns.note", kind: "textarea", initial: "" },
 ];
 
 export default function BulkEditModal({ transactions, onClose, onSaved }) {
+  const { t: tr, dir, errorText } = useI18n();
   const [enabled, setEnabled] = useState({});
   const [values, setValues] = useState(() => Object.fromEntries(FIELDS.map((f) => [f.key, f.initial])));
   const [saving, setSaving] = useState(false);
@@ -26,9 +28,9 @@ export default function BulkEditModal({ transactions, onClose, onSaved }) {
   const validationError = (() => {
     if (enabled.commission_rate) {
       const rate = Number(values.commission_rate);
-      if (values.commission_rate === "" || !Number.isFinite(rate) || rate < 0) return "نسبة العمولة يجب أن تكون رقماً موجباً";
+      if (values.commission_rate === "" || !Number.isFinite(rate) || rate < 0) return tr("bulk.rateInvalid");
     }
-    if (enabled.transaction_date && !values.transaction_date) return "اختر التاريخ الجديد";
+    if (enabled.transaction_date && !values.transaction_date) return tr("bulk.dateRequired");
     return "";
   })();
 
@@ -42,12 +44,12 @@ export default function BulkEditModal({ transactions, onClose, onSaved }) {
       await base44.entities.Transaction.bulkUpdate(transactions.map((t) => t.id), payload);
       onSaved(payload);
     } catch (err) {
-      setError(err?.message || "تعذر حفظ التعديلات");
+      setError(err?.message ? errorText(err.message) : tr("bulk.saveFailed"));
       setSaving(false);
     }
   };
 
-  const inputCls = "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-200 text-right disabled:bg-gray-100 disabled:text-gray-400";
+  const inputCls = "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-200 text-start disabled:bg-gray-100 disabled:text-gray-400";
 
   const renderInput = (field) => {
     const common = {
@@ -70,38 +72,38 @@ export default function BulkEditModal({ transactions, onClose, onSaved }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-2 md:p-4" dir="rtl">
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-2 md:p-4" dir={dir}>
       <div className="bg-[#F3F5FA] rounded-2xl shadow-xl w-full max-w-lg max-h-[95vh] flex flex-col">
         <div className="flex items-center justify-between p-5 pb-3">
           <div className="flex items-center gap-2">
             <Pencil className="w-5 h-5 text-blue-600" />
-            <h2 className="text-lg font-bold text-gray-800">تعديل {transactions.length} عملية</h2>
+            <h2 className="text-lg font-bold text-gray-800">{tr("bulk.title", { count: transactions.length })}</h2>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600" aria-label="إغلاق">
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600" aria-label={tr("common.close")}>
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        <p className="px-5 text-sm text-gray-500">فعّل الحقول التي تريد تغييرها فقط — الحقول غير المفعلة تبقى كما هي في كل عملية.</p>
+        <p className="px-5 text-sm text-gray-500">{tr("bulk.intro")}</p>
 
         <div className="flex-1 overflow-auto px-5 py-4 space-y-3">
           {FIELDS.map((field) => (
             <div key={field.key} className="bg-white rounded-lg border border-gray-100 p-3">
               <div className="flex items-center justify-between mb-2">
-                <label htmlFor={`bulk-${field.key}`} className="text-sm font-medium text-gray-700">{field.label}</label>
+                <label htmlFor={`bulk-${field.key}`} className="text-sm font-medium text-gray-700">{tr(field.labelKey)}</label>
                 <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={!!enabled[field.key]}
                     onChange={(e) => setEnabled((prev) => ({ ...prev, [field.key]: e.target.checked }))}
-                    aria-label={`تغيير ${field.label}`}
+                    aria-label={tr("bulk.changeField", { field: tr(field.labelKey) })}
                     className="w-4 h-4 accent-blue-600"
                   />
-                  تغيير
+                  {tr("bulk.change")}
                 </label>
               </div>
               {renderInput(field)}
-              {field.hint && enabled[field.key] && <p className="text-xs text-gray-400 mt-1">{field.hint}</p>}
+              {field.hintKey && enabled[field.key] && <p className="text-xs text-gray-400 mt-1">{tr(field.hintKey)}</p>}
             </div>
           ))}
         </div>
@@ -115,21 +117,21 @@ export default function BulkEditModal({ transactions, onClose, onSaved }) {
 
         <div className="flex items-center justify-between gap-3 p-5 pt-3 border-t border-gray-200">
           <span className="text-xs text-gray-500">
-            {changeCount ? `سيتم تغيير ${changeCount} حقل في ${transactions.length} عملية` : "لم يتم اختيار أي حقل"}
+            {changeCount ? tr("bulk.summary", { fields: changeCount, count: transactions.length }) : tr("bulk.noneSelected")}
           </span>
           <div className="flex gap-2">
             <button
               onClick={onClose}
               className="bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-lg px-4 py-2 text-sm font-medium transition"
             >
-              إلغاء
+              {tr("common.cancel")}
             </button>
             <button
               onClick={handleSave}
               disabled={saving || !changeCount || !!validationError}
               className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-4 py-2 text-sm font-semibold transition disabled:opacity-50"
             >
-              {saving ? "جاري الحفظ..." : "حفظ التعديلات"}
+              {saving ? tr("common.saving") : tr("bulk.save")}
             </button>
           </div>
         </div>

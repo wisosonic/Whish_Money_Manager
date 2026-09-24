@@ -9,10 +9,12 @@ import CashOutModal from "@/components/transactions/CashOutModal";
 import ImportPDFModal from "@/components/transactions/ImportPDFModal";
 import { matchesSearch } from "@/lib/transactionSearch";
 import { useAuth } from "@/lib/AuthContext";
+import { useI18n } from "@/lib/i18n";
 import { PERMISSIONS } from "@/lib/permissions";
 
 export default function Dashboard() {
   const { can } = useAuth();
+  const { dir } = useI18n();
   // Everyone sees all office data; only Admin/Manager may set or clear opening balances.
   const canWriteBalances = can(PERMISSIONS.BALANCES_WRITE);
   const [transactions, setTransactions] = useState([]);
@@ -218,7 +220,7 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100" dir="rtl">
+    <div className="min-h-screen bg-gray-100" dir={dir}>
       <Header />
       <div className="p-2 md:p-4 space-y-2 md:space-y-4 w-full bg-[hsl(var(--sidebar-border))]">
         <StatsCards

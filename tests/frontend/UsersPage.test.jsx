@@ -42,7 +42,7 @@ describe("UsersPage", () => {
     expect(within(row("admin@test.local")).getByText("(أنت)")).toBeInTheDocument();
     expect(within(row("cashier@test.local")).getByLabelText("دور cashier@test.local")).toHaveValue("user");
     expect(within(row("old@test.local")).getByText("معطّل")).toBeInTheDocument();
-    ["Admin", "Manager", "User"].forEach((label) => expect(screen.getAllByText(label).length).toBeGreaterThan(0));
+    ["مسؤول", "مدير", "مستخدم"].forEach((label) => expect(screen.getAllByText(label).length).toBeGreaterThan(0));
   });
 
   it("changes a user's role", async () => {
@@ -65,7 +65,7 @@ describe("UsersPage", () => {
     base44.users.update.mockRejectedValue(new Error("At least one active Admin is required"));
     await renderPage();
     fireEvent.change(within(row("admin@test.local")).getByLabelText("دور admin@test.local"), { target: { value: "user" } });
-    expect(await screen.findByRole("alert")).toHaveTextContent("At least one active Admin is required");
+    expect(await screen.findByRole("alert")).toHaveTextContent("يجب أن يبقى مسؤول نشط واحد على الأقل"); // translated API message
   });
 
   it("adds a user", async () => {
@@ -96,7 +96,7 @@ describe("UsersPage", () => {
     base44.users.create.mockRejectedValue(new Error("A user with this email already exists"));
     fireEvent.change(within(dialog).getByLabelText(/كلمة المرور/), { target: { value: "long-password" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "إضافة" }));
-    expect(await within(dialog).findByText("A user with this email already exists")).toBeInTheDocument();
+    expect(await within(dialog).findByText("يوجد مستخدم بهذا البريد الإلكتروني")).toBeInTheDocument();
   });
 
   it("resets a password and says the user was signed out everywhere", async () => {

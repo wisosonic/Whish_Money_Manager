@@ -1,7 +1,17 @@
 <!doctype html>
-<html lang="en">
+<html lang="ar" dir="rtl">
   <head>
     <meta charset="UTF-8" />
+    <!-- Apply the saved interface language (wmm_lang cookie) before the first paint, so English
+         users don't see a right-to-left flash. Arabic is the default; src/lib/i18n.jsx takes over. -->
+    <script>
+      try {
+        if (/(?:^|;\s*)wmm_lang=en(?:;|$)/.test(document.cookie)) {
+          document.documentElement.lang = "en";
+          document.documentElement.dir = "ltr";
+        }
+      } catch (e) {}
+    </script>
     <!-- Vite resolves this path and serves a fingerprinted copy of the logo in the build. -->
     <link rel="icon" type="image/png" href="/src/assets/images/logo.png" />
     <link rel="apple-touch-icon" href="/src/assets/images/logo.png" />

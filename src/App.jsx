@@ -10,17 +10,19 @@ import Dashboard from "./pages/Dashboard";
 import UsersPage from "./pages/UsersPage";
 import LoginPage from "@/components/auth/LoginPage";
 import { PERMISSIONS } from "@/lib/permissions";
+import { LanguageProvider, useI18n } from "@/lib/i18n";
 
 // Route guard for pages that need a permission (the API enforces the same rule).
 export const RequirePermission = ({ permission, children }) => {
   const { can } = useAuth();
+  const { t, dir } = useI18n();
   if (can(permission)) return children;
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100 p-6" dir="rtl">
+    <div className="min-h-screen flex items-center justify-center bg-gray-100 p-6" dir={dir}>
       <div className="bg-white rounded-2xl shadow p-8 text-center max-w-sm">
-        <h1 className="text-xl font-bold text-gray-800 mb-2">غير مسموح</h1>
-        <p className="text-gray-500 text-sm mb-4">ليست لديك صلاحية لفتح هذه الصفحة.</p>
-        <a href="/" className="text-blue-600 hover:underline text-sm">العودة إلى لوحة التحكم</a>
+        <h1 className="text-xl font-bold text-gray-800 mb-2">{t("guard.title")}</h1>
+        <p className="text-gray-500 text-sm mb-4">{t("guard.message")}</p>
+        <a href="/" className="text-blue-600 hover:underline text-sm">{t("guard.back")}</a>
       </div>
     </div>
   );
@@ -66,14 +68,16 @@ const AuthenticatedApp = () => {
 function App() {
 
   return (
-    <AuthProvider>
-      <QueryClientProvider client={queryClientInstance}>
-        <Router>
-          <AuthenticatedApp />
-        </Router>
-        <Toaster />
-      </QueryClientProvider>
-    </AuthProvider>
+    <LanguageProvider>
+      <AuthProvider>
+        <QueryClientProvider client={queryClientInstance}>
+          <Router>
+            <AuthenticatedApp />
+          </Router>
+          <Toaster />
+        </QueryClientProvider>
+      </AuthProvider>
+    </LanguageProvider>
   )
 }
 

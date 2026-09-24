@@ -108,7 +108,18 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
 
 ## Conventions
 
-- UI text is Arabic and the layout is RTL (`dir="rtl"`). Code, comments and server error messages are English.
+- **The interface is bilingual: Arabic (default, RTL) and English (LTR).** Code, comments and server error messages are English. Rules for every UI change:
+  - **Never hardcode interface text.** Use `const { t } = useI18n()` and add the key to **both** `src/locales/ar.js` and `src/locales/en.js`.
+    - In files where `t` already names a transaction (TransactionsList, the reports, BulkEditModal, DailyCommissionReport), destructure it as `t: tr`.
+    - Placeholders are `{name}`; a `$` before one is a literal dollar sign.
+    - English entries with a count can be `{ one, other }`.
+  - **Never hardcode `dir="rtl"`.** Use `dir={dir}` from `useI18n()`.
+  - **Use logical spacing and alignment classes**, so English mirrors correctly: `text-start` / `text-end`, `ms-`/`me-`, `ps-`/`pe-`, `start-`/`end-`, not `text-right`, `mr-`, `pl-`, `left-`. Keep `dir="ltr"` on numbers, emails and dates embedded in text.
+  - **Server messages** stay English in the API. The frontend shows them with `errorText(message)`, which maps the exact message through `ar.__serverErrors`. Add new user-facing API messages there.
+  - **Role names and descriptions** from the API are shown via `t("roles.<name>")`. Month names are `months.1`–`months.12`.
+  - **Language names** ("العربية" / "English") are never translated; they live in `LANGUAGES` in `src/lib/i18n.jsx`.
+  - **Guard tests:** `tests/frontend/i18n.test.jsx` fails if the two word lists' keys or placeholders differ, a used key is missing, or any Arabic literal or `dir="rtl"` appears in UI code. `ReviewPDFModal.jsx` and `InsertTransactionModal.jsx` are unused and exempt; translate them if they're ever brought back.
+  - **Preference:** the `wmm_lang` cookie (`ar`/`en`, one year, SameSite=Lax, readable by JS). `index.html` applies it before the first paint. Components without a `LanguageProvider` (unit tests) get Arabic, so Arabic assertions keep working.
 - **Branding**:
   - The app is called "Whish Money Manager". Components get the name, short name, tagline and logo from `src/lib/branding.js`; never hardcode them.
   - `index.html` (tab title and icon) and `public/manifest.json` repeat the name by hand. `tests/frontend/branding.test.jsx` checks they stay in sync.
@@ -190,6 +201,15 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - `Dashboard` computes `yearly*` figures.
   - Added `StatsCards.test.jsx` and Dashboard summary tests. Total now 104.
 ### 2026-09-24
+- **Arabic / English language toggle**:
+  - **Built:** `src/lib/i18n.jsx` (provider, `t()`, plurals, `errorText()`, the `wmm_lang` cookie, `<html lang dir>`), `src/locales/ar.js` and `en.js` (about 250 keys each, plus translated server messages), and a `LanguageToggle` in the header and on the login page. `index.html` sets the direction before the first paint.
+  - **Converted:** all 19 rendered UI files. Hardcoded `dir="rtl"` and left/right classes became direction-aware.
+  - **Role names:** now shown translated (Arabic in Arabic mode).
+  - **Wording fixes:**
+    - Removed the Base44-era "uses an advanced AI model" loading text and the "زر…" button labels in the editor.
+    - The 404 page lost its Base44 "AI hasn't implemented this page" note.
+  - **Checked** in Edge: the English layout mirrors correctly and the Arabic is unchanged.
+  - **Tests:** added `i18n.test.jsx` (26 tests); 5 existing tests now expect translated roles and server errors. Total 353.
 - **Back to top from the logo/name**:
   - A button inside the `<h1>` calls `scrollToTop()` (smooth, or instant under reduced motion), with a focus ring and a tooltip.
   - Checked in Edge: the layout is unchanged, and the page scrolls to 0.

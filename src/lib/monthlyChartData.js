@@ -1,7 +1,7 @@
-export const MONTH_LABELS = [
-  "يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو",
-  "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر",
-];
+import ar from "@/locales/ar";
+
+// Month names come from the translations (keys months.1 … months.12); Arabic is the default.
+export const MONTH_LABELS = Array.from({ length: 12 }, (_, i) => ar[`months.${i + 1}`]);
 
 const transactionDate = (t) => t.transaction_date || new Date(t.created_date).toISOString().split("T")[0];
 const roundCents = (value) => Math.round(value * 100) / 100;
@@ -10,12 +10,12 @@ const roundCents = (value) => Math.round(value * 100) / 100;
 // Profit is the office's income: the commissions earned in that month.
 // Months that haven't happened yet (after `today`) get null values, so the chart leaves a gap
 // instead of drawing a misleading drop to $0.
-export const buildMonthlyChartData = (transactions, year, today = new Date()) => {
+export const buildMonthlyChartData = (transactions, year, today = new Date(), monthLabels = MONTH_LABELS) => {
   const currentYear = today.getFullYear();
   const isFutureMonth = (month) =>
     Number(year) > currentYear || (Number(year) === currentYear && month > today.getMonth() + 1);
 
-  const rows = MONTH_LABELS.map((label, index) => ({
+  const rows = monthLabels.map((label, index) => ({
     month: index + 1,
     label,
     profit: 0,

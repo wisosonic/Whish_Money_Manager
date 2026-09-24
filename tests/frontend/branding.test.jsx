@@ -242,7 +242,8 @@ describe("formatLastLogin", () => {
 describe("Header — role and navigation", () => {
   it("shows the signed-in user's role", () => {
     renderHeader();
-    expect(screen.getByTestId("role-badge")).toHaveTextContent("Admin");
+    // Role names come from the API in English and are shown translated (Arabic by default).
+    expect(screen.getByTestId("role-badge")).toHaveTextContent("مسؤول");
   });
 
   it("Admins get a link to the Users page, and back to the dashboard from there", () => {
@@ -257,7 +258,7 @@ describe("Header — role and navigation", () => {
     setAuthRole(role);
     renderHeader();
     expect(screen.queryByRole("link", { name: /المستخدمون/ })).not.toBeInTheDocument();
-    expect(screen.getByTestId("role-badge")).toHaveTextContent(role === "manager" ? "Manager" : "User");
+    expect(screen.getByTestId("role-badge")).toHaveTextContent(role === "manager" ? "مدير" : "مستخدم");
   });
 });
 
@@ -288,7 +289,8 @@ describe("LoginPage", () => {
     fireEvent.change(screen.getByLabelText("البريد الإلكتروني"), { target: { value: "a@b.cd" } });
     fireEvent.change(screen.getByLabelText("كلمة المرور"), { target: { value: "wrong-pass" } });
     fireEvent.click(screen.getByRole("button", { name: "دخول" }));
-    expect(await screen.findByText("Invalid email or password")).toBeInTheDocument();
+    // The API's English message is shown in the interface language.
+    expect(await screen.findByText("البريد الإلكتروني أو كلمة المرور غير صحيحة")).toBeInTheDocument();
   });
 });
 

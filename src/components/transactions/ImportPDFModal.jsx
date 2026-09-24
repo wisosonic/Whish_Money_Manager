@@ -5,11 +5,13 @@ import { base44 } from "@/api/base44Client";
 import { detectFileType } from "@/lib/fileType";
 import { useAuth } from "@/lib/AuthContext";
 import { PERMISSIONS } from "@/lib/permissions";
+import { useI18n } from "@/lib/i18n";
 import { X, Upload, FileText, CheckCircle, AlertCircle, Loader2, Calendar } from "lucide-react";
 
 export default function ImportPDFModal({ onClose, onSaved }) {
   // Replacing an imported statement deletes the old entries, so it needs delete rights.
   const { can } = useAuth();
+  const { t, dir, errorText } = useI18n();
   const canReplace = can(PERMISSIONS.TRANSACTIONS_DELETE);
   const [step, setStep] = useState("upload"); // upload | duplicates | preview | saving | done
   const [duplicates, setDuplicates] = useState([]);
@@ -27,7 +29,7 @@ export default function ImportPDFModal({ onClose, onSaved }) {
   const handleFile = async (file) => {
     const fileType = await detectFileType(file);
     if (!fileType) {
-      setError("يرجى اختيار ملف PDF أو CSV فقط");
+      setError(t("import.wrongFileType"));
       return;
     }
     setError("");
@@ -46,11 +48,11 @@ export default function ImportPDFModal({ onClose, onSaved }) {
 
       const rows = result?.transactions || [];
       if (rows.length === 0) {
-        setError("لم يتم استخراج حوالات تلقائياً. يمكنك حفظ ملف فارغ أو رفع ملف آخر.");
+        setError(t("import.noRows"));
       }
       const expectedCount = result?.total_transactions_count;
       if (expectedCount && rows.length < expectedCount) {
-        setError(`تحذير: الكشف يحتوي على ${expectedCount} عملية لكن تم استخراج ${rows.length} فقط — قد يكون هناك نقص. يمكنك المتابعة أو إعادة الرفع.`);
+        setError(t("import.fewerRows", { expected: expectedCount, found: rows.length }));
       }
 
       const stmtDate = result?.statement_date || "";
@@ -98,7 +100,7 @@ export default function ImportPDFModal({ onClose, onSaved }) {
     } catch (err) {
       clearInterval(timerRef.current);
       setLoading(false);
-      setError(err?.message || "تعذر تحليل الملف في الوضع المحلي.");
+      setError(err?.message ? errorText(err.message) : t("import.parseFailed"));
       setStep("upload");
       return;
     }
@@ -178,13 +180,13 @@ export default function ImportPDFModal({ onClose, onSaved }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" dir="rtl">
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" dir={dir}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b">
           <div className="flex items-center gap-2">
             <FileText className="w-5 h-5 text-blue-600" />
-            <h2 className="text-lg font-bold text-gray-800">استيراد من PDF / CSV</h2>
+            <h2 className="text-lg font-bold text-gray-800">{t("import.title")}</h2>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
             <X className="w-5 h-5" />
@@ -201,8 +203,8 @@ export default function ImportPDFModal({ onClose, onSaved }) {
               onClick={() => fileRef.current?.click()}
             >
               <Upload className="w-12 h-12 text-blue-400 mx-auto mb-4" />
-              <p className="text-lg font-semibold text-gray-700">اسحب ملف PDF أو CSV هنا أو اضغط للاختيار</p>
-              <p className="text-gray-400 text-sm mt-2">سيتم استخراج جميع الحوالات والتاريخ تلقائياً</p>
+              <p className="text-lg font-semibold text-gray-700">{t("import.dropHere")}</p>
+              <p className="text-gray-400 text-sm mt-2">{t("import.dropHint")}</p>
               <input
                 ref={fileRef}
                 type="file"
@@ -224,14 +226,14 @@ export default function ImportPDFModal({ onClose, onSaved }) {
             <div className="flex flex-col items-center justify-center py-20 gap-5">
               <Loader2 className="w-12 h-12 text-blue-500 animate-spin" />
               <div className="text-center">
-                <p className="text-gray-600 font-medium mb-1">جاري قراءة الملف واستخراج جميع العمليات...</p>
-                <p className="text-gray-400 text-sm">يستخدم نموذج ذكاء اصطناعي متقدم — قد يستغرق 30-60 ثانية</p>
+                <p className="text-gray-600 font-medium mb-1">{t("import.reading")}</p>
+                <p className="text-gray-400 text-sm">{t("import.readingHint")}</p>
               </div>
               {/* شريط التقدم */}
               <div className="w-full max-w-sm">
                 <div className="flex justify-between text-xs text-gray-500 mb-1">
-                  <span>الوقت المنقضي: {elapsed}ث</span>
-                  <span>المتوقع: ~60ث</span>
+                  <span>{t("common.elapsed", { seconds: elapsed })}</span>
+                  <span>{t("import.expected")}</span>
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
                   <div
@@ -249,33 +251,33 @@ export default function ImportPDFModal({ onClose, onSaved }) {
             <div className="max-w-xl mx-auto py-10">
               <div className="bg-amber-50 border border-amber-300 rounded-2xl p-6 text-center">
                 <AlertCircle className="w-12 h-12 text-amber-500 mx-auto mb-3" />
-                <p className="text-lg font-bold text-amber-800 mb-2">هذا الكشف مستورد مسبقاً</p>
+                <p className="text-lg font-bold text-amber-800 mb-2">{t("import.alreadyImported")}</p>
                 <p className="text-sm text-amber-700 mb-1">
-                  تم العثور على {duplicates.length} عملية من أصل {editRows.length} مسجلة مسبقاً بنفس أرقام العمليات
+                  {t("import.duplicatesFound", { found: duplicates.length, total: editRows.length })}
                   {(() => {
                     const dates = [...new Set(duplicates.map((d) => d.transaction_date).filter(Boolean))].sort();
-                    return dates.length ? ` (${dates.join("، ")})` : "";
+                    return dates.length ? ` (${dates.join(t("common.listSeparator"))})` : "";
                   })()}
                   .
                 </p>
                 {canReplace ? (
-                  <p className="text-sm text-amber-700 mb-5">هل تريد استبدال العمليات الموجودة بالعمليات الجديدة أم إلغاء الرفع؟</p>
+                  <p className="text-sm text-amber-700 mb-5">{t("import.replaceQuestion")}</p>
                 ) : (
-                  <p className="text-sm text-amber-700 mb-5">استبدال العمليات الموجودة يتطلب صلاحية الحذف — اطلب من المدير رفع هذا الكشف.</p>
+                  <p className="text-sm text-amber-700 mb-5">{t("import.replaceNeedsDelete")}</p>
                 )}
                 <div className="flex justify-center gap-3">
                   <button
                     onClick={resetUpload}
                     className="border rounded-lg px-4 py-2 text-gray-600 bg-white hover:bg-gray-50"
                   >
-                    إلغاء الرفع
+                    {t("import.cancelUpload")}
                   </button>
                   {canReplace && (
                     <button
                       onClick={() => { setOverwrite(true); setStep("preview"); }}
                       className="bg-amber-600 hover:bg-amber-700 text-white rounded-lg px-5 py-2 font-semibold transition"
                     >
-                      استبدال العمليات الموجودة
+                      {t("import.replaceExisting")}
                     </button>
                   )}
                 </div>
@@ -289,20 +291,20 @@ export default function ImportPDFModal({ onClose, onSaved }) {
               <div className="flex items-center justify-between mb-3">
                 <p className="text-green-600 font-semibold flex items-center gap-2">
                   <CheckCircle className="w-4 h-4" />
-                  تم استخراج {editRows.length} حوالة — راجع البيانات قبل الحفظ
+                  {t("import.extracted", { count: editRows.length })}
                 </p>
                 <button
                   onClick={resetUpload}
                   className="text-sm text-blue-500 hover:underline"
                 >
-                  رفع ملف آخر
+                  {t("import.uploadAnother")}
                 </button>
               </div>
 
               {overwrite && duplicates.length > 0 && (
                 <div className="flex items-center gap-2 mb-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
                   <AlertCircle className="w-4 h-4" />
-                  عند الحفظ سيتم حذف {duplicates.length} عملية موجودة واستبدالها بعمليات هذا الملف.
+                  {t("import.willReplace", { count: duplicates.length })}
                 </div>
               )}
 
@@ -310,17 +312,17 @@ export default function ImportPDFModal({ onClose, onSaved }) {
                 validation.is_valid ? (
                   <div className="flex items-center gap-2 mb-3 bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-sm text-green-700">
                     <CheckCircle className="w-4 h-4" />
-                    الكشف متطابق: مجموع المدين والدائن ورصيد النهاية مطابقة للأرقام في الملف.
+                    {t("import.reconciled")}
                   </div>
                 ) : (
                   <div className="flex items-center gap-2 mb-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
                     <AlertCircle className="w-4 h-4" />
                     <span>
-                      تحذير: الكشف غير متطابق
-                      {!validation.total_debit_matches && " — مجموع المدين مختلف"}
-                      {!validation.total_credit_matches && " — مجموع الدائن مختلف"}
-                      {!validation.closing_balance_matches && " — رصيد النهاية مختلف"}
-                      {validation.balance_mismatch_lines?.length > 0 && ` — رصيد غير متطابق في الأسطر: ${validation.balance_mismatch_lines.join("، ")}`}
+                      {t("import.notReconciled")}
+                      {!validation.total_debit_matches && ` — ${t("import.debitMismatch")}`}
+                      {!validation.total_credit_matches && ` — ${t("import.creditMismatch")}`}
+                      {!validation.closing_balance_matches && ` — ${t("import.closingMismatch")}`}
+                      {validation.balance_mismatch_lines?.length > 0 && ` — ${t("import.lineMismatch", { lines: validation.balance_mismatch_lines.join(t("common.listSeparator")) })}`}
                     </span>
                   </div>
                 )
@@ -329,14 +331,14 @@ export default function ImportPDFModal({ onClose, onSaved }) {
               {/* Opening Balance */}
               {openingBalance !== null && (
                 <div className="flex items-center gap-3 mb-3 bg-green-50 border border-green-200 rounded-xl px-4 py-3">
-                  <span className="text-sm font-medium text-green-700">💰 Opening Balance المكتشف:</span>
+                  <span className="text-sm font-medium text-green-700">💰 {t("import.detectedOpening")}:</span>
                   <input
                     type="number"
                     value={openingBalance}
                     onChange={(e) => setOpeningBalance(Number(e.target.value))}
                     className="border border-green-300 rounded-lg px-2 py-1 text-sm font-bold text-green-800 w-32 focus:outline-none focus:ring-2 focus:ring-green-300"
                   />
-                  <span className="text-xs text-green-600">سيُوضع تلقائياً في رصيد البداية</span>
+                  <span className="text-xs text-green-600">{t("import.openingHint")}</span>
                 </div>
               )}
 
@@ -344,7 +346,7 @@ export default function ImportPDFModal({ onClose, onSaved }) {
               <div className="flex items-center gap-3 mb-4 bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
                 <Calendar className="w-4 h-4 text-blue-500" />
                 <span className="text-sm text-gray-600 font-medium">
-                  {detectedDate ? `تم اكتشاف التاريخ: ${detectedDate}` : "لم يُكتشف تاريخ — حدده يدوياً:"}
+                  {detectedDate ? t("import.dateDetected", { date: detectedDate }) : t("import.dateMissing")}
                 </span>
                 <input
                   type="date"
@@ -352,24 +354,24 @@ export default function ImportPDFModal({ onClose, onSaved }) {
                   onChange={(e) => applyDateToAll(e.target.value)}
                   className="border rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
                 />
-                <span className="text-xs text-gray-400">سيُطبَّق على جميع الحوالات</span>
+                <span className="text-xs text-gray-400">{t("import.dateHint")}</span>
               </div>
 
               <div className="overflow-x-auto rounded-xl border">
-                <table className="w-full text-sm text-right">
+                <table className="w-full text-sm text-start">
                   <thead className="bg-gray-50 text-gray-600">
                     <tr>
-                      <th className="px-3 py-2">النوع</th>
-                      <th className="px-3 py-2">الخدمة</th>
-                      <th className="px-3 py-2">المرسل</th>
-                      <th className="px-3 py-2">المستلم</th>
+                      <th className="px-3 py-2">{t("columns.type")}</th>
+                      <th className="px-3 py-2">{t("columns.service")}</th>
+                      <th className="px-3 py-2">{t("columns.sender")}</th>
+                      <th className="px-3 py-2">{t("columns.receiver")}</th>
                       {/* <th className="px-3 py-2">الهاتف</th> */}
-                      <th className="px-3 py-2">المبلغ</th>
-                      <th className="px-3 py-2">العمولة</th>
-                      <th className="px-3 py-2">نسبة العمولة %</th>
-                      <th className="px-3 py-2">رقم العملية</th>
-                      <th className="px-3 py-2">ملاحظة</th>
-                      <th className="px-3 py-2">التاريخ</th>
+                      <th className="px-3 py-2">{t("columns.amount")}</th>
+                      <th className="px-3 py-2">{t("columns.commission")}</th>
+                      <th className="px-3 py-2">{t("columns.commissionRatePct")}</th>
+                      <th className="px-3 py-2">{t("columns.reference")}</th>
+                      <th className="px-3 py-2">{t("columns.note")}</th>
+                      <th className="px-3 py-2">{t("columns.date")}</th>
                       <th className="px-3 py-2"></th>
                     </tr>
                   </thead>
@@ -433,7 +435,7 @@ export default function ImportPDFModal({ onClose, onSaved }) {
           {step === "saving" && (
             <div className="flex flex-col items-center justify-center py-20 gap-4">
               <Loader2 className="w-12 h-12 text-green-500 animate-spin" />
-              <p className="text-gray-600 font-medium">جاري حفظ الحوالات...</p>
+              <p className="text-gray-600 font-medium">{t("import.saving")}</p>
             </div>
           )}
 
@@ -441,7 +443,7 @@ export default function ImportPDFModal({ onClose, onSaved }) {
           {step === "done" && (
             <div className="flex flex-col items-center justify-center py-20 gap-4">
               <CheckCircle className="w-16 h-16 text-green-500" />
-              <p className="text-xl font-bold text-gray-700">تم الحفظ بنجاح!</p>
+              <p className="text-xl font-bold text-gray-700">{t("import.saved")}</p>
             </div>
           )}
         </div>
@@ -449,17 +451,17 @@ export default function ImportPDFModal({ onClose, onSaved }) {
         {/* Footer */}
         {step === "preview" && (
           <div className="border-t p-4 flex justify-between items-center">
-            <span className="text-gray-500 text-sm">{editRows.length} حوالة جاهزة للحفظ</span>
+            <span className="text-gray-500 text-sm">{t("import.readyToSave", { count: editRows.length })}</span>
             <div className="flex gap-3">
               <button onClick={onClose} className="border rounded-lg px-4 py-2 text-gray-600 hover:bg-gray-50">
-                إلغاء
+                {t("common.cancel")}
               </button>
               <button
                 onClick={handleSaveAll}
                 disabled={editRows.length === 0}
                 className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-6 py-2 font-semibold transition disabled:opacity-50"
               >
-                حفظ الكل ({editRows.length})
+                {t("import.saveAll", { count: editRows.length })}
               </button>
             </div>
           </div>
