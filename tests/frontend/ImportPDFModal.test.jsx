@@ -103,6 +103,48 @@ describe("ImportPDFModal", () => {
     expect(warning.textContent).toMatch(/الأسطر: 2/);
   });
 
+  it("when the provider's rounding explains a difference, it reconciles and says so", async () => {
+    base44.integrations.Core.ExtractCsv.mockResolvedValue(extraction({
+      validation: {
+        is_valid: true, total_debit_matches: true, total_credit_matches: true, closing_balance_matches: true,
+        balance_mismatch_lines: [], rounding_difference: 0.01, rounded_rows: 145, first_unexplained_line: null,
+      },
+    }));
+    const { container } = renderModal();
+    upload(container, csvFile());
+    const banner = await screen.findByTestId("reconciled");
+    expect(banner).toHaveTextContent("الكشف متطابق");
+    expect(screen.getByTestId("rounding-note")).toHaveTextContent("فرق $0.01 سببه تقريب الأرقام من مزوّد الخدمة، موزّع على 145 سطراً");
+    expect(screen.queryByText(/تحذير: الكشف غير متطابق/)).not.toBeInTheDocument();
+  });
+
+  it("no rounding note when everything adds up exactly", async () => {
+    base44.integrations.Core.ExtractCsv.mockResolvedValue(extraction({
+      validation: {
+        is_valid: true, total_debit_matches: true, total_credit_matches: true, closing_balance_matches: true,
+        balance_mismatch_lines: [], rounding_difference: 0, rounded_rows: 10, first_unexplained_line: null,
+      },
+    }));
+    const { container } = renderModal();
+    upload(container, csvFile());
+    await screen.findByTestId("reconciled");
+    expect(screen.queryByTestId("rounding-note")).not.toBeInTheDocument();
+  });
+
+  it("names the line where balances stop adding up when rounding can't explain it", async () => {
+    base44.integrations.Core.ExtractCsv.mockResolvedValue(extraction({
+      validation: {
+        is_valid: false, total_debit_matches: true, total_credit_matches: true, closing_balance_matches: false,
+        balance_mismatch_lines: [], rounding_difference: 0.03, rounded_rows: 3, first_unexplained_line: 901,
+      },
+    }));
+    const { container } = renderModal();
+    upload(container, csvFile());
+    const warning = await screen.findByText(/تحذير: الكشف غير متطابق/);
+    expect(warning.textContent).toMatch(/رصيد النهاية مختلف/);
+    expect(warning.textContent).toMatch(/الأرصدة لا تتطابق ابتداءً من السطر 901/);
+  });
+
   it("saves new records without overwrite and passes the opening balance and date back", async () => {
     const { container, onSaved } = renderModal();
     upload(container, csvFile());

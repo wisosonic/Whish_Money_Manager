@@ -606,6 +606,66 @@ const csvDateToIso = (value) => (/^\d{4}-\d{2}-\d{2}$/.test(value) ? value : toI
 
 const roundCents = (value) => Math.round(value * 100) / 100;
 
+// ═══ Rounding-aware reconciliation ═══
+// The provider prints every figure rounded to the cent from more precise internal values (sub-cent
+// fees, currency conversions), rounding each amount and each running balance separately. So the
+// closing balance can end up a cent away from opening + credits − debits with nothing wrong.
+// Rather than widening a tolerance, this proves the statement is consistent: every exact value lies
+// within half a cent of its printed value, so walk the rows keeping the range of exact balances
+// that agrees with everything printed so far. If the range ever becomes empty, rounding can't
+// explain that row — it's reported as the first unexplained line. Work is in half-cents, so all
+// arithmetic is exact integers. Ties (x.xx5) may round either way: the provider's rounding isn't
+// consistently half-up, so range ends are inclusive.
+//   rows: [{ line_no, debit, credit, balance }] (balance may be null)
+const reconcileWithRounding = ({ opening, closing, rows }) => {
+  const toCents = (value) => Math.round(Number(value || 0) * 100);
+  let lo = 2 * toCents(opening) - 1;
+  let hi = 2 * toCents(opening) + 1;
+  let printed = toCents(opening);
+  let lastBalance = null;
+  let roundedRows = 0;
+  let firstUnexplained = null;
+
+  for (const row of rows) {
+    const credit = toCents(row.credit);
+    const debit = toCents(row.debit);
+    const slack = (credit ? 1 : 0) + (debit ? 1 : 0); // each printed amount is ±½ cent too
+    lo += 2 * (credit - debit) - slack;
+    hi += 2 * (credit - debit) + slack;
+    printed += credit - debit;
+    if (row.balance == null) continue;
+
+    const balance = toCents(row.balance);
+    if (balance !== printed) roundedRows += 1;
+    printed = balance;
+    lastBalance = balance;
+    lo = Math.max(lo, 2 * balance - 1);
+    hi = Math.min(hi, 2 * balance + 1);
+    if (lo > hi && firstUnexplained === null) {
+      firstUnexplained = row.line_no;
+      // Carry on from the printed balance so the counts stay meaningful for the rest of the file.
+      lo = 2 * balance - 1;
+      hi = 2 * balance + 1;
+    }
+  }
+
+  // The closing balance and the last row's balance are the same exact number printed twice, so
+  // they must be identical; without row balances, the closing must fit the range.
+  const closingCents = toCents(closing);
+  const closingFits = lastBalance !== null
+    ? closingCents === lastBalance
+    : Math.max(lo, 2 * closingCents - 1) <= Math.min(hi, 2 * closingCents + 1);
+  if (!closingFits && firstUnexplained === null) firstUnexplained = "closing";
+
+  const expected = toCents(opening) + rows.reduce((sum, r) => sum + toCents(r.credit) - toCents(r.debit), 0);
+  return {
+    consistent: firstUnexplained === null,
+    first_unexplained_line: firstUnexplained,
+    rounding_difference: (closingCents - expected) / 100,
+    rounded_rows: roundedRows,
+  };
+};
+
 const extractTransactionsFromCsv = (text) => {
   const content = String(text || "").replace(/^﻿/, "");
   const firstLine = content.split(/\r?\n/, 1)[0] || "";
@@ -702,7 +762,11 @@ const extractTransactionsFromCsv = (text) => {
 
   const totalDebitMatches = !summary.total_debit || Math.abs(parseAmount(summary.total_debit) - totalDebit) < 0.005;
   const totalCreditMatches = !summary.total_credit || Math.abs(parseAmount(summary.total_credit) - totalCredit) < 0.005;
-  const closingBalanceMatches = Math.abs(openingBalance + totalCredit - totalDebit - closingBalance) < 0.005;
+  // Exact match, or a difference the provider's per-row rounding fully explains (see
+  // reconcileWithRounding). Anything rounding can't explain still fails, with its line.
+  const rounding = reconcileWithRounding({ opening: openingBalance, closing: closingBalance, rows: transactions });
+  const closingExact = Math.abs(openingBalance + totalCredit - totalDebit - closingBalance) < 0.005;
+  const closingBalanceMatches = rounding.first_unexplained_line !== "closing" && (closingExact || rounding.consistent);
 
   return {
     source: "csv",
@@ -719,11 +783,17 @@ const extractTransactionsFromCsv = (text) => {
       currency: summary.currency || "",
     },
     validation: {
-      is_valid: totalDebitMatches && totalCreditMatches && closingBalanceMatches && balanceMismatchLines.length === 0,
+      is_valid: totalDebitMatches && totalCreditMatches && closingBalanceMatches && balanceMismatchLines.length === 0 && rounding.consistent,
       total_debit_matches: totalDebitMatches,
       total_credit_matches: totalCreditMatches,
       closing_balance_matches: closingBalanceMatches,
       balance_mismatch_lines: balanceMismatchLines,
+      // How much of opening + credits − debits vs closing is the provider's rounding (e.g. 0.01),
+      // how many rows moved a cent more or less than their amount, and the first row (or
+      // "closing") that rounding can't explain — null when everything adds up.
+      rounding_difference: rounding.rounding_difference,
+      rounded_rows: rounding.rounded_rows,
+      first_unexplained_line: rounding.first_unexplained_line,
     },
     transactions,
   };
@@ -1035,5 +1105,6 @@ export {
   extractTransactionsFromCsv,
   extractTransactionsFromRows,
   parseCsvText,
+  reconcileWithRounding,
   splitNamePhone,
 };

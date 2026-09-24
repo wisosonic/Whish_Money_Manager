@@ -78,6 +78,18 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
 
 - Debit → `cash_out`, credit → `cash_in`.
 - **CSV commission**: 1% on every credit (rounded to 3 decimals), 0 on debits, no exceptions.
+- **CSV reconciliation is rounding-aware, not tolerant** (`reconcileWithRounding` in `server/index.js`, user's request).
+  - **Why:** the provider rounds each amount and each running balance separately from sub-cent internal values. Real statements then show many rows where the balance moves ±0.01 against the amount, and these can net to a cent at the closing balance. The user's `AccountStatementCSV_20200813.csv` has 145 such rows, netting to +0.01.
+  - **How:** every printed value is ±½ cent from its exact value. The check walks the rows tracking the interval of possible exact balances, in half-cents so the arithmetic is exact integers; each non-zero amount widens it by ±½ cent, and each printed balance intersects it with ±½ cent. The interval ends are inclusive, because ties round either way.
+    - An empty interval means a row rounding can't explain: `first_unexplained_line`.
+    - The closing balance must **equal** the last row's balance, since it's the same number printed twice. Without row balances, it must fit the interval.
+  - **Result:** `closing_balance_matches` = exact, or consistent under rounding (never when the "closing" rule fails). `is_valid` also requires `consistent`.
+    - `validation.rounding_difference` / `rounded_rows` feed the green banner's "rounding accounts for $X over N rows" note.
+    - `first_unexplained_line` feeds the red banner.
+  - **Don't replace this with a ±0.01 closing tolerance.** Fault injection on the real file:
+    - **Caught:** a missing row, an amount off by 1 or 2 cents on a tight row, and the closing balance off by one more cent.
+    - **Undetectable by any method:** the opening balance off by 1 cent, and a 1-cent amount error that rounding absorbs.
+  - The tests use a synthetic statement. The user's real CSV holds customer names and phones, so don't copy it into `tests/fixtures`.
 - **PDF commission** still has its original exceptions (description contains "cashin" or "qr topup", or service contains "reversed" → 0%). The user hasn't asked to align it with the CSV rule; ask before changing it.
 - `NAME - 96171588017` descriptions are split in **both** engines (`splitNamePhone`): the name goes to sender/receiver, `phone` gets the number as printed, and `customer_number` gets it without the `961` / `+961` prefix.
 - Duplicates are matched by `reference_number` **across the whole office** (everyone shares one set of transactions). On re-import the user chooses **overwrite** (delete same-reference rows, then insert, in one database transaction) or **cancel**. Rows without a reference are never matched or deleted.
@@ -274,6 +286,11 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - `Dashboard` computes `yearly*` figures.
   - Added `StatsCards.test.jsx` and Dashboard summary tests. Total now 104.
 ### 2026-09-24
+- **CSV "closing balance differs" warning on a correct statement**:
+  - **Cause:** in `AccountStatementCSV_20200813.csv` (1,843 rows), the header totals equal the row sums, and the closing equals the last balance. But opening + credits − debits = 16,822.36 against a stated 16,822.37: 145 per-row ±0.01 rounding steps net to +0.01, and the closing check allowed less than half a cent.
+  - **Fix:** a rounding-aware reconciliation (see Business rules) that proves the cent is rounding instead of tolerating it. The import screen now explains the difference, and names the first line rounding can't explain.
+  - **Caught along the way:** the function was exported twice, which Vitest tolerated but Node refused at startup.
+  - **Tests:** 9 new CSV-engine tests (they failed before the fix) and 3 import-screen tests. The fixture expectation now includes the new fields.
 - **PDF one-cent overwrite fixed:** the balance cross-check now works in whole cents. A difference of exactly 1 cent is the provider's rounding and keeps the printed amount; anything larger is still corrected from the balance, and corrected amounts no longer carry float residue (20.19999999999999 → 20.2). 3 regression tests use values found by search that trigger the old float bug (e.g. 1100.36 − 100.37 − 1000). Two of them failed before the fix.
 - **Search across all days:** a scope switch (all days by default / this day), a results line, dates that open their day, per-day "#" and unique row labels. The day's totals are unchanged by the scope. Tests: 9 new Dashboard tests; the day-only tests now select "this day".
 - **Dark mode:** a `theme` preference (light / dark / system), the CSS remapping layer, pre-paint cookie, dark chart palette (validated) and a Theme option in Settings. The guard test caught two unmapped hover classes during the work. Tests: `theme.test.jsx` (17), plus preference tests.

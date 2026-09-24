@@ -195,6 +195,8 @@ const en = {
   "import.willReplace": { one: "Saving will delete {count} existing transaction and replace it with this file's.", other: "Saving will delete {count} existing transactions and replace them with this file's." },
   "import.reconciled": "Statement reconciles: debit total, credit total and closing balance match the file.",
   "import.notReconciled": "Warning: the statement doesn't reconcile",
+  "import.roundingNote": { one: "The provider's rounding accounts for a ${amount} difference, spread over {rows} row where the balance moved a cent more or less than the amount.", other: "The provider's rounding accounts for a ${amount} difference, spread over {rows} rows where the balance moved a cent more or less than the amount." },
+  "import.unexplainedLine": "balances stop adding up at line {line}",
   "import.debitMismatch": "debit total differs",
   "import.creditMismatch": "credit total differs",
   "import.closingMismatch": "closing balance differs",

@@ -306,7 +306,12 @@ SOA-20260923-0001,1,"=""2026-09-23""",tr:626186571,,+9613915112,50.00,0.00,"10,5
 - Required transaction columns: `date`, `debit`, `credit`, `balance`. Also used: `line_no`, `reference`, `service`, `description`.
 - The summary section is optional. Without it, opening and closing balances are taken from the first and last rows.
 - Excel's `="…"` wrapping and thousands separators are handled.
-- The provider rounds the displayed balance, so a row's balance may move ±0.01 from its amount. The check allows for this, and amounts always come from the debit/credit columns.
+- The provider prints every figure rounded to the cent from more precise values (sub-cent fees, currency conversions). So a row's balance may move a cent more or less than its amount, and over a whole statement these cents can leave the closing balance one cent away from opening + credits − debits.
+  - **How the app checks:** it doesn't simply allow a cent of slack. It checks that the rounding can really explain the difference: every exact value must be within half a cent of what's printed, and all the balances must still add up.
+  - **When rounding explains it:** the statement shows as reconciled, with a note such as "The provider's rounding accounts for a $0.01 difference, spread over 145 rows…".
+  - **When it doesn't:** for example a missing row, an amount off by more than rounding allows, or a closing balance that differs from the last row. The statement shows as not reconciled, with the line where the balances stop adding up.
+  - **What it can't catch:** a one-cent typo that happens to look exactly like rounding, since the printed figures are then genuinely consistent.
+  - Amounts always come from the debit/credit columns; balances are only used for checking.
 
 A sample export is included: `AccountStatementCSV_20200813.csv` (also used as a test fixture).
 

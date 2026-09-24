@@ -310,9 +310,20 @@ export default function ImportPDFModal({ onClose, onSaved }) {
 
               {validation && (
                 validation.is_valid ? (
-                  <div className="flex items-center gap-2 mb-3 bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-sm text-green-700">
-                    <CheckCircle className="w-4 h-4" />
-                    {t("import.reconciled")}
+                  <div className="flex items-start gap-2 mb-3 bg-green-50 border border-green-200 rounded-xl px-4 py-3 text-sm text-green-700" data-testid="reconciled">
+                    <CheckCircle className="w-4 h-4 mt-0.5 shrink-0" />
+                    <span>
+                      {t("import.reconciled")}
+                      {/* The provider's rounding explains a small difference: say so rather than hide it. */}
+                      {Math.abs(validation.rounding_difference || 0) >= 0.01 &&
+                        <span className="block text-green-800 mt-0.5" data-testid="rounding-note">
+                          {t("import.roundingNote", {
+                            amount: Math.abs(validation.rounding_difference).toFixed(2),
+                            rows: validation.rounded_rows,
+                          })}
+                        </span>
+                      }
+                    </span>
                   </div>
                 ) : (
                   <div className="flex items-center gap-2 mb-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
@@ -323,6 +334,8 @@ export default function ImportPDFModal({ onClose, onSaved }) {
                       {!validation.total_credit_matches && ` — ${t("import.creditMismatch")}`}
                       {!validation.closing_balance_matches && ` — ${t("import.closingMismatch")}`}
                       {validation.balance_mismatch_lines?.length > 0 && ` — ${t("import.lineMismatch", { lines: validation.balance_mismatch_lines.join(t("common.listSeparator")) })}`}
+                      {typeof validation.first_unexplained_line === "number" && !validation.balance_mismatch_lines?.includes(validation.first_unexplained_line) &&
+                        ` — ${t("import.unexplainedLine", { line: validation.first_unexplained_line })}`}
                     </span>
                   </div>
                 )

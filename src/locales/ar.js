@@ -190,6 +190,8 @@ const ar = {
   "import.willReplace": "عند الحفظ سيتم حذف {count} عملية موجودة واستبدالها بعمليات هذا الملف.",
   "import.reconciled": "الكشف متطابق: مجموع المدين والدائن ورصيد النهاية مطابقة للأرقام في الملف.",
   "import.notReconciled": "تحذير: الكشف غير متطابق",
+  "import.roundingNote": "فرق ${amount} سببه تقريب الأرقام من مزوّد الخدمة، موزّع على {rows} سطراً تحرّك فيها الرصيد سنتاً واحداً أكثر أو أقل من المبلغ.",
+  "import.unexplainedLine": "الأرصدة لا تتطابق ابتداءً من السطر {line}",
   "import.debitMismatch": "مجموع المدين مختلف",
   "import.creditMismatch": "مجموع الدائن مختلف",
   "import.closingMismatch": "رصيد النهاية مختلف",
