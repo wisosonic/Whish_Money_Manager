@@ -195,7 +195,6 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
 
 ## Known issues / backlog (not yet fixed)
 
-- **PDF engine, one-cent problem**: the balance check (`Math.abs(trueAmount - transaction.amount) > 0.01`) fires on floating-point values like `|999.99 − 1000| = 0.0100000000000477`. That overwrites the amount by one cent on rows where the provider's rounded balance differs by 0.01, which is about 10 rows in a typical statement.
 - **PDF engine, fragile opening-balance pattern**: `OPENING BALANCE…` takes the first run of digits (decimals optional). A missed or wrong opening balance defaults to 0 and corrupts the first transaction through the balance check.
 - **PDF engine, no final check**: the closing balance is never compared with the result. `total_transactions_count` equals `transactions.length`, so the "fewer rows than expected" warning can't fire for PDFs.
 - **`total_commission` from the PDF engine is built as text**: commission is a `toFixed` string, so the total is string concatenation. The UI doesn't use it.
@@ -242,6 +241,7 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - `Dashboard` computes `yearly*` figures.
   - Added `StatsCards.test.jsx` and Dashboard summary tests. Total now 104.
 ### 2026-09-24
+- **PDF one-cent overwrite fixed:** the balance cross-check now works in whole cents. A difference of exactly 1 cent is the provider's rounding and keeps the printed amount; anything larger is still corrected from the balance, and corrected amounts no longer carry float residue (20.19999999999999 → 20.2). 3 regression tests use values found by search that trigger the old float bug (e.g. 1100.36 − 100.37 − 1000). Two of them failed before the fix.
 - **Settings page** (per-user preferences):
   - **Server:** `server/preferences.js`, a `users.preferences` column with an upgrade step, and `PUT /auth/preferences`.
   - **Frontend:** `PreferencesContext`, `/settings`, and a header gear link.

@@ -447,19 +447,26 @@ const extractTransactionsFromRows = (tableRows) => {
   // when SERVICE/DESCRIPTION text gets garbled by PDF line-wrapping, but the balance delta
   // is ground truth: opening_balance plus every delta in order always reconstructs the
   // stated closing_balance exactly, so it's used here to correct any mismatches.
-  let runningBalance = openingMatch ? parseAmount(openingMatch[1]) : 0;
+  //
+  // All of this is done in whole cents. The provider rounds the running balance, so it can move by
+  // ±0.01 more or less than the row's debit/credit — that one cent is rounding, not an error, and
+  // must not change the printed amount. Comparing floats against 0.01 got that wrong
+  // (|999.99 − 1000| is 0.0100000000000477), overwriting amounts by a cent on ~10 rows a statement.
+  const toCents = (value) => Math.round(Number(value) * 100);
+  let runningCents = toCents(openingMatch ? parseAmount(openingMatch[1]) : 0);
   transactions.forEach((transaction) => {
     const lastCell = transaction.row[transaction.row.length - 1];
     if (!/^\d[\d,]*\.\d{2}$/.test(String(lastCell || ""))) {
       return;
     }
 
-    const statedBalance = parseAmount(lastCell);
-    const delta = statedBalance - runningBalance;
-    const trueType = delta >= 0 ? "cash_in" : "cash_out";
-    const trueAmount = Math.abs(delta);
+    const statedCents = toCents(parseAmount(lastCell));
+    const deltaCents = statedCents - runningCents;
+    const trueType = deltaCents >= 0 ? "cash_in" : "cash_out";
+    const trueAmount = Math.abs(deltaCents) / 100;
+    const offByCents = Math.abs(Math.abs(deltaCents) - toCents(transaction.amount));
 
-    if (trueType !== transaction.type || Math.abs(trueAmount - transaction.amount) > 0.01) {
+    if (trueType !== transaction.type || offByCents > 1) {
       transaction.type = trueType;
       transaction.amount = trueAmount;
       const commissionRate = trueType === "cash_out" || transaction.isNoFees ? 0 : 1;
@@ -471,7 +478,7 @@ const extractTransactionsFromRows = (tableRows) => {
       transaction.receiver_name = swap;
     }
 
-    runningBalance = statedBalance;
+    runningCents = statedCents;
   });
 
   const totalCashIn = transactions.filter((t) => t.type === "cash_in").reduce((sum, t) => sum + t.amount, 0);

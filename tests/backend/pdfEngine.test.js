@@ -87,3 +87,47 @@ describe("extractTransactionsFromRows (row-level rules)", () => {
     expect(result.closing_balance).toBe(90);
   });
 });
+
+describe("PDF engine — balance cross-check in whole cents", () => {
+  // The provider rounds the running balance, so it can move by ±0.01 more or less than the row's
+  // debit/credit. The check used to compare floats against 0.01, and |999.99 − 1000| is
+  // 0.0100000000000477 in floating point — so the printed amount was overwritten by one cent.
+  it("keeps the printed amount when the balance differs from it by exactly one cent", async () => {
+    // Values chosen so the float subtraction lands just above 0.01 (e.g. 1100.36 − 100.37 − 1000).
+    const result = await parsePdf({
+      opening: "100.37",
+      rows: [
+        ["23/09/2026", "tr:1", "W2W", "KHALIL FAKIH - 9613077461", "", "1000.00", "1100.36"],
+        ["23/09/2026", "tr:2", "W2W", "SAMI - 96171000000", "", "49.99", "1150.34"],
+        ["23/09/2026", "tr:3", "QR", "QR CASH IN", "20.20", "", "1130.15"],
+      ],
+      closing: "1130.15",
+    });
+    const [big, small, debit] = result.transactions;
+    expect(big).toMatchObject({ type: "cash_in", amount: 1000, commission: "10.000" });
+    expect(small).toMatchObject({ type: "cash_in", amount: 49.99 });
+    // 1150.34 − 20.20 = 1130.14 but the statement says 1130.15: a one-cent rounding step, not an error.
+    expect(debit).toMatchObject({ type: "cash_out", amount: 20.2 });
+  });
+
+  it("still corrects the amount from the balance when it's off by more than a cent", async () => {
+    const result = await parsePdf({
+      opening: "100.00",
+      rows: [["23/09/2026", "tr:1", "W2W", "KHALIL FAKIH - 9613077461", "", "75.00", "175.50"]],
+      closing: "175.50",
+    });
+    expect(result.transactions[0]).toMatchObject({ type: "cash_in", amount: 75.5, commission: "0.755" });
+  });
+
+  it("still corrects the direction from the balance, with an exact cent amount (no float residue)", async () => {
+    const result = await parsePdf({
+      opening: "100.10",
+      rows: [["23/09/2026", "tr:1", "QR", "QR CASH IN", "", "20.20", "79.90"]],
+      closing: "79.90",
+    });
+    // Printed as a credit, but the balance went down by 20.20: it was a debit.
+    expect(result.transactions[0].type).toBe("cash_out");
+    expect(result.transactions[0].amount).toBe(20.2);
+    expect(result.transactions[0].commission).toBe("0.000");
+  });
+});
