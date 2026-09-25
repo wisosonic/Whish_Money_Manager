@@ -1,22 +1,19 @@
 import { useRef, useState } from "react";
-import { Link } from "react-router-dom";
 import { DatabaseBackup, Upload, Loader2, AlertTriangle, CheckCircle2, Lock } from "lucide-react";
 import { api } from "@/api/apiClient";
-import { useAuth } from "@/lib/AuthContext";
 import { useI18n } from "@/lib/i18n";
 import { notify } from "@/lib/notify";
-import { PERMISSIONS } from "@/lib/permissions";
 import { Section } from "@/components/settings/SettingsControls";
 
-// Settings → Backup & restore (Admin + Manager). Adds back rows from a CSV downloaded in the admin
-// panel — transactions or opening balances. Nothing is written until the preview is confirmed:
+// Admin panel → Restore from a backup (data:restore — Admin + Manager). Adds back rows from a CSV
+// downloaded with the panel's Backup section — transactions or opening balances. Nothing is written until the preview is confirmed:
 // rows still in the database are left as they are, rows on closed days are skipped, and a file
 // with any invalid row can't be restored (see server/admin.js).
 const money = (n) => `$${Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-export default function RestoreBackup() {
+// onRestored: called after rows were added, so the panel can refresh its range summary.
+export default function RestoreBackup({ onRestored }) {
   const { t, dir, num, errorText } = useI18n();
-  const { can } = useAuth();
   const fileInput = useRef(null);
   const [csv, setCsv] = useState("");
   const [fileName, setFileName] = useState("");
@@ -64,6 +61,7 @@ export default function RestoreBackup() {
       notify.success(t(`toast.restore.done.${result.kind}`, { count: result.restored }), { duration: 10000 });
       setConfirming(false);
       reset();
+      onRestored?.();
     } catch (err) {
       const message = errorText(err?.message || "") || t("restore.failed");
       setConfirming(false);
@@ -81,7 +79,7 @@ export default function RestoreBackup() {
   const canRestore = preview && preview.invalid_count === 0 && preview.to_add > 0;
 
   return (
-    <Section id="settings-restore" icon={DatabaseBackup} title={t("restore.title")} description={t("restore.description")}>
+    <Section id="admin-restore" icon={DatabaseBackup} title={t("restore.title")} description={t("restore.description")}>
       <div className="flex flex-wrap items-center gap-3">
         <label className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-4 py-2 text-sm font-semibold transition cursor-pointer focus-within:ring-2 focus-within:ring-blue-300">
           <Upload className="w-4 h-4" aria-hidden="true" />
@@ -93,10 +91,7 @@ export default function RestoreBackup() {
         {fileName && <span className="text-sm text-gray-600" dir="ltr">{fileName}</span>}
         {checking && <span className="text-sm text-gray-500 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />{t("restore.checking")}</span>}
       </div>
-      <p className="text-xs text-gray-500 mt-2">
-        {t("restore.hint")}{" "}
-        {can(PERMISSIONS.DATA_EXPORT) && <Link to="/admin" className="text-blue-700 underline underline-offset-2">{t("restore.makeBackup")}</Link>}
-      </p>
+      <p className="text-xs text-gray-500 mt-2">{t("restore.hint")}</p>
 
       {error && <p role="alert" className="mt-3 text-sm text-red-600">{error}</p>}
 

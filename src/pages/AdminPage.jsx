@@ -8,6 +8,7 @@ import { useI18n } from "@/lib/i18n";
 import { PERMISSIONS } from "@/lib/permissions";
 import { saveBlob } from "@/lib/download";
 import { notify } from "@/lib/notify";
+import RestoreBackup from "@/components/admin/RestoreBackup";
 
 // Admin panel (Admin + Manager): pick a date range, see what it holds, download it as CSV, or
 // delete it. Deleting needs a typed confirmation of the exact number of transactions shown, and the
@@ -37,6 +38,7 @@ export default function AdminPage() {
   const { t, dir, errorText, num } = useI18n();
   const { can } = useAuth();
   const canPurge = can(PERMISSIONS.DATA_PURGE);
+  const canRestore = can(PERMISSIONS.DATA_RESTORE);
 
   const today = new Date();
   const [from, setFrom] = useState(ymd(startOfMonth(today)));
@@ -204,6 +206,8 @@ export default function AdminPage() {
           </div>
           <p className="text-xs text-gray-500 mt-3">{t("admin.backup.format")}</p>
         </Card>
+
+        {canRestore && <RestoreBackup onRestored={() => setRefreshKey((k) => k + 1)} />}
 
         {canPurge &&
           <Card id="admin-delete" icon={Trash2} tone="red" title={t("admin.delete.title")} description={t("admin.delete.description")}>

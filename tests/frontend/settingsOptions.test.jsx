@@ -55,10 +55,13 @@ const tab = (name) => screen.getByRole("tab", { name });
 const saved = (changes) => waitFor(() => expect(api.auth.updatePreferences).toHaveBeenLastCalledWith(changes));
 
 describe("layout: options grouped in tabs", () => {
-  it("Admins and Managers also get the Office and Backup & restore tabs", () => {
+  it("Admins and Managers also get the Office tab; restoring a backup isn't in Settings (it's in the admin panel)", () => {
     setAuthRole("manager");
-    render(withApp(<SettingsPage />));
-    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["عام", "المظهر", "جدول العمليات", "الإشعارات", "المكتب", "النسخ والاستعادة"]);
+    render(withApp(<SettingsPage />, { path: "/settings#backup" }));
+    expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["عام", "المظهر", "جدول العمليات", "الإشعارات", "المكتب"]);
+    // An old link to #backup opens General.
+    expect(tab("عام")).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByTestId("restore-file")).not.toBeInTheDocument();
   });
 
   it("a User can't open the office tabs, even by link (falls back to General)", () => {

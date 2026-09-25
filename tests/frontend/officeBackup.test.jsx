@@ -1,10 +1,11 @@
 /** @vitest-environment jsdom */
-// Settings → Office (commission rate with history) and Settings → Backup & restore.
+// Settings → Office (commission rate with history) and Admin panel → Restore from a backup.
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { format } from "date-fns";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SettingsPage from "@/pages/SettingsPage";
+import AdminPage from "@/pages/AdminPage";
 import AppToaster from "@/components/layout/AppToaster";
 import { LanguageProvider } from "@/lib/i18n";
 import { PreferencesProvider } from "@/lib/PreferencesContext";
@@ -18,7 +19,7 @@ vi.mock("@/api/apiClient", () => ({
   api: {
     auth: { updatePreferences: vi.fn() },
     commissionRates: { get: vi.fn(), set: vi.fn(), remove: vi.fn() },
-    admin: { restorePreview: vi.fn(), restore: vi.fn() },
+    admin: { restorePreview: vi.fn(), restore: vi.fn(), summary: vi.fn(), range: vi.fn(), exportCsv: vi.fn(), purge: vi.fn() },
   },
 }));
 
@@ -29,6 +30,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   setAuthRole("admin");
   api.commissionRates.get.mockResolvedValue({ current: 1, history: history() });
+  api.admin.summary.mockResolvedValue({ transactions: 10, opening_balances: 2, days: 3, total_in: 1, total_out: 1, total_commission: 0 });
 });
 afterEach(() => {
   cleanup();
@@ -111,7 +113,15 @@ describe("Office → commission rate", () => {
   });
 });
 
-describe("Backup & restore", () => {
+const openAdmin = () => render(
+  <LanguageProvider>
+    <MemoryRouter initialEntries={["/admin"]}>
+      <PreferencesProvider><AdminPage /><AppToaster /></PreferencesProvider>
+    </MemoryRouter>
+  </LanguageProvider>
+);
+
+describe("Admin panel → restore from a backup", () => {
   const file = (text = "id,transaction_date\n1,2026-09-05") => new File([text], "transactions_2026-09-01_2026-09-30.csv", { type: "text/csv" });
   const choose = (f = file()) => fireEvent.change(screen.getByTestId("restore-file"), { target: { files: [f] } });
   const previewOf = (over = {}) => ({
@@ -121,7 +131,7 @@ describe("Backup & restore", () => {
 
   it("choosing a file shows what restoring would do, before anything is written", async () => {
     api.admin.restorePreview.mockResolvedValue(previewOf());
-    openSettings("backup");
+    openAdmin();
     choose();
     const preview = await screen.findByTestId("restore-preview");
     expect(api.admin.restorePreview).toHaveBeenCalledWith("id,transaction_date\n1,2026-09-05");
@@ -137,7 +147,7 @@ describe("Backup & restore", () => {
   it("restoring asks for confirmation, sends the previewed count, and confirms", async () => {
     api.admin.restorePreview.mockResolvedValue(previewOf());
     api.admin.restore.mockResolvedValue({ kind: "transactions", restored: 120, skipped_existing: 5, skipped_closed: 3 });
-    openSettings("backup");
+    openAdmin();
     choose();
     fireEvent.click(await screen.findByRole("button", { name: "استعادة 120 عملية" }));
     const dialog = screen.getByRole("alertdialog", { name: "إعادة 120 عملية؟" });
@@ -149,7 +159,7 @@ describe("Backup & restore", () => {
 
   it("a file with invalid rows lists them and can't be restored", async () => {
     api.admin.restorePreview.mockResolvedValue(previewOf({ invalid_count: 2, invalid: [{ line: 3, field: "type" }, { line: 7, field: "amount" }], to_add: 0 }));
-    openSettings("backup");
+    openAdmin();
     choose();
     const invalid = await screen.findByTestId("restore-invalid");
     expect(invalid).toHaveTextContent("2 صفاً غير صالح، لذا لا يمكن استعادة هذا الملف:");
@@ -160,7 +170,7 @@ describe("Backup & restore", () => {
 
   it("nothing to add: says so, and the button is off", async () => {
     api.admin.restorePreview.mockResolvedValue(previewOf({ to_add: 0, existing: 128, on_closed_days: 0 }));
-    openSettings("backup");
+    openAdmin();
     choose();
     expect(await screen.findByText("لا شيء للاستعادة: كل ما في الملف موجود مسبقاً.")).toBeInTheDocument();
     expect(screen.getByTestId("restore-start")).toBeDisabled();
@@ -169,7 +179,7 @@ describe("Backup & restore", () => {
   it("if the data changed meanwhile: a warning, and the preview is refreshed with the new counts", async () => {
     api.admin.restorePreview.mockResolvedValueOnce(previewOf()).mockResolvedValueOnce(previewOf({ to_add: 118 }));
     api.admin.restore.mockRejectedValue(Object.assign(new Error("The data changed since the preview. Check the counts and try again."), { status: 409 }));
-    openSettings("backup");
+    openAdmin();
     choose();
     fireEvent.click(await screen.findByTestId("restore-start"));
     fireEvent.click(screen.getByTestId("restore-confirm"));
@@ -179,21 +189,45 @@ describe("Backup & restore", () => {
 
   it("a file that isn't a backup is refused with the reason", async () => {
     api.admin.restorePreview.mockRejectedValue(new Error("This isn't a backup file from the admin panel"));
-    openSettings("backup");
+    openAdmin();
     choose(file("line_no,date\n1,2026-09-01"));
     expect(await screen.findByRole("alert")).toHaveTextContent("هذا ليس ملف نسخة احتياطية من لوحة الإدارة");
   });
 
   it("opening balances use their own wording", async () => {
     api.admin.restorePreview.mockResolvedValue(previewOf({ kind: "balances", rows: 30, to_add: 2, total_in: null, total_out: null }));
-    openSettings("backup");
+    openAdmin();
     choose();
     expect(await screen.findByText("يحتوي الملف على 30 رصيد بداية.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "استعادة 2 رصيد بداية" })).toBeInTheDocument();
   });
 
-  it("links to the admin panel to make a backup", () => {
-    openSettings("backup");
-    expect(screen.getByRole("link", { name: "تنزيل نسخة احتياطية" })).toHaveAttribute("href", "/admin");
+  it("sits in the admin panel, after Backup and before Delete data, and points to the Backup section", async () => {
+    openAdmin();
+    const sections = [...document.querySelectorAll("main section[data-testid]")].map((el) => el.dataset.testid);
+    expect(sections).toEqual(["admin-range", "admin-backup", "admin-restore", "admin-delete"]);
+    expect(screen.getByRole("region", { name: "الاستعادة من نسخة احتياطية" })).toHaveTextContent("استخدم ملفاً تم تنزيله من قسم النسخة الاحتياطية أعلاه");
+    expect(screen.queryByRole("link", { name: "تنزيل نسخة احتياطية" })).not.toBeInTheDocument();
+    await screen.findByTestId("range-summary");
+  });
+
+  it("is only shown to people allowed to restore", async () => {
+    setAuthRole("manager", { permissions: ["data:export", "data:purge", "transactions:read"] });
+    openAdmin();
+    await waitFor(() => expect(api.admin.summary).toHaveBeenCalled());
+    expect(screen.queryByTestId("admin-restore")).not.toBeInTheDocument();
+    expect(screen.getByTestId("admin-delete")).toBeInTheDocument();
+  });
+
+  it("after a restore, the panel's range summary is refreshed (the counts changed)", async () => {
+    api.admin.restorePreview.mockResolvedValue(previewOf());
+    api.admin.restore.mockResolvedValue({ kind: "transactions", restored: 120, skipped_existing: 5, skipped_closed: 3 });
+    openAdmin();
+    await waitFor(() => expect(api.admin.summary).toHaveBeenCalledTimes(1));
+    choose();
+    fireEvent.click(await screen.findByTestId("restore-start"));
+    fireEvent.click(screen.getByTestId("restore-confirm"));
+    await findToast("تمت استعادة 120 عملية.");
+    await waitFor(() => expect(api.admin.summary).toHaveBeenCalledTimes(2));
   });
 });

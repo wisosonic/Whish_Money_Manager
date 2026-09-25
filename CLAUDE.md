@@ -25,7 +25,7 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - A 401 on a non-auth call fires `SESSION_ENDED_EVENT`.
 - `src/lib/AuthContext.jsx`: session state, loaded from `/auth/me` on start. Exposes `can(permission)` and `canEditTransaction(t)`.
 - **Settings page layout** (user's request, 2026-09-25): WAI-ARIA **tabs**.
-  - **Tabs:** `general` (language, start on, clock, number style), `appearance` (theme, density, summaries), `table` (columns, default sort, rows per page, search scope), `notifications`, and for Admin/Manager `office` (commission rate, `settings:office`) and `backup` (restore, `data:restore`).
+  - **Tabs:** `general` (language, start on, clock, number style), `appearance` (theme, density, summaries), `table` (columns, default sort, rows per page, search scope), `notifications`, and for Admin/Manager `office` (commission rate, `settings:office`). Restore is **not** a settings tab: it moved to the admin panel (user's request, 2026-09-25); an old `#backup` link falls back to `general`.
   - **Rendering:** only the active panel is rendered. The active tab lives in the URL hash (`/settings#table`), and an unknown or unauthorized hash falls back to `general`.
   - **Keyboard:** arrows in both orientations (mirrored in RTL), Home/End, and a roving `tabIndex`.
   - **Building blocks:** `Section`, `Choice`, `RadioGroup` in `src/components/settings/SettingsControls.jsx`. Radio test ids are `${groupId}-${value}` (e.g. `clock-24h`, `rowsPerPage-50`).
@@ -50,7 +50,7 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
     - Any new write route must call it.
   - **UI:** the Dashboard loads `/closed-days` and passes `closedDay` / `closedDates` to TransactionsList. The table shows a banner, close/reopen buttons with an `alertdialog` confirmation, 🔒 in place of row edit/delete, hides delete-all, disables bulk when the selection includes a closed-day row, and disables Cash In/Out when *today* is closed (they're saved with today's created_date). The opening-balance pencil is hidden.
   - **Tests:** a mutation check (`refuseClosedDays` always passing) failed 5 backend tests.
-- **Restore** (`server/admin.js` `planRestore`, `POST /admin/restore/preview` + `/admin/restore`; `data:restore`; UI `src/components/settings/RestoreBackup.jsx`):
+- **Restore** (`server/admin.js` `planRestore`, `POST /admin/restore/preview` + `/admin/restore`; `data:restore`; UI `src/components/admin/RestoreBackup.jsx`, a card in `AdminPage` between Backup and Delete data, shown with `data:restore`; `onRestored` bumps the panel's `refreshKey` so the range summary reloads):
   - **Input:** reads the admin export format. The kind is detected by header, the BOM stripped, and `unguard` removes exactly the `'` that `csvCell`'s `needsGuard` adds.
   - **Matching:** transactions by id (AUTOINCREMENT never reuses ids, so they're re-inserted with the original id, dates and created_by); balances by date.
   - **All-or-nothing:** any invalid row (`{ line, field }`) refuses the file.
@@ -339,6 +339,10 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - `Dashboard` computes `yearly*` figures.
   - Added `StatsCards.test.jsx` and Dashboard summary tests. Total now 104.
 ### 2026-09-25
+- **Restore moved from Settings to the admin panel** (user's request):
+  - `RestoreBackup.jsx` moved to `src/components/admin/` and renders in `AdminPage` after Backup (section `admin-restore`); the Settings `backup` tab and the "make a backup" link are gone, and the hint points to the Backup section above.
+  - After a restore the panel's range summary refreshes.
+  - Tests: restore tests in `officeBackup.test.jsx` render `AdminPage`; new ones for section order, the `data:restore` gate and the summary refresh. `settingsOptions.test.jsx` expects five tabs and `#backup` falling back to General.
 - **Settings redesign + restore + closing days + 8 new settings** (user's request):
   - **Settings layout:** grouped into tabs (General, Appearance, Transactions table, Notifications, and Office / Backup & restore for Admin and Manager).
   - **New settings:** start on, clock (12h / 24h / hidden), Arabic-Indic digits, default sort, rows per page (with pages), default search scope, notification duration and confirmations, and the office commission rate with history. Stored commissions never change.

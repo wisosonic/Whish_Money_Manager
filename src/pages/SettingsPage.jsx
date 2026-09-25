@@ -2,12 +2,11 @@ import { useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   Languages, Columns3, LayoutList, RotateCcw, CheckCircle2, Loader2, AlertCircle,
-  SlidersHorizontal, Palette, Table2, Bell, Building2, DatabaseBackup, Clock3, CalendarDays, ArrowUpDown,
+  SlidersHorizontal, Palette, Table2, Bell, Building2, Clock3, CalendarDays, ArrowUpDown,
 } from "lucide-react";
 import Header from "@/components/layout/Header";
 import { Section, Choice, RadioGroup } from "@/components/settings/SettingsControls";
 import CommissionRates from "@/components/settings/CommissionRates";
-import RestoreBackup from "@/components/settings/RestoreBackup";
 import { useAuth } from "@/lib/AuthContext";
 import { LANGUAGES, useI18n } from "@/lib/i18n";
 import { usePreferences } from "@/lib/PreferencesContext";
@@ -18,8 +17,9 @@ import {
 } from "@/lib/preferences";
 
 // Settings, grouped in tabs. Personal tabs (every user): General, Appearance, Transactions table,
-// Notifications — saved to the account at once (PreferencesContext). Office tabs (Admin + Manager):
-// Office (commission rate) and Backup & restore. The open tab is kept in the URL (#table …).
+// Notifications — saved to the account at once (PreferencesContext). Office tab (Admin + Manager):
+// the commission rate. The open tab is kept in the URL (#table …). Restoring a backup is in the
+// admin panel, next to making one.
 const PERSONAL_DEFAULTS = {
   hiddenColumns: [],
   theme: DEFAULT_PREFERENCES.theme,
@@ -48,7 +48,6 @@ export default function SettingsPage() {
     { id: "table", icon: Table2 },
     { id: "notifications", icon: Bell },
     ...(can(PERMISSIONS.OFFICE_SETTINGS) ? [{ id: "office", icon: Building2 }] : []),
-    ...(can(PERMISSIONS.DATA_RESTORE) ? [{ id: "backup", icon: DatabaseBackup }] : []),
   ];
   const requested = location.hash.replace("#", "");
   const active = tabs.some((tab) => tab.id === requested) ? requested : "general";
@@ -246,7 +245,6 @@ export default function SettingsPage() {
             </>}
 
             {active === "office" && <CommissionRates />}
-            {active === "backup" && <RestoreBackup />}
 
             {["general", "appearance", "table", "notifications"].includes(active) &&
               <div className="flex justify-end">

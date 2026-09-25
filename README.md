@@ -64,7 +64,7 @@ It runs entirely on your machine: a React frontend and a small Node.js/Express A
     - Rows with an empty value always go last, and rows with the same value keep their journal order.
   - The "#" column always shows each row's real number in the day's journal. Selecting rows and bulk actions work the same while sorted.
   - The sort resets when the page reloads.
-- **Settings** (⚙️ in the header), grouped in tabs: language, start-up day, clock, number style, theme, row spacing, summaries, table columns, default sort, rows per page, default search scope and notifications, all saved to each user's account. Admins and Managers also set the office **commission rate** and **restore backups** there. See [Settings](#settings).
+- **Settings** (⚙️ in the header), grouped in tabs: language, start-up day, clock, number style, theme, row spacing, summaries, table columns, default sort, rows per page, default search scope and notifications, all saved to each user's account. Admins and Managers also set the office **commission rate** there. See [Settings](#settings).
 - **Closing a day** (Admin and Manager): lock a day so nobody can add, edit, import or delete its transactions or change its opening balance, until it's reopened. See [Closing a day](#closing-a-day).
 - **Admin panel** (Admin and Manager): download a CSV backup of any date range, or permanently delete all data in a range. See [Admin panel](#admin-panel-admin-and-manager).
 - **Notifications**: a short message pops up in the bottom corner (bottom-left in Arabic, bottom-right in English; full width on phones) after every action, so you always know whether it worked.
@@ -199,7 +199,7 @@ Everyone signs in with their own email and password. There are three roles:
 | Admin panel: delete all data in a date range | ✓ | ✓ | — |
 | Close / reopen a day | ✓ | ✓ | — |
 | Settings → Office: commission rate | ✓ | ✓ | — |
-| Settings → Backup & restore: restore a backup | ✓ | ✓ | — |
+| Admin panel: restore a backup | ✓ | ✓ | — |
 
 - **Everyone sees everything.** The office shares one set of transactions; roles only limit what people may change.
 - **The server enforces every rule.** Buttons a user can't use are hidden, but the API also refuses the action (HTTP 403), so the rules can't be bypassed.
@@ -269,18 +269,6 @@ Personal settings apply **immediately** and are **saved to your account** on the
 - **Which rate applies:** new Cash In entries use today's rate. Imported statements use the rate in effect on each transaction's own date, so an old statement imported later gets the rate of its day.
 - **The history** lists every rate with its start date and who set it. A rate scheduled for a future date is marked *scheduled* and can be removed; past rates are kept as history. To correct one, set a new rate from the right date.
 
-**Backup & restore** (Admin and Manager) → **Restore from a backup**
-1. **Choose a backup file:** a CSV downloaded from the [admin panel](#admin-panel-admin-and-manager) (transactions or opening balances; the type is detected automatically). There's a link there to make one.
-2. **Check the preview.** Nothing is changed yet. It shows:
-   - How many rows the file holds, and how many will be added (with their dates and totals).
-   - How many are already in the database. These are left exactly as they are.
-   - How many are on closed days. These are skipped and the days listed.
-3. **Confirm** to add the missing rows back exactly as they were: same dates and same "entered by". A notification says how many were restored.
-- **How rows are matched:** transactions by their original ID, which is never reused, so a restore puts back what was deleted and never duplicates what's still there. Opening balances are matched by date (one per day).
-- **Files that can't be restored:** a file with any invalid row (e.g. a bad amount or type) is refused, and the preview lists the lines and columns, so a damaged or edited file is never half-restored. A file that isn't a backup is refused too.
-- **If the data changed** after the preview (someone added or deleted rows), nothing is written: you get a warning and the refreshed counts.
-- **Empty text:** a CSV can't tell an empty field from one that was never filled in. Both come back empty, and the app treats them the same.
-
 ### Closing a day
 
 Admins and Managers can **close** a day once it's been checked, for example after reconciling the statement. Nobody can then change it until it's reopened.
@@ -314,6 +302,17 @@ Open **لوحة الإدارة** (Admin panel) in the header. Users don't see th
    - **If the data changed:** if someone added or deleted transactions in that range after you opened the confirmation, nothing is deleted. You're asked to check the new counts first.
    - **Afterwards:** a message confirms how many transactions and opening balances were deleted. The server also logs who deleted what.
    - **It can't be undone.** Keep the CSV backup if you might need the data again.
+4. **Restore from a backup** (between Backup and Delete data): adds back rows from a CSV made with **Backup** above.
+   1. **Choose a backup file:** transactions or opening balances; the type is detected automatically.
+   2. **Check the preview.** Nothing is changed yet. It shows:
+      - How many rows the file holds, and how many will be added (with their dates and totals).
+      - How many are already in the database. These are left exactly as they are.
+      - How many are on closed days. These are skipped and the days listed.
+   3. **Confirm** to add the missing rows back exactly as they were: same dates and same "entered by". A notification says how many were restored, and the range preview above updates.
+   - **How rows are matched:** transactions by their original ID, which is never reused, so a restore puts back what was deleted and never duplicates what's still there. Opening balances are matched by date (one per day).
+   - **Files that can't be restored:** a file with any invalid row (e.g. a bad amount or type) is refused, and the preview lists the lines and columns, so a damaged or edited file is never half-restored. A file that isn't a backup is refused too.
+   - **If the data changed** after the preview (someone added or deleted rows), nothing is written: you get a warning and the refreshed counts.
+   - **Empty text:** a CSV can't tell an empty field from one that was never filled in. Both come back empty, and the app treats them the same.
 
 ### Managing users (Admin)
 
@@ -442,7 +441,7 @@ tests/
     ├── transactionSort.test.js       # sort cycle, stability, empty values last, natural/Arabic order
     ├── settingsOptions.test.jsx      # settings tabs (keyboard, link), each new option and what it changes
     ├── dayClosing.test.jsx           # close / reopen a day, what's locked; pages, default sort, digits, Cash In rate
-    ├── officeBackup.test.jsx         # office commission rate (history, scheduled), restore from a backup
+    ├── officeBackup.test.jsx         # office commission rate (history, scheduled), admin panel restore from a backup
     ├── AdminPage.test.jsx            # admin panel: ranges, preview, downloads, typed-count delete, 409, header link
     ├── theme.test.jsx                # dark mode: saved/system theme, pre-paint script, stylesheet mappings, chart
     ├── download.test.js              # saving a CSV download
@@ -486,7 +485,8 @@ src/pages/Dashboard.jsx       Main screen: totals, balances, day filter, search
 src/pages/UsersPage.jsx       Admin: users and roles
 src/pages/SettingsPage.jsx    Every user: language, theme, visible table columns, row spacing, summaries
 src/pages/AdminPage.jsx       Admin + Manager: CSV backup and delete by date range
-src/components/settings/      Settings building blocks, the commission-rate editor and backup restore
+src/components/settings/      Settings building blocks and the commission-rate editor
+src/components/admin/         Admin panel cards: backup restore
 src/lib/PreferencesContext.jsx  The signed-in user's settings: applied at once, saved in order to the account
 src/components/dashboard/     Stats cards, wallet summary, transactions table, monthly chart
 src/components/transactions/  Import, cash in/out, edit, sender/receiver/commission reports
