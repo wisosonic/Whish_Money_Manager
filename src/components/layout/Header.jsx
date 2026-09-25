@@ -4,7 +4,6 @@ import { User, LogOut, Users, LayoutDashboard, Settings, ShieldCheck } from "luc
 import { useAuth } from "@/lib/AuthContext";
 import { APP_NAME } from "@/lib/branding";
 import { useI18n } from "@/lib/i18n";
-import LanguageToggle from "@/components/layout/LanguageToggle";
 import { PERMISSIONS } from "@/lib/permissions";
 import AppLogo from "@/components/layout/AppLogo";
 
@@ -164,7 +163,7 @@ export default function Header() {
           <LogOut className="w-4 h-4" />
           <span>{t("header.logout")}</span>
         </button>
-        <LanguageToggle />
+        {/* No language switch here: signed-in users change it in Settings; the login page has one. */}
       </div>
 
       {/* Left: Clock */}

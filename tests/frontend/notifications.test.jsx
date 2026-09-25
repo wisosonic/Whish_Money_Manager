@@ -6,7 +6,6 @@ import { MemoryRouter } from "react-router-dom";
 import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AppToaster from "@/components/layout/AppToaster";
-import LanguageToggle from "@/components/layout/LanguageToggle";
 import ImportPDFModal from "@/components/transactions/ImportPDFModal";
 import CashInModal from "@/components/transactions/CashInModal";
 import CashOutModal from "@/components/transactions/CashOutModal";
@@ -310,11 +309,10 @@ describe("settings", () => {
     expect(await findToast("يجب أن يبقى عمود واحد على الأقل ظاهراً")).toHaveAttribute("data-type", "error");
   });
 
-  it("the header language switch saves quietly (the page itself is the feedback)", async () => {
-    render(withApp(<LanguageToggle />));
-    fireEvent.click(screen.getByTestId("language-toggle"));
+  it("changing the language in Settings is confirmed like any other setting, in the new language", async () => {
+    render(withApp(<SettingsPage />));
+    fireEvent.click(screen.getByTestId("language-en"));
     await waitFor(() => expect(api.auth.updatePreferences).toHaveBeenCalledWith({ language: "en" }));
-    await new Promise((r) => setTimeout(r, 50));
-    expect(toastTexts()).toEqual([]);
+    expect(await findToast("Settings saved.")).toHaveAttribute("data-type", "success");
   });
 });

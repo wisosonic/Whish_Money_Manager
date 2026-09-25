@@ -237,13 +237,6 @@ describe("Preferences follow the account", () => {
     expect(document.documentElement).toHaveAttribute("lang", "en");
   });
 
-  it("the header language switch also saves the choice while signed in", async () => {
-    render(withProviders(<LanguageToggle />, "/"));
-    fireEvent.click(screen.getByTestId("language-toggle"));
-    expect(document.documentElement).toHaveAttribute("lang", "en");
-    await waitFor(() => expect(api.auth.updatePreferences).toHaveBeenCalledWith({ language: "en" }));
-  });
-
   it("signed out (login page), the switch only changes the language — nothing is sent", async () => {
     setAuthRole(null);
     render(withProviders(<LanguageToggle />, "/"));

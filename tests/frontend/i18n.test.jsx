@@ -270,15 +270,17 @@ describe("screens in English", () => {
     expect(screen.getByText("Money transfers and financial transactions")).toBeInTheDocument();
     expect(screen.getByTestId("scroll-to-top")).toHaveAttribute("title", "Back to top");
     expect(within(header).getByText(/^\d{2}:\d{2}:\d{2} (AM|PM)$/)).toBeInTheDocument();
-    expect(screen.getByRole("switch", { name: "English" })).toHaveAttribute("aria-checked", "true");
   });
 
-  it("header in Arabic keeps its Arabic labels and the English switch is off", () => {
+  it("header in Arabic keeps its Arabic labels, and has no language switch (it's in Settings)", () => {
     setAuthRole("admin");
     render(<LanguageProvider><MemoryRouter><Header /></MemoryRouter></LanguageProvider>);
     expect(screen.getByText("خروج")).toBeInTheDocument();
     expect(screen.getByTestId("role-badge")).toHaveTextContent("مسؤول");
-    expect(screen.getByRole("switch", { name: "الإنجليزية" })).toHaveAttribute("aria-checked", "false");
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("language-toggle")).not.toBeInTheDocument();
+    // The way to change it is the Settings link.
+    expect(screen.getByTestId("settings-link")).toHaveAttribute("href", "/settings");
   });
 
   it("login page has its own toggle (before sign-in) and English labels", () => {

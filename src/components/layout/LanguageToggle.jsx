@@ -4,8 +4,9 @@ import { usePreferences } from "@/lib/PreferencesContext";
 // Switches the interface between Arabic and English. A two-position switch: "ع" on the left,
 // "EN" on the right, with a knob that slides under the active language. Screen readers hear a
 // switch named "English" that is on or off. The track is always left-to-right so the knob
-// doesn't jump sides when the page direction flips. When signed in, the choice is also saved to the
-// account's preferences (see PreferencesContext), so it follows the user to other devices.
+// doesn't jump sides when the page direction flips. Shown on the login page, so the language can be
+// chosen before signing in; signed-in users change it on the Settings page. If it's ever used while
+// signed in, the choice is saved to the account (see PreferencesContext.setLanguage).
 export default function LanguageToggle({ className = "" }) {
   const { lang, t, toggleLang } = useI18n();
   const { setLanguage } = usePreferences();

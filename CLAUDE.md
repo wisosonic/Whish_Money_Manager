@@ -35,7 +35,7 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - **Language:**
     - When the account changes, a saved `preferences.language` is applied with `setLang`.
     - `null` (never chosen while signed in) keeps the cookie.
-    - `setLanguage` (used by the header switch and the Settings page) sets the language and saves it when signed in.
+    - `setLanguage` (used by the Settings page, and by the login-page switch) sets the language and saves it when signed in.
     - Signed out (login page), nothing is sent.
   - **Consumers:**
     - `TransactionsList` renders only visible columns: headers loop over `TABLE_COLUMNS`, and each cell is wrapped in `show.<key>`. If the sorted column gets hidden, the sort falls back to `NO_SORT`.
@@ -64,7 +64,7 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - While `isLoadingAuth`, it leaves the page alone: `index.html` has already applied the `wmm_theme` cookie before first paint, and the provider mirrors the theme there when signed in.
   - **Styling:** one remapping layer at the end of `src/assets/css/index.css` (`.dark .bg-white { … }` and so on), instead of `dark:` variants in every component. The shadcn `.dark` variables were retuned to the same slate palette.
   - **`theme.test.jsx` fails if a screen uses a light colour class with no dark mapping**, so add the mapping when you add such a class.
-  - The header, login page and language switch are dark in both themes and are exempt. The switch knob is `theme-fixed`, so it stays white.
+  - The header, login page and language switch (now only on the login page) are dark in both themes and are exempt. The switch knob is `theme-fixed`, so it stays white.
   - Text colours were checked at ≥ 4.5:1 on the dark card.
   - **Chart:** `CHART_SERIES[*].darkColor` = `#3b82f6` / `#16a34a` / `#ec4899`, validated with the dataviz script against `#1e293b` (all checks pass). Every red light enough for the dark background failed colour-blind separation from the green, hence pink for cash out (still dashed). Axis and grid inks are in `CHART_INK`.
 - **Notifications** (user's request): all feedback toasts go through `notify.success/info/warning/error` in `src/lib/notify.js` (sonner), shown by `AppToaster`.
@@ -76,7 +76,7 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
     - Success banners were replaced by toasts: the Users page notice and the Admin panel notice.
     - Errors inside an open form or dialog keep their inline message as well.
     - Passive loads (the admin preview, the users list) keep inline errors only.
-  - **Settings:** saves use one toast id (`settings-save`), so quick changes update a single toast. `savePreferences(changes, { silent: true })` skips the success toast; the header language switch uses it, while failures always show.
+  - **Settings:** saves use one toast id (`settings-save`), so quick changes update a single toast. Every save reports success or failure, language included. The toast text is read from `i18nNow` (a ref to the current `t`/`errorText`) when the save settles, so switching to English confirms in English. A closure captured the old language, and a test caught it.
   - **Silent failures fixed at the same time:** the import save (only `console.error`), the Edit modal (only `console.error`), and Cash In/Out, which had no try/catch and stayed stuck on "saving".
   - **Other toast libraries:** `react-hot-toast` and `@radix-ui/react-toast` are still installed but unused. Don't add a second notification system.
 - `src/lib/permissions.js` **re-exports `server/permissions.js`**, so the UI and the API share one definition. Never duplicate the rules.
@@ -212,7 +212,8 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - **Server messages** stay English in the API. The frontend shows them with `errorText(message)`, which maps the exact message through `ar.__serverErrors`. Add new user-facing API messages there.
   - **Role names and descriptions** from the API are shown via `t("roles.<name>")`. Month names are `months.1`–`months.12`.
   - **Language names** ("العربية" / "English") and the switch's short labels (`short`: "ع" / "EN") are never translated; they live in `LANGUAGES` in `src/lib/i18n.jsx`.
-  - **The language switch** (`LanguageToggle.jsx`, user's request) is a `<button role="switch">` named `t("language.english")`, with `aria-checked` true in English. `title` keeps the "switch to…" hint.
+  - **Where to change the language:** the Settings page when signed in. `LanguageToggle` is only on the **login page**, so it can be chosen before signing in. It was removed from the header on 2026-09-25 at the user's request, and `i18n.test.jsx` checks that the header has no switch.
+  - **The language switch** (`LanguageToggle.jsx`) is a `<button role="switch">` named `t("language.english")`, with `aria-checked` true in English. `title` keeps the "switch to…" hint.
     - The track is `dir="ltr"` in both languages: ع is always on the left and EN on the right, so the knob doesn't jump sides when the page mirrors.
     - The knob slides with `translate-x-[38px]` (track 84px, knob 38px); if you resize one, resize the other. It uses `motion-reduce:transition-none`.
   - **Guard tests:** `tests/frontend/i18n.test.jsx` fails if the two word lists' keys or placeholders differ, a used key is missing, or any Arabic literal or `dir="rtl"` appears in UI code. Every screen is checked (no exemptions since the two unused modals were deleted).
@@ -297,6 +298,14 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - Responsive grids: month 2/3/5 columns, year 2/4.
   - `Dashboard` computes `yearly*` figures.
   - Added `StatsCards.test.jsx` and Dashboard summary tests. Total now 104.
+### 2026-09-25
+- **Language switch removed from the header** (user's request):
+  - **Change:** the Settings page is the place to change it, and the login page keeps its switch for signed-out users.
+  - **Language saves now confirm:** "Settings saved" like every other setting; the quiet `silent` option was only for the header switch, and is gone.
+  - **Bug fixed:** that confirmation appeared in the old language, because the save closure held a stale `t`. It now uses a ref to the current translation.
+  - **Checked in Edge:** the desktop header fits on one row again (the clock is back beside the buttons), and the phone header has one fewer item to wrap.
+  - **Tests:** the header tests check there's no switch and that the Settings link is there, and a notification test checks the language confirmation in English.
+
 ### 2026-09-24
 - **Cleanup + notifications**:
   - **Renamed the API client:** `src/api/base44Client.js` → `src/api/apiClient.js`, and `base44` → `api`, via `git mv` plus a scripted rename (24 files, 252 references). `base44.com` in the branding guard test is intentionally kept.

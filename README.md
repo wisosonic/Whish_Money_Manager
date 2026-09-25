@@ -71,7 +71,7 @@ It runs entirely on your machine: a React frontend and a small Node.js/Express A
   - **Timing:** errors and warnings stay longer (8 and 7 seconds) than confirmations (4 seconds). Every notification has a close button and pauses while you hover over it. Screen readers announce them.
   - **Imports:** "127 transactions imported" (and how many were replaced when overwriting); a warning when the statement doesn't reconcile or has no rows; an error when a file can't be read or the save fails. The screen stays open so you can try again.
   - **Transactions:** Cash In / Cash Out saved; transaction updated or deleted; bulk edit or delete ("5 transactions deleted"); "delete all for this day"; and the opening balance saved. Any failure shows the server's reason in your language.
-  - **Settings:** "Settings saved". Several quick changes share one notification instead of piling up. Switching language from the header saves quietly, because the page itself changes.
+  - **Settings:** "Settings saved". Several quick changes share one notification instead of piling up. Changing the language is confirmed the same way, in the new language.
   - **Admin panel and Users page:** backup downloaded, data deleted (kept on screen longer), user added, role changed, user deactivated or reactivated, password reset.
     - A delete refused because the data changed is a warning, not an error.
     - Errors inside a form (e.g. a duplicate email) also stay next to the form.
@@ -208,7 +208,9 @@ Everyone signs in with their own email and password. There are three roles:
 - **The browser cap:** browsers keep cookies for at most about 400 days. The app renews the cookie as you use it, so this only matters if nobody opens the app for 400 days.
 - **Logout:** ends that session on the server immediately. A copy of the token can't be reused, and other devices stay signed in.
 - **Brute-force protection:** after 10 wrong passwords for the same email, sign-in is blocked for 15 minutes.
-- **Language (العربية / English):** the header has an on/off language switch, and so does the login page, so it works before signing in. It shows **ع** on the left and **EN** on the right, and a white knob sits on the active language. Click it (or Tab to it and press Space/Enter) to slide to the other one. Screen readers announce it as the "English" switch, on or off.
+- **Language (العربية / English):** once signed in, change it on the [Settings](#settings) page (⚙️ in the header).
+  - **Before signing in:** the login page has an on/off switch. It shows **ع** on the left and **EN** on the right, and a white knob sits on the active language. Click it (or Tab to it and press Space/Enter) to slide to the other one. Screen readers announce it as the "English" switch, on or off.
+  - The header has no language switch, to keep it uncluttered.
   - **Arabic is the default.**
   - **The whole interface switches:** every label, message, month name, number of transactions (with English singular/plural) and the page direction. Arabic is right-to-left; English is left-to-right, with the layout mirrored.
   - **Server messages** (e.g. a wrong password) are shown in the chosen language.
@@ -222,7 +224,7 @@ Everyone signs in with their own email and password. There are three roles:
 
 Every user has a **Settings** page: click the ⚙️ gear in the header (next to Log out). Changes apply **immediately** and are **saved to your account** on the server, so they follow you to any device or browser. A small status line at the top says "Saving…", then "Saved", or explains what went wrong. If a save fails, the previous value comes back.
 
-- **Language:** العربية or English. This is the same choice as the header switch.
+- **Language:** العربية or English. The whole interface switches at once, and the choice is saved to your account.
 - **Table columns:** tick or untick any of the 11 columns of the transactions table:
   - #, Type, Sender, Receiver, Amount, Commission rate, Commission, Reference, Service, Note, Date
   - The row checkboxes and the edit/delete buttons always stay.
