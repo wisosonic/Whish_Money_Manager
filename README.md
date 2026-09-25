@@ -303,7 +303,9 @@ Admins and Managers can **close** a day once it's been checked, for example afte
 
 Open **لوحة الإدارة** (Admin panel) in the header. Users don't see the link, and opening `/admin` directly shows a "no permission" page.
 
-**Reports** (التقارير) come first, as three tabs. They only read data; nothing here changes anything. Only the open tab is loaded.
+**Layout:** on wide screens (1280px and up) the panel has two columns: **reports** on one side (the wider one) and **your office's data** (date range, backup, restore, delete) on the other. On smaller screens they stack, reports first.
+
+**Reports** (التقارير) have three tabs. They only read data; nothing here changes anything. Only the open tab is loaded.
 - **Income** (الدخل): the same monthly chart as the dashboard's الرسم البياني: commissions as bars (left axis), cash in and cash out as lines (right axis), the year's totals, the year selector (every year with data) and the table view. The figures are added up by the server, so the report covers every transaction without loading them all in the browser. The dashboard's chart is still there too.
 - **Top senders** (أكبر المرسلين): who sent the most money **in** (Cash In) between two dates.
 - **Top recipients** (أكبر المستلمين): who received the most money (**Cash Out**) between two dates.

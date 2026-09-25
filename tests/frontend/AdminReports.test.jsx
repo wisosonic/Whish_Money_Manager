@@ -87,6 +87,20 @@ describe("reports section", () => {
     }
   });
 
+  it("two columns on wide screens: reports in one, the office's data (range, backup, restore, delete) in the other", async () => {
+    render(wrap(<AdminPage />));
+    const reports = screen.getByTestId("admin-reports-column");
+    const data = screen.getByTestId("admin-data-column");
+    expect(reports.parentElement).toBe(data.parentElement);
+    expect(reports.parentElement).toHaveClass("grid", "xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]");
+    expect(reports.nextElementSibling).toBe(data); // reports first (also when stacked on small screens)
+    expect([...reports.querySelectorAll("section[data-testid]")].map((el) => el.dataset.testid)).toEqual(["admin-reports"]);
+    expect([...data.querySelectorAll("section[data-testid]")].map((el) => el.dataset.testid))
+      .toEqual(["admin-range", "admin-backup", "admin-restore", "admin-delete"]);
+    [reports, data].forEach((column) => expect(column).toHaveClass("min-w-0")); // wide tables scroll inside
+    await screen.findByTestId("chart-total-profit");
+  });
+
   it("three tabs, Income open; only the open report is loaded", async () => {
     renderReports();
     expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["الدخل", "أكبر المرسلين", "أكبر المستلمين"]);

@@ -130,67 +130,76 @@ export default function AdminPage() {
   return (
     <div className="min-h-screen bg-gray-100" dir={dir}>
       <Header />
-      <main className="p-3 md:p-6 max-w-4xl mx-auto space-y-4">
+      <main className="p-3 md:p-6 max-w-7xl mx-auto space-y-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">{t("admin.title")}</h1>
           <p className="text-sm text-gray-500">{t("admin.subtitle")}</p>
         </div>
 
-        <ReportsSection />
+        {/* Two columns on wide screens (user's request): reports | the office's data (range, backup,
+            restore, delete). The reports column is wider, for its tables and chart. Stacked below xl,
+            reports first. min-w-0 lets wide tables scroll inside their column instead of stretching it. */}
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] items-start">
+          <div className="space-y-4 min-w-0" data-testid="admin-reports-column">
+            <ReportsSection />
+          </div>
 
-        <Card id="admin-range" icon={CalendarRange} title={t("admin.range.title")} description={t("admin.range.description")}>
-          <DateRangeFields from={from} to={to} onChange={setRange} testIdPrefix="range" />
+          <div className="space-y-4 min-w-0" data-testid="admin-data-column">
+            <Card id="admin-range" icon={CalendarRange} title={t("admin.range.title")} description={t("admin.range.description")}>
+              <DateRangeFields from={from} to={to} onChange={setRange} testIdPrefix="range" />
 
-          {/* What the range holds — the preview for both the backup and the delete. */}
-          <div className="mt-4 rounded-lg bg-gray-50 border px-4 py-3 text-sm" aria-live="polite" data-testid="range-summary">
-            {!rangeValid ?
-              <span className="text-red-600">{t("admin.range.invalid")}</span> :
-            summaryError ?
-              <span className="text-red-600">{summaryError}</span> :
-            loadingSummary && !summary ?
-              <span className="text-gray-500 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />{t("common.loading")}</span> :
-            summary &&
-              <div className="flex flex-wrap gap-x-6 gap-y-1">
-                <span className="font-bold text-gray-800">{t("admin.summary.transactions", { count: txCount, days: summary.days })}</span>
-                <span className="text-gray-700">{t("admin.summary.balances", { count: balanceCount })}</span>
-                <span className="text-green-700">{t("admin.summary.in")} <span dir="ltr">{num(money(summary.total_in))}</span></span>
-                <span className="text-red-700">{t("admin.summary.out")} <span dir="ltr">{num(money(summary.total_out))}</span></span>
-                <span className="text-orange-600">{t("admin.summary.commission")} <span dir="ltr">{num(money(summary.total_commission))}</span></span>
+              {/* What the range holds — the preview for both the backup and the delete. */}
+              <div className="mt-4 rounded-lg bg-gray-50 border px-4 py-3 text-sm" aria-live="polite" data-testid="range-summary">
+                {!rangeValid ?
+                  <span className="text-red-600">{t("admin.range.invalid")}</span> :
+                summaryError ?
+                  <span className="text-red-600">{summaryError}</span> :
+                loadingSummary && !summary ?
+                  <span className="text-gray-500 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />{t("common.loading")}</span> :
+                summary &&
+                  <div className="flex flex-wrap gap-x-6 gap-y-1">
+                    <span className="font-bold text-gray-800">{t("admin.summary.transactions", { count: txCount, days: summary.days })}</span>
+                    <span className="text-gray-700">{t("admin.summary.balances", { count: balanceCount })}</span>
+                    <span className="text-green-700">{t("admin.summary.in")} <span dir="ltr">{num(money(summary.total_in))}</span></span>
+                    <span className="text-red-700">{t("admin.summary.out")} <span dir="ltr">{num(money(summary.total_out))}</span></span>
+                    <span className="text-orange-600">{t("admin.summary.commission")} <span dir="ltr">{num(money(summary.total_commission))}</span></span>
+                  </div>
+                }
               </div>
+            </Card>
+
+            <Card id="admin-backup" icon={Download} title={t("admin.backup.title")} description={t("admin.backup.description")}>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={() => download("transactions")} disabled={!rangeValid || !txCount || downloading !== null}
+                  data-testid="download-transactions"
+                  className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-4 py-2 text-sm font-semibold transition disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-300">
+                  {downloading === "transactions" ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : <Download className="w-4 h-4" aria-hidden="true" />}
+                  {t("admin.backup.transactions", { count: txCount })}
+                </button>
+                <button type="button" onClick={() => download("balances")} disabled={!rangeValid || !balanceCount || downloading !== null}
+                  data-testid="download-balances"
+                  className="flex items-center gap-2 border border-blue-200 text-blue-700 hover:bg-blue-50 rounded-lg px-4 py-2 text-sm font-semibold transition disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-300">
+                  {downloading === "balances" ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : <Download className="w-4 h-4" aria-hidden="true" />}
+                  {t("admin.backup.balances", { count: balanceCount })}
+                </button>
+              </div>
+              <p className="text-xs text-gray-500 mt-3">{t("admin.backup.format")}</p>
+            </Card>
+
+            {canRestore && <RestoreBackup onRestored={() => setRefreshKey((k) => k + 1)} />}
+
+            {canPurge &&
+              <Card id="admin-delete" icon={Trash2} tone="red" title={t("admin.delete.title")} description={t("admin.delete.description")}>
+                <button type="button" onClick={openConfirm} disabled={!rangeValid || nothingToDelete || loadingSummary}
+                  data-testid="delete-range"
+                  className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white rounded-lg px-4 py-2 text-sm font-semibold transition disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-300">
+                  <Trash2 className="w-4 h-4" aria-hidden="true" />
+                  {t("admin.delete.button", { count: txCount })}
+                </button>
+              </Card>
             }
           </div>
-        </Card>
-
-        <Card id="admin-backup" icon={Download} title={t("admin.backup.title")} description={t("admin.backup.description")}>
-          <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => download("transactions")} disabled={!rangeValid || !txCount || downloading !== null}
-              data-testid="download-transactions"
-              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-4 py-2 text-sm font-semibold transition disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-300">
-              {downloading === "transactions" ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : <Download className="w-4 h-4" aria-hidden="true" />}
-              {t("admin.backup.transactions", { count: txCount })}
-            </button>
-            <button type="button" onClick={() => download("balances")} disabled={!rangeValid || !balanceCount || downloading !== null}
-              data-testid="download-balances"
-              className="flex items-center gap-2 border border-blue-200 text-blue-700 hover:bg-blue-50 rounded-lg px-4 py-2 text-sm font-semibold transition disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-300">
-              {downloading === "balances" ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : <Download className="w-4 h-4" aria-hidden="true" />}
-              {t("admin.backup.balances", { count: balanceCount })}
-            </button>
-          </div>
-          <p className="text-xs text-gray-500 mt-3">{t("admin.backup.format")}</p>
-        </Card>
-
-        {canRestore && <RestoreBackup onRestored={() => setRefreshKey((k) => k + 1)} />}
-
-        {canPurge &&
-          <Card id="admin-delete" icon={Trash2} tone="red" title={t("admin.delete.title")} description={t("admin.delete.description")}>
-            <button type="button" onClick={openConfirm} disabled={!rangeValid || nothingToDelete || loadingSummary}
-              data-testid="delete-range"
-              className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white rounded-lg px-4 py-2 text-sm font-semibold transition disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-300">
-              <Trash2 className="w-4 h-4" aria-hidden="true" />
-              {t("admin.delete.button", { count: txCount })}
-            </button>
-          </Card>
-        }
+        </div>
       </main>
 
       {confirmOpen &&

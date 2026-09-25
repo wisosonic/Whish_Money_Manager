@@ -89,6 +89,7 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
     - `StatsCards` takes `defaultOpen` from `preferences.summaries`.
   - Without a provider (unit tests), `usePreferences()` returns the defaults, so existing component tests are unaffected.
   - **Header:** the nav row is `flex-wrap` and the links are `whitespace-nowrap`. Admins have up to 5 items there, and the non-wrapping row made the page 663px wide on a ~500px phone (measured in Edge via `scrollWidth`).
+- **Admin panel layout** (user's request, 2026-09-25): two columns from `xl` (`xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]`, page `max-w-7xl`): `admin-reports-column` (reports, wider for the tables/chart) and `admin-data-column` (range, backup, restore, delete). Stacked below xl, reports first. Both columns are `min-w-0` so wide tables scroll inside instead of stretching the grid. DOM order is unchanged, so section-order tests still hold.
 - **Admin panel → Reports** (user's request, 2026-09-25): `src/components/reports/ReportsSection.jsx`, the first section of `AdminPage` (section `admin-reports`), as WAI-ARIA tabs (arrows mirrored in RTL, Home/End). Only the open report is rendered and fetched. API: `server/reports.js`, `data:export` (like the rest of the panel).
   - **Income** (`IncomeReport.jsx`): the dashboard chart from `GET /admin/reports/income?year=` (SQL monthly sums). The chart body now lives in `src/components/reports/IncomeChart.jsx`, shared by `MonthlyChartModal` (which re-exports `CHART_SERIES` / `CHART_INK` / tooltip / legend) and the report. `monthlyChartData.js` is split into aggregation and `finalizeMonthlyRows` (labels, rounding, future months → null), so both paths share the same null / rounding rules. A backend test checks the server sums equal `buildMonthlyChartData`.
   - **Top senders / recipients** (`PartyReport.jsx`, `GET /admin/reports/parties`): senders come from **cash_in** rows only and recipients from **cash_out** only. The other side of those rows is the office's own account (the importers write the account name there: 1,151 of 1,151 debits in the real data), so this keeps the office off both lists without knowing its name. **Don't widen the type filter.**
@@ -357,6 +358,7 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - `Dashboard` computes `yearly*` figures.
   - Added `StatsCards.test.jsx` and Dashboard summary tests. Total now 104.
 ### 2026-09-25
+- **Admin panel in two columns** (user's request): reports | the office's data, from 1280px; stacked below. A test checks which sections sit in which column.
 - **Search scope switch moved** to the start of the dashboard's search row, before the search box (user's request). A Dashboard test checks the order.
 - **Admin panel reports** (user's request): a Reports section first in the panel, with Income (the dashboard chart, from server-side monthly sums), Top senders (Cash In) and Top recipients (Cash Out) with date range, rank-by and top-N filters.
   - The chart was moved into a shared `IncomeChart`; the dashboard modal uses it unchanged (its 27 tests pass as before).
