@@ -12,6 +12,8 @@ npm run seed         # default roles + first Admin (+ reassign pre-accounts data
 npx vitest run tests/backend/csvEngine.test.js   # a single file
 ```
 
+**Repository:** `origin` is https://github.com/wisosonic/Whish_Money_Manager.git, branch `main`. It moved from `wisosonic/hawalaflow`, which GitHub still redirects. Don't point `origin` back at the old URL.
+
 ## Architecture in one minute
 
 - **Backend** (`server/`):
@@ -366,7 +368,7 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
 - **Maintenance** (user's request):
   - **Code splitting:** the chart and the non-dashboard pages load on demand; the main bundle went from 936 kB to 446 kB and Vite's size warning is gone (see Architecture).
   - **Removed unused packages** `react-hot-toast` and `@radix-ui/react-toast`, and the three shadcn toast files that used them.
-  - **Git remote:** GitHub reports the repository moved to `wisosonic/Whish_Money_Manager`. Changing `origin` was left to the user (the tool's safety check blocks repointing a remote): `git remote set-url origin https://github.com/wisosonic/Whish_Money_Manager.git`.
+  - **Git remote:** the repository moved to `wisosonic/Whish_Money_Manager`. The tool's safety check blocks repointing a remote, so the user ran `git remote set-url origin https://github.com/wisosonic/Whish_Money_Manager.git`. Checked afterwards: `origin` uses the new URL for fetch and push, `git fetch` no longer prints the "repository moved" notice, and local and remote `main` match.
   - **Tests:** `codebase.test.js` guards (packages gone, toast files gone, Recharts only in `IncomeChart`, lazy chart and pages), a `ChartFallback` test, and the chart-opening test now waits for the lazy load.
 - **Admin panel in two columns** (user's request): reports | the office's data, from 1280px; stacked below. A test checks which sections sit in which column.
 - **Search scope switch moved** to the start of the dashboard's search row, before the search box (user's request). A Dashboard test checks the order.
