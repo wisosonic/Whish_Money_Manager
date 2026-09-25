@@ -5,9 +5,12 @@ import { api } from "@/api/apiClient";
 import { useI18n } from "@/lib/i18n";
 import { notify } from "@/lib/notify";
 import { Section } from "@/components/settings/SettingsControls";
+import StorePicker from "@/components/stores/StorePicker";
+import { useStoreList, withStoreArg } from "@/lib/useStores";
 
-// Settings → Office → Commission rate (Admin + Manager). The rate on credits, with the date each
-// rate applies from. Stored commissions never change: a new rate is used for new transactions (and
+// Settings → Office → Commission rate (Admin + Manager). A store's rate on credits, with the date
+// each rate applies from. Each store has its own: a Manager edits their store's, the Admin picks the
+// store (when there are several). Stored commissions never change: a new rate is used for new transactions (and
 // imported statements) dated on or after its start. Past entries are history; only a rate that
 // hasn't started yet can be removed.
 const BASE_RATE_DATE = "2000-01-01"; // the starting 1% (see server/db.js)
@@ -22,16 +25,20 @@ export default function CommissionRates() {
   const [confirming, setConfirming] = useState(false);
   const [saving, setSaving] = useState(false);
   const [removing, setRemoving] = useState(null);
+  const { stores, loaded, multiStore } = useStoreList();
+  const [chosen, setChosen] = useState(null);
+  const storeId = multiStore ? chosen ?? stores[0].id : null;
+  const storeArgs = withStoreArg(storeId);
 
   const load = async () => {
     try {
-      setData(await api.commissionRates.get());
+      setData(await api.commissionRates.get(...(storeId ? [undefined, storeId] : [])));
       setLoadError("");
     } catch (err) {
       setLoadError(errorText(err?.message || ""));
     }
   };
-  useEffect(() => { load(); /* eslint-disable-line react-hooks/exhaustive-deps */ }, []);
+  useEffect(() => { if (loaded) load(); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [loaded, storeId]);
 
   const rateNumber = Number(rate);
   const rateValid = rate !== "" && Number.isFinite(rateNumber) && rateNumber >= 0 && rateNumber <= 100
@@ -41,7 +48,7 @@ export default function CommissionRates() {
   const save = async () => {
     setSaving(true);
     try {
-      setData(await api.commissionRates.set(rateNumber, from));
+      setData(await api.commissionRates.set(...storeArgs(rateNumber, from)));
       notify.success(t("toast.office.rateSaved", { rate: num(rateNumber), date: num(from) }));
       setRate("");
       setConfirming(false);
@@ -55,7 +62,7 @@ export default function CommissionRates() {
   const remove = async (effectiveFrom) => {
     setRemoving(effectiveFrom);
     try {
-      setData(await api.commissionRates.remove(effectiveFrom));
+      setData(await api.commissionRates.remove(...storeArgs(effectiveFrom)));
       notify.success(t("toast.office.rateRemoved", { date: num(effectiveFrom) }));
     } catch (err) {
       notify.error(err?.message ? errorText(err.message) : t("toast.office.rateFailed"));
@@ -66,6 +73,11 @@ export default function CommissionRates() {
 
   return (
     <Section id="settings-commission" icon={Percent} title={t("settings.office.rate.title")} description={t("settings.office.rate.description")}>
+      {multiStore &&
+        <div className="mb-4" data-testid="rate-store">
+          <StorePicker stores={stores} value={storeId} onChange={(id) => { setChosen(id); setData(null); }} label={t("stores.rateFor")} testId="rate-store-select" />
+        </div>
+      }
       {loadError && <p role="alert" className="text-sm text-red-600 mb-3">{loadError}</p>}
       {data &&
         <p className="text-sm text-gray-700 mb-4" data-testid="current-rate">

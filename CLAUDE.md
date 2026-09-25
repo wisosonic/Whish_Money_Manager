@@ -54,7 +54,32 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - **Wrong current passwords** return 400 (not 401, which means "no session") and count in the login limiter under `self|<userId>` → 429 after 10.
   - **Frontend:** `AuthContext.updateUser(user)` replaces the signed-in user with the server's answer (the auth mock implements it too). Password managers get `autocomplete` `name`/`email`/`current-password`/`new-password`.
   - **Mutation checks:** removing the email move failed 2 tests, revoking every session 1, skipping the current-password check 3.
-- **Closed days** (`server/office.js`, table `closed_days`; `days:close` for Admin/Manager):
+- **Stores** (user's request, 2026-09-25; `server/stores.js`, table `stores`, `users.store_id`, `store_id` on `transactions` / `daily_balances` / `closed_days` / `commission_rates`):
+  - **User's decisions:** scoped visibility (Admin all stores, a Manager / User only their own); the import's store is **picked by hand**; opening balances, closed days and the commission rate are **per store**; existing data moved to a **first store** on upgrade.
+  - **Model:** name (unique, case-insensitive), location, phone, email, `manager_id` (UNIQUE: one Manager per store, one store per Manager). A Manager's `users.store_id` is the store they manage; Users have at most one store. Changing a role clears the store (`PUT /users/:id`). There's always ≥ 1 store; only an empty one can be deleted.
+  - **Permissions** (in `PERMISSIONS_ADDED_LATER`): `stores:manage` and `stores:all` (Admin), `stores:members` (Admin + Manager: a store's Users, for the store they manage). The Manager role is ALL minus `users:manage`, `stores:manage`, `stores:all`.
+  - **Scope helpers — every route with store data must use them:**
+    - `scopeSql(user)` for lists (someone with no store matches nothing).
+    - `inScope(user, row)` before acting on a row: out of scope → **404**, not 403.
+    - `targetStore(req, res, requested)` / `resolveStore(user, requested)` for writes and single-store reads: without `stores:all`, it's always their own store (another → 403, none → 403 "You aren't assigned to a store yet"); with it, the store asked for, the only store when there's one, else 400 "Choose a store".
+    - `readStore` for "one store or all".
+    - Closed days: `refuseClosedDays(res, storeId, dates)`, or `refuseClosedRows(res, [{ store_id, date }])` for rows that may span stores.
+    - Rates: `commissionRateOn(storeId, date)`.
+  - **Imports:** duplicates are found in the target store; a reference already in **another** store → 409 `in_other_stores` (same money twice), for everyone including the Admin.
+  - **Upgrade** (`upgradeToStores` in `db.js`, idempotent): adds the columns and rebuilds `daily_balances` / `closed_days` / `commission_rates` with store-keyed unique keys. INSERT OR IGNORE keeps the first merged row. It creates the first store, named after the most common Cash Out `sender_name` (the office account), and assigns every row to it. Existing Users join it, and a single Manager becomes its Manager (with several, none: a store has one Manager), so staff keep their access. Each store's rate history starts at 1% from `BASE_RATE_DATE`. `stores.test.js` upgrades a real old-schema file in a child process.
+  - **Frontend:**
+    - **Only the Admin chooses a store:** `useStoreList()` (`src/lib/useStores.js`) and `StorePicker`.
+    - **When the store is sent:** only when the Admin picked one of *several* stores (`withStoreArg`). With one store, or for Managers / Users, calls look exactly as before, and the server applies the store. This is why the old tests didn't change.
+    - **Dashboard:** "All stores" (`storeNames` → Store column, `isRowClosed` per row's store). Cash In / Out, close day, delete-all and the opening balance are off there; the import modal asks for the store.
+    - **Wallet figures:** `src/lib/walletMath.js` (moved unchanged from Dashboard); `walletFiguresByStore` sums per store.
+    - **Pages:** `StoresPage` (`/stores`, header "المتاجر" / "متجري"); the Users page has a Store column; the rate editor, admin panel data column and Reports have a store picker (Admin, several stores); Reports has a "Compare stores" tab (`/admin/reports/stores`, `stores:all`).
+  - **Backups:** `store_id` is the last CSV column. Backups without it are still recognised (`withoutStore`) and go to the store chosen for the restore; a Manager restoring another store's rows → invalid `store_id`.
+  - **Mutation checks:**
+    - No read scoping → 3 tests failed.
+    - Allowing another store → 2.
+    - Any row in scope → 5.
+    - Allowing a cross-store import → 1.
+- **Closed days** (`server/office.js`, table `closed_days`; `days:close` for Admin/Manager; **per store** since 2026-09-25):
   - **Server enforcement:** `refuseClosedDays(res, dates)` → **423** `{ error, closed_days }`. It runs in create, bulk-create, PUT (old *and* new date), DELETE, bulk-update (rows' days + a new `transaction_date`), bulk-delete and import (new rows + the days of rows an overwrite would delete), for both transactions and daily balances.
     - Admin purge refuses a range containing closed days.
     - Restore skips rows on closed days.
@@ -67,7 +92,7 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - **All-or-nothing:** any invalid row (`{ line, field }`) refuses the file.
   - **Race check:** `expected_count` is re-checked inside the transaction → 409.
   - **Known loss:** a CSV turns NULL text into "" (the app treats them the same).
-- **Commission rates** (`commission_rates`, seeded with 1% from `BASE_RATE_DATE` 2000-01-01):
+- **Commission rates** (`commission_rates`, **per store**, each seeded with 1% from `BASE_RATE_DATE` 2000-01-01):
   - PUT upserts by `effective_from`. Only future-dated rates can be deleted.
   - UI: `src/components/settings/CommissionRates.jsx` (confirmation dialog, history, scheduled badge).
 - **New permissions** `data:restore`, `days:close`, `settings:office` are in `PERMISSIONS_ADDED_LATER` (granted once to admin/manager in existing databases).
@@ -160,8 +185,8 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
     - The PDF engine is a secondary fallback, so its backlog items rank lower.
     - Counter-style features (receipts, quick entry, customer autocomplete, offline entry) aren't the product's focus.
 - Debit → `cash_out`, credit → `cash_in`.
-- **CSV commission**: the **office commission rate** on every credit (rounded to 3 decimals), 0 on debits, no exceptions.
-  - The rate is 1% unless changed in Settings → Office (user's request, 2026-09-25). It applies per transaction date: `commissionRateOn(date)` returns the latest `commission_rates` entry on or before that day.
+- **CSV commission**: the **commission rate of the store** the statement is imported into, on every credit (rounded to 3 decimals), 0 on debits, no exceptions.
+  - The rate is 1% unless changed in Settings → Office (user's request, 2026-09-25; per store since stores). It applies per transaction date: `commissionRateOn(storeId, date)` returns the store's latest `commission_rates` entry on or before that day.
   - Stored commissions are never recalculated. The engines take `{ rateFor }` (default `() => 1`, so callers and tests without a database keep 1%), and `/csv/extract` and `/pdf/extract` pass `commissionRateOn`.
   - Cash In gets today's rate from the Dashboard (`commissionRate` prop).
 - **CSV reconciliation is rounding-aware, not tolerant** (`reconcileWithRounding` in `server/index.js`, user's request).
@@ -178,7 +203,7 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - The tests use a synthetic statement. The user's real CSV holds customer names and phones, so don't copy it into `tests/fixtures`.
 - **PDF commission** uses the same office rate, but keeps its original exceptions (description contains "cashin" or "qr topup", or service contains "reversed" → 0%). The user hasn't asked to align it with the CSV rule; ask before changing it.
 - `NAME - 96171588017` descriptions are split in **both** engines (`splitNamePhone`): the name goes to sender/receiver, `phone` gets the number as printed, and `customer_number` gets it without the `961` / `+961` prefix.
-- Duplicates are matched by `reference_number` **across the whole office** (everyone shares one set of transactions). On re-import the user chooses **overwrite** (delete same-reference rows, then insert, in one database transaction) or **cancel**. Rows without a reference are never matched or deleted.
+- Duplicates are matched by `reference_number` **within the store** the statement is imported into (everyone in a store shares its transactions). On re-import the user chooses **overwrite** (delete the store's same-reference rows, then insert, in one database transaction) or **cancel**. Rows without a reference are never matched or deleted. A reference already stored in **another** store refuses the import (409).
 - Manual insertion between table rows ("+ إدراج هنا") was removed at the user's request. Cash In / Cash Out buttons stay. `InsertTransactionModal.jsx` was deleted (2026-09-24).
 - **Search scope** (changed at the user's request on 2026-09-24; it used to cover only the selected day):
   - A switch at the **start** of the search row (before the search box; user's request, 2026-09-25), **كل الأيام** (default) / **هذا اليوم**. `searchScope` state lives in `Dashboard.jsx`.
@@ -233,7 +258,7 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - **Bulk edit is opt-in per field** (a "تغيير" checkbox). Only ticked fields are sent, and ticked + empty clears the field.
     - Allowed fields are defined in `BULK_EDITABLE_FIELDS` on the server, plus `commission_rate`, which is applied per row in SQL: `commission = ROUND(amount * rate / 100, 3)`.
     - Amount, reference and phone are deliberately not bulk-editable.
-  - **Both endpoints** act in one statement over office-wide rows. They validate `type`, the date format and the rate.
+  - **Both endpoints** act in one statement over the selected rows, which must all be in stores the user can see (else 404, nothing changes). They validate `type`, the date format and the rate.
     - Bulk update needs `transactions:update:any`, or `:own` with **every** selected row owned. Otherwise it returns 403 listing `not_own`, and nothing changes.
     - Bulk delete needs `transactions:delete`.
   - **After a bulk delete or a date move**, `onDeleteDailyBalanceForDate` runs once per affected day, removing opening balances for days left empty. For a date move it skips the destination day.
@@ -243,7 +268,7 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - The `hiddenIds` / `onHiddenIdsChange` plumbing was removed from `TransactionsList` and `Dashboard`.
 - The **"مراجعة الكشف"** (statement review) button was removed at the user's request. `ReviewPDFModal.jsx` was deleted (2026-09-24); the import screen covers both PDF and CSV.
 - **Accounts, roles and permissions** (user's decisions, 2026-09-24):
-  - **Visibility:** everyone sees **all** office transactions and balances. Reads are never filtered by user.
+  - **Visibility (changed 2026-09-25, user's decision with stores):** the Admin sees every store; a Manager and a User see only their store's transactions and balances (never filtered by user *within* a store). Someone with no store sees none. Before stores, everyone saw all office data.
   - **User:** read, create, import, and edit **own** transactions (`created_by === email`). No delete of any kind, no import overwrite (it deletes), no opening balances, no user management.
   - **Manager:** everything except `users:manage`.
   - **Admin:** everything. The matrix is in `server/permissions.js` `DEFAULT_ROLES`.
@@ -269,7 +294,7 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
     - It runs only when the server is run directly, never in tests (they import `app`). Once any user exists it never seeds again.
     - `tests/backend/startup.test.js` spawns the real server twice to check this.
   - **Existing data:** rows from before accounts existed have `created_by = 'local@hawalaflow.app'` (`LEGACY_OWNER_EMAIL`), and the seed reassigns them to the first Admin.
-  - **Opening balances** are one per date office-wide: `POST /daily-balances/create` on an existing date updates it.
+  - **Opening balances** are one per store and date: `POST /daily-balances/create` on an existing store + date updates it.
   - **Safety rules:** there's always at least one active Admin, and an Admin can't deactivate themselves. Deactivation and password reset delete the user's sessions.
   - **No CORS:** the app is same-origin via the Vite proxy. Writes must be JSON (a 415 otherwise), which, together with SameSite=Strict, blocks CSRF.
   - **Login:** bcrypt (`BCRYPT_ROUNDS`, default 12), a generic "Invalid email or password", a dummy-hash comparison for unknown emails (so response time doesn't reveal them), and an in-memory lockout of 10 failures per IP+email per 15 minutes.
@@ -316,9 +341,10 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
 - Frontend tests need `/** @vitest-environment jsdom */` and mock `@/api/apiClient` (export `api`).
 - **Toasts in tests:** render `<AppToaster />` next to the component (the real sonner, no mock). Then use `findToast(text)` from `tests/frontend/toastHelpers.jsx` and assert `data-type` (success / info / warning / error). Call `clearToasts()` in `afterEach`, because sonner's store is module-level. Text shown both inline and in a toast is found in the toast.
 - **Auth in backend tests:** `tests/backend/helpers.js` provides `startServer()`, `createTestUsers()` (admin, manager, user, user2, password `PASSWORD`), and `makeClient()`, which keeps one cookie per account. Use `client.request(method, route, { as: "user", body })`.
+  - **Stores:** `createTestUsers()` makes the manager the Manager of the first store and puts user / user2 in it (`assignToStore`, `firstStoreId`), so single-store tests behave as before stores. Rows inserted with raw SQL must set `store_id` (1), or they're invisible to non-Admins. A new user from `createUser` has no store until assigned.
   - Each test file gets its own in-memory database.
   - Call `resetLoginRateLimit()` in tests that make many failed logins.
-- **Auth in component tests:** `vi.mock("@/lib/AuthContext", async () => (await import("./authMock")).authContextMock)` and `setAuthRole("user")`. `can` uses the real shared rules.
+- **Auth in component tests:** `vi.mock("@/lib/AuthContext", async () => (await import("./authMock")).authContextMock)` and `setAuthRole("user")`. `can` uses the real shared rules. Mock Managers and Users are in store 1 ("Main store"), and the Admin in none. Pass `{ store_id: null }` to test someone without a store. Test mocks without `api.stores` are fine: the store list then falls back to a single store.
 - `vitest.config.js` sets `JWT_SECRET` (so no `server/.jwt-secret` file is written) and `BCRYPT_ROUNDS=4` (fast).
 - **Security tests were checked for real failures:** granting Users `transactions:delete` made 3 permission tests fail. Keep them meaningful: assert both the status code and that the data didn't change.
 - jsdom lacks `Blob.prototype.text()`, `matchMedia` and `ResizeObserver`. `tests/setup.js` stubs all three.
@@ -373,6 +399,14 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - `Dashboard` computes `yearly*` figures.
   - Added `StatsCards.test.jsx` and Dashboard summary tests. Total now 104.
 ### 2026-09-25
+- **Stores** (user's request; decisions: scoped visibility, store picked by hand on import, per-store balances / closed days / rate, existing data moved to a first store):
+  - **Server:** the `stores` table and `store_id` everywhere, an idempotent upgrade, `server/stores.js` (CRUD, one Manager per store, members, scope helpers), and every route scoped. Imports are blocked when a reference is already in another store. Reports take a store filter and gain a stores comparison.
+  - **Frontend:**
+    - The Stores page (Admin / Manager / User / no store) and header links with the store's name.
+    - Dashboard: the Admin's picker and "All stores" view; a message for someone without a store.
+    - The import screen's store picker; the Users page's Store column; per-store rate editor, admin panel data column and reports; the "Compare stores" report.
+  - **Checked** on a copy of the real database (1 store, all 1,843 rows, the balance and the rate moved) and in Edge (Arabic, English, phone, All stores).
+  - **Tests:** `tests/backend/stores.test.js` (27) and `tests/frontend/stores.test.jsx` (21). Existing tests were updated for the new rules (raw inserts carry `store_id`, `commissionRateOn(storeId, …)`, a role change clears the store, responses include `store_id`). Total 759.
 - **Docs: where transactions come from** (user's statement): the Whish Money API CSV is the main input and the reference; manual entry only patches rows the parser missed; PDF is a fallback. Added to Business rules here, and to README (a new "Where transactions come from" section, the feature list, the daily workflow and the permissions table). No code changes.
 - **Maintenance** (user's request):
   - **Code splitting:** the chart and the non-dashboard pages load on demand; the main bundle went from 936 kB to 446 kB and Vite's size warning is gone (see Architecture).

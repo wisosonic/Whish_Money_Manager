@@ -90,7 +90,7 @@ describe("bundle split", () => {
 
   it("pages other than the dashboard load on demand, behind a Suspense spinner", () => {
     const app = read("src/App.jsx");
-    ["UsersPage", "SettingsPage", "AdminPage", "ProfilePage"].forEach((page) => {
+    ["UsersPage", "SettingsPage", "AdminPage", "ProfilePage", "StoresPage"].forEach((page) => {
       expect(importsStatically(app, `./pages/${page}`)).toBe(false);
       expect(app).toContain(`const ${page} = lazy(() => import("./pages/${page}"));`);
     });

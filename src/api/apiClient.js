@@ -51,6 +51,12 @@ if (typeof window !== 'undefined') {
   }
 }
 
+// Query string from the defined values only (undefined / null / "" are left out).
+const query = (params) => {
+  const defined = Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== '');
+  return defined.length ? `?${new URLSearchParams(defined.map(([key, value]) => [key, String(value)]))}` : '';
+};
+
 const makeEntityClient = (entityPath) => ({
   filter: async (filter = {}, sortField = 'created_date', limit = 1000) =>
     apiRequest(`/${entityPath}/filter`, {
@@ -140,63 +146,83 @@ export const api = {
     list: async () => apiRequest('/roles', { method: 'GET' }),
   },
 
-  // Closed days: nothing on a closed date can be changed until it's reopened (days:close to change).
-  closedDays: {
-    list: async () => apiRequest('/closed-days', { method: 'GET' }),
-    close: async (date) => apiRequest('/closed-days', { method: 'POST', body: JSON.stringify({ date }) }),
-    reopen: async (date) => apiRequest(`/closed-days/${encodeURIComponent(date)}`, { method: 'DELETE' }),
+  // Stores. Everyone sees their own store; the Admin (stores:manage) manages all of them; a store's
+  // Manager (stores:members) adds and removes its Users.
+  stores: {
+    list: async () => apiRequest('/stores', { method: 'GET' }),
+    get: async (id) => apiRequest(`/stores/${id}`, { method: 'GET' }),
+    create: async (payload) => apiRequest('/stores', { method: 'POST', body: JSON.stringify(payload) }),
+    update: async (id, payload) => apiRequest(`/stores/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+    remove: async (id) => apiRequest(`/stores/${id}`, { method: 'DELETE' }),
+    // userId null clears the store's Manager.
+    setManager: async (id, userId) => apiRequest(`/stores/${id}/manager`, { method: 'PUT', body: JSON.stringify({ user_id: userId }) }),
+    assignable: async (id) => apiRequest(`/stores/${id}/assignable`, { method: 'GET' }),
+    addMember: async (id, userId) => apiRequest(`/stores/${id}/members`, { method: 'POST', body: JSON.stringify({ user_id: userId }) }),
+    removeMember: async (id, userId) => apiRequest(`/stores/${id}/members/${userId}`, { method: 'DELETE' }),
   },
 
-  // Office commission rate on credits (percent) and its history (settings:office to change).
+  // Closed days, per store: nothing on a store's closed date can be changed until it's reopened
+  // (days:close to change). storeId: the store (the Admin's list without one: every store's).
+  closedDays: {
+    list: async (storeId) => apiRequest(`/closed-days${query({ store_id: storeId })}`, { method: 'GET' }),
+    close: async (date, storeId) => apiRequest('/closed-days', { method: 'POST', body: JSON.stringify({ date, store_id: storeId }) }),
+    reopen: async (date, storeId) => apiRequest(`/closed-days/${encodeURIComponent(date)}${query({ store_id: storeId })}`, { method: 'DELETE' }),
+  },
+
+  // A store's commission rate on credits (percent) and its history (settings:office to change).
   commissionRates: {
-    // { date, rate (on that date), current (today), history: [{ rate, effective_from, created_by, created_date }] }
-    get: async (date) => apiRequest(`/commission-rates${date ? `?${new URLSearchParams({ date })}` : ''}`, { method: 'GET' }),
-    set: async (rate, effectiveFrom) =>
-      apiRequest('/commission-rates', { method: 'PUT', body: JSON.stringify({ rate, effective_from: effectiveFrom }) }),
-    remove: async (effectiveFrom) =>
-      apiRequest(`/commission-rates/${encodeURIComponent(effectiveFrom)}`, { method: 'DELETE' }),
+    // { store_id, date, rate (on that date), current (today), history: [{ rate, effective_from, created_by, created_date }] }
+    get: async (date, storeId) => apiRequest(`/commission-rates${query({ date, store_id: storeId })}`, { method: 'GET' }),
+    set: async (rate, effectiveFrom, storeId) =>
+      apiRequest('/commission-rates', { method: 'PUT', body: JSON.stringify({ rate, effective_from: effectiveFrom, store_id: storeId }) }),
+    remove: async (effectiveFrom, storeId) =>
+      apiRequest(`/commission-rates/${encodeURIComponent(effectiveFrom)}${query({ store_id: storeId })}`, { method: 'DELETE' }),
   },
 
   // Admin panel (data:export / data:purge — Admin and Manager). Dates are YYYY-MM-DD, inclusive.
+  // storeId: one store; the Admin can leave it out for every store (a Manager always gets theirs).
   admin: {
     // First and last day that has any data.
-    range: async () => apiRequest('/admin/range', { method: 'GET' }),
+    range: async (storeId) => apiRequest(`/admin/range${query({ store_id: storeId })}`, { method: 'GET' }),
     // Counts and totals in a range (the preview shown before a backup or a delete).
-    summary: async (from, to) =>
-      apiRequest(`/admin/summary?${new URLSearchParams({ from, to })}`, { method: 'GET' }),
+    summary: async (from, to, storeId) =>
+      apiRequest(`/admin/summary${query({ from, to, store_id: storeId })}`, { method: 'GET' }),
     // CSV backup; kind is "transactions" or "balances". Returns { blob, filename }.
-    exportCsv: async (kind, from, to) =>
-      apiRequest(`/admin/export?${new URLSearchParams({ kind, from, to })}`, { method: 'GET', download: true }),
+    exportCsv: async (kind, from, to, storeId) =>
+      apiRequest(`/admin/export${query({ kind, from, to, store_id: storeId })}`, { method: 'GET', download: true }),
     // Deletes the range's transactions and opening balances. `expectedCount` is the number of
     // transactions the user confirmed; the server refuses (409) if the data changed since.
-    purge: async (from, to, expectedCount) =>
+    purge: async (from, to, expectedCount, storeId) =>
       apiRequest('/admin/purge', {
         method: 'POST',
-        body: JSON.stringify({ from, to, expected_count: expectedCount }),
+        body: JSON.stringify({ from, to, expected_count: expectedCount, store_id: storeId }),
       }),
     // Reports (data:export). income: { year, years, months: [{ month, count, profit, cashIn, cashOut }] }.
     // parties: party "sender" (of Cash In) or "receiver" (of Cash Out) in a range, ranked by
     // "volume" or "count" → { totals, rows: [{ rank, name, number, count, volume, average, share, … }] }.
     reports: {
-      income: async (year) => apiRequest(`/admin/reports/income?${new URLSearchParams({ year })}`, { method: 'GET' }),
-      parties: async ({ party, from, to, by = 'volume', limit = 10 }) =>
-        apiRequest(`/admin/reports/parties?${new URLSearchParams({ party, from, to, by, limit: String(limit) })}`, { method: 'GET' }),
+      income: async (year, storeId) => apiRequest(`/admin/reports/income${query({ year, store_id: storeId })}`, { method: 'GET' }),
+      parties: async ({ party, from, to, by = 'volume', limit = 10, storeId }) =>
+        apiRequest(`/admin/reports/parties${query({ party, from, to, by, limit, store_id: storeId })}`, { method: 'GET' }),
+      // Every store side by side (stores:all — the Admin): { totals, stores: [{ id, name, count, cash_in, cash_out, volume, commission, share }] }.
+      stores: async (from, to) => apiRequest(`/admin/reports/stores${query({ from, to })}`, { method: 'GET' }),
     },
     // Restore a backup CSV (data:restore): preview what it would add, then add it. expectedCount is
     // the number of rows the preview showed; the server refuses (409) if that changed.
-    restorePreview: async (csv) => apiRequest('/admin/restore/preview', { method: 'POST', body: JSON.stringify({ csv }) }),
-    restore: async (csv, expectedCount) =>
-      apiRequest('/admin/restore', { method: 'POST', body: JSON.stringify({ csv, expected_count: expectedCount }) }),
+    // Rows keep the store named in the file; backups from before stores go to storeId.
+    restorePreview: async (csv, storeId) => apiRequest('/admin/restore/preview', { method: 'POST', body: JSON.stringify({ csv, store_id: storeId }) }),
+    restore: async (csv, expectedCount, storeId) =>
+      apiRequest('/admin/restore', { method: 'POST', body: JSON.stringify({ csv, expected_count: expectedCount, store_id: storeId }) }),
   },
   entities: {
     Transaction: {
       ...makeEntityClient('transactions'),
 
-      // Existing transactions that share a reference number with an upload (re-imported statement lines).
-      findDuplicates: async (references) =>
+      // Existing transactions of the store that share a reference number with an upload (re-imported statement lines).
+      findDuplicates: async (references, storeId) =>
         apiRequest('/transactions/find-duplicates', {
           method: 'POST',
-          body: JSON.stringify({ references }),
+          body: JSON.stringify({ references, store_id: storeId }),
         }),
 
       // Apply the same changes to several transactions. `changes` may include type, sender_name,
@@ -213,18 +239,20 @@ export const api = {
           body: JSON.stringify({ ids }),
         }),
 
-      // Like bulkCreate, but with overwrite=true it first deletes existing entries with the same references.
-      importRecords: async (records, { overwrite = false } = {}) =>
+      // Like bulkCreate, but with overwrite=true it first deletes the store's entries with the same
+      // references. storeId: the store the statement is imported into.
+      importRecords: async (records, { overwrite = false, storeId } = {}) =>
         apiRequest('/transactions/import', {
           method: 'POST',
-          body: JSON.stringify({ records, overwrite }),
+          body: JSON.stringify({ records, overwrite, store_id: storeId }),
         }),
     },
     DailyBalance: makeEntityClient('daily-balances'),
   },
   integrations: {
     Core: {
-      ExtractPdf: async (file) => {
+      // storeId: the store the statement is for (commissions use its rate).
+      ExtractPdf: async (file, storeId) => {
         const base64 = await new Promise((resolve, reject) => {
           const reader = new FileReader();
           reader.onload = () => {
@@ -237,14 +265,14 @@ export const api = {
 
         return apiRequest('/pdf/extract', {
           method: 'POST',
-          body: JSON.stringify({ base64 }),
+          body: JSON.stringify({ base64, store_id: storeId }),
         });
       },
-      ExtractCsv: async (file) => {
+      ExtractCsv: async (file, storeId) => {
         const text = await file.text();
         return apiRequest('/csv/extract', {
           method: 'POST',
-          body: JSON.stringify({ text }),
+          body: JSON.stringify({ text, store_id: storeId }),
         });
       },
     },

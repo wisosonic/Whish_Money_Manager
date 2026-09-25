@@ -3,7 +3,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createUser, resetLoginRateLimit } from "../../server/auth.js";
 import { db } from "../../server/db.js";
-import { PASSWORD, createTestUsers, loginAll, makeClient, startServer } from "./helpers.js";
+import { PASSWORD, assignToStore, createTestUsers, firstStoreId, loginAll, makeClient, startServer } from "./helpers.js";
 
 let srv;
 let client;
@@ -21,7 +21,9 @@ const fresh = async (role = "user") => {
   counter += 1;
   const name = `p${counter}`;
   const email = `profile${counter}@test.local`;
-  createUser({ email, full_name: `Person ${counter}`, password: PASSWORD, role });
+  const user = createUser({ email, full_name: `Person ${counter}`, password: PASSWORD, role });
+  // Admins work in every store; others need one to enter transactions.
+  if (role !== "admin") assignToStore(user, firstStoreId());
   await client.login(name, email);
   return {
     name,

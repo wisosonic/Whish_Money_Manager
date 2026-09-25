@@ -2,13 +2,18 @@
 // the API always reads a user's permissions from the database, so role changes apply on the next request.
 //
 // Rules agreed with the office owner:
-//   • Everyone sees all office transactions and balances.
+//   • Stores (2026-09-25): every transaction, opening balance, closed day and commission rate belongs
+//     to a store. The Admin sees and works in every store; a Manager only in the store they manage
+//     (one Manager per store); a User only in the store they're assigned to. Someone with no store
+//     sees no transactions. (Before stores, everyone saw all office data.)
 //   • User: add, import and edit THEIR OWN transactions; no deleting, no replacing imports,
 //     no changing opening balances.
 //   • Manager: everything with transactions, imports, balances and reports; no user/role management.
 //   • Admin: everything.
 //   • Admin panel (Admin + Manager): download a CSV backup and delete all data for a date range.
-//   • Admin + Manager: restore a backup, close / reopen a day, set the office commission rate.
+//   • Admin + Manager: restore a backup, close / reopen a day, set the commission rate (of their store).
+//   • Admin: create, edit and delete stores and assign their Manager. Manager: add / remove Users
+//     in their own store.
 
 export const PERMISSIONS = {
   TRANSACTIONS_READ: "transactions:read",
@@ -24,7 +29,10 @@ export const PERMISSIONS = {
   DATA_PURGE: "data:purge", // admin panel: delete every transaction and opening balance in a date range
   DATA_RESTORE: "data:restore", // settings → backup & restore: add back rows from a backup CSV
   DAYS_CLOSE: "days:close", // close / reopen a day (a closed day can't be changed by anyone)
-  OFFICE_SETTINGS: "settings:office", // office-wide settings: the commission rate
+  OFFICE_SETTINGS: "settings:office", // the commission rate (per store)
+  STORES_MANAGE: "stores:manage", // create / edit / delete stores, assign a store's Manager, move any User
+  STORES_ALL: "stores:all", // see and work in every store (without it: only your own store)
+  STORES_MEMBERS: "stores:members", // add / remove Users in the store you manage
 };
 
 const P = PERMISSIONS;
@@ -40,13 +48,14 @@ export const DEFAULT_ROLES = [
   {
     name: "manager",
     label: "Manager",
-    description: "All transaction, import, balance and report features. No user or role management.",
-    permissions: ALL.filter((p) => p !== P.USERS_MANAGE),
+    description: "All transaction, import, balance and report features for the store they manage, and its Users. No user or role management.",
+    // Their own store only: no user management, no store management, no other stores.
+    permissions: ALL.filter((p) => ![P.USERS_MANAGE, P.STORES_MANAGE, P.STORES_ALL].includes(p)),
   },
   {
     name: "user",
     label: "User",
-    description: "View everything; add, import and edit own transactions. No deleting, no opening balances.",
+    description: "View their store; add, import and edit own transactions. No deleting, no opening balances.",
     permissions: [
       P.TRANSACTIONS_READ,
       P.TRANSACTIONS_CREATE,
@@ -66,6 +75,9 @@ export const PERMISSIONS_ADDED_LATER = {
   [P.DATA_RESTORE]: ["admin", "manager"],
   [P.DAYS_CLOSE]: ["admin", "manager"],
   [P.OFFICE_SETTINGS]: ["admin", "manager"],
+  [P.STORES_MANAGE]: ["admin"],
+  [P.STORES_ALL]: ["admin"],
+  [P.STORES_MEMBERS]: ["admin", "manager"],
 };
 
 export const hasPermission = (user, permission) => Boolean(user?.permissions?.includes(permission));

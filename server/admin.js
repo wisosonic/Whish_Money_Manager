@@ -11,20 +11,27 @@
 //
 // A transaction's day is transaction_date, or the date part of created_date when it has none —
 // the same rule the dashboard uses. Ranges are inclusive, as YYYY-MM-DD.
+//
+// Stores: every route takes an optional store_id. The Admin (stores:all) works on one store or, with
+// none, every store; a Manager always on their own store (server/stores.js).
 import { requirePermission } from "./auth.js";
 import { parseCsvText } from "./csv.js";
 import { LEGACY_OWNER_EMAIL, db } from "./db.js";
 import { closedAmong, closedDaysBetween, transactionDay } from "./office.js";
 import { PERMISSIONS as P } from "./permissions.js";
+import { inScope, readStore, resolveStore, storeById, targetStore } from "./stores.js";
 
 const TX_DAY = "COALESCE(NULLIF(transaction_date, ''), substr(created_date, 1, 10))";
 
 export const TRANSACTION_CSV_COLUMNS = [
   "id", "transaction_date", "type", "amount", "commission", "sender_name", "receiver_name", "phone",
   "customer_number", "reference_number", "service", "note", "currency", "status", "sort_order",
-  "created_by", "created_date", "updated_date",
+  "created_by", "created_date", "updated_date", "store_id",
 ];
-export const BALANCE_CSV_COLUMNS = ["id", "date", "opening_balance", "created_by", "created_date", "updated_date"];
+export const BALANCE_CSV_COLUMNS = ["id", "date", "opening_balance", "created_by", "created_date", "updated_date", "store_id"];
+// Backups made before stores have no store_id column; they're still recognised (and restored into
+// the store chosen for the restore).
+const withoutStore = (columns) => columns.filter((column) => column !== "store_id");
 
 const isIsoDate = (value) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ""))) return false;
@@ -60,14 +67,23 @@ export const toCsv = (columns, rows) =>
   "\uFEFF" + [columns.join(","), ...rows.map((row) => columns.map((c) => csvCell(row[c])).join(","))].join("\r\n") + "\r\n";
 
 // Prepared when first used: this module is imported before initializeDb() creates the tables.
-const selectTransactions = (from, to) =>
-  db.prepare(`SELECT * FROM transactions WHERE ${TX_DAY} BETWEEN ? AND ? ORDER BY ${TX_DAY}, sort_order, id`).all(from, to);
-const selectBalances = (from, to) =>
-  db.prepare("SELECT * FROM daily_balances WHERE date BETWEEN ? AND ? ORDER BY date, id").all(from, to);
-const countTransactions = (from, to) =>
-  db.prepare(`SELECT COUNT(*) AS n FROM transactions WHERE ${TX_DAY} BETWEEN ? AND ?`).get(from, to).n;
+// `store` is { all: true } or { id }: every store, or one.
+const inStore = (store) => (store.all ? { sql: "1 = 1", params: [] } : { sql: "store_id = ?", params: [store.id] });
+const selectTransactions = (from, to, store) => {
+  const scope = inStore(store);
+  return db.prepare(`SELECT * FROM transactions WHERE ${TX_DAY} BETWEEN ? AND ? AND ${scope.sql} ORDER BY store_id, ${TX_DAY}, sort_order, id`).all(from, to, ...scope.params);
+};
+const selectBalances = (from, to, store) => {
+  const scope = inStore(store);
+  return db.prepare(`SELECT * FROM daily_balances WHERE date BETWEEN ? AND ? AND ${scope.sql} ORDER BY store_id, date, id`).all(from, to, ...scope.params);
+};
+const countTransactions = (from, to, store) => {
+  const scope = inStore(store);
+  return db.prepare(`SELECT COUNT(*) AS n FROM transactions WHERE ${TX_DAY} BETWEEN ? AND ? AND ${scope.sql}`).get(from, to, ...scope.params).n;
+};
 
-const summarize = (from, to) => {
+const summarize = (from, to, store) => {
+  const scope = inStore(store);
   const tx = db.prepare(
     `SELECT COUNT(*) AS count,
             COALESCE(SUM(CASE WHEN type = 'cash_in' THEN amount END), 0) AS total_in,
@@ -75,13 +91,14 @@ const summarize = (from, to) => {
             COALESCE(SUM(commission), 0) AS total_commission,
             COUNT(DISTINCT ${TX_DAY}) AS days,
             MIN(${TX_DAY}) AS first_date, MAX(${TX_DAY}) AS last_date
-     FROM transactions WHERE ${TX_DAY} BETWEEN ? AND ?`
-  ).get(from, to);
-  const balances = db.prepare("SELECT COUNT(*) AS n FROM daily_balances WHERE date BETWEEN ? AND ?").get(from, to).n;
+     FROM transactions WHERE ${TX_DAY} BETWEEN ? AND ? AND ${scope.sql}`
+  ).get(from, to, ...scope.params);
+  const balances = db.prepare(`SELECT COUNT(*) AS n FROM daily_balances WHERE date BETWEEN ? AND ? AND ${scope.sql}`).get(from, to, ...scope.params).n;
   const round = (n) => Math.round(n * 1000) / 1000;
   return {
     from,
     to,
+    store_id: store.all ? null : store.id,
     transactions: tx.count,
     opening_balances: balances,
     days: tx.days,
@@ -97,9 +114,12 @@ export const registerAdminRoutes = (app) => {
   const canExport = requirePermission(P.DATA_EXPORT);
   const canPurge = requirePermission(P.DATA_PURGE);
 
-  app.get("/local-api/admin/range", canExport, (_req, res) => {
-    const tx = db.prepare(`SELECT MIN(${TX_DAY}) AS first, MAX(${TX_DAY}) AS last FROM transactions`).get();
-    const ob = db.prepare("SELECT MIN(date) AS first, MAX(date) AS last FROM daily_balances").get();
+  app.get("/local-api/admin/range", canExport, (req, res) => {
+    const store = readStore(req, res, req.query.store_id);
+    if (!store) return;
+    const scope = inStore(store);
+    const tx = db.prepare(`SELECT MIN(${TX_DAY}) AS first, MAX(${TX_DAY}) AS last FROM transactions WHERE ${scope.sql}`).get(...scope.params);
+    const ob = db.prepare(`SELECT MIN(date) AS first, MAX(date) AS last FROM daily_balances WHERE ${scope.sql}`).get(...scope.params);
     const dates = [tx.first, tx.last, ob.first, ob.last].filter(Boolean).sort();
     res.json({ first_date: dates[0] ?? null, last_date: dates.at(-1) ?? null });
   });
@@ -110,7 +130,9 @@ export const registerAdminRoutes = (app) => {
       res.status(400).json({ error: range.error });
       return;
     }
-    res.json(summarize(range.from, range.to));
+    const store = readStore(req, res, req.query.store_id);
+    if (!store) return;
+    res.json(summarize(range.from, range.to, store));
   });
 
   app.get("/local-api/admin/export", canExport, (req, res) => {
@@ -124,10 +146,13 @@ export const registerAdminRoutes = (app) => {
       res.status(400).json({ error: "Unknown export kind" });
       return;
     }
+    const store = readStore(req, res, req.query.store_id);
+    if (!store) return;
     const csv = kind === "transactions"
-      ? toCsv(TRANSACTION_CSV_COLUMNS, selectTransactions(range.from, range.to))
-      : toCsv(BALANCE_CSV_COLUMNS, selectBalances(range.from, range.to));
-    const filename = `${kind === "transactions" ? "transactions" : "opening-balances"}_${range.from}_${range.to}.csv`;
+      ? toCsv(TRANSACTION_CSV_COLUMNS, selectTransactions(range.from, range.to, store))
+      : toCsv(BALANCE_CSV_COLUMNS, selectBalances(range.from, range.to, store));
+    const storePart = store.all ? "" : `store-${store.id}_`;
+    const filename = `${kind === "transactions" ? "transactions" : "opening-balances"}_${storePart}${range.from}_${range.to}.csv`;
     res.set({
       "Content-Type": "text/csv; charset=utf-8",
       "Content-Disposition": `attachment; filename="${filename}"`,
@@ -150,24 +175,27 @@ export const registerAdminRoutes = (app) => {
       res.status(400).json({ error: "expected_count is required" });
       return;
     }
-    const closed = closedDaysBetween(range.from, range.to);
+    const store = readStore(req, res, req.body?.store_id);
+    if (!store) return;
+    const scope = inStore(store);
+    const closed = closedDaysBetween(store.all ? null : store.id, range.from, range.to);
     if (closed.length) {
       res.status(423).json({ error: "The range includes closed days. Reopen them first.", closed_days: closed });
       return;
     }
     const result = db.transaction(() => {
-      const current = countTransactions(range.from, range.to);
+      const current = countTransactions(range.from, range.to, store);
       if (current !== expected) return { conflict: current };
-      const deletedTransactions = db.prepare(`DELETE FROM transactions WHERE ${TX_DAY} BETWEEN ? AND ?`).run(range.from, range.to).changes;
-      const deletedBalances = db.prepare("DELETE FROM daily_balances WHERE date BETWEEN ? AND ?").run(range.from, range.to).changes;
+      const deletedTransactions = db.prepare(`DELETE FROM transactions WHERE ${TX_DAY} BETWEEN ? AND ? AND ${scope.sql}`).run(range.from, range.to, ...scope.params).changes;
+      const deletedBalances = db.prepare(`DELETE FROM daily_balances WHERE date BETWEEN ? AND ? AND ${scope.sql}`).run(range.from, range.to, ...scope.params).changes;
       return { deletedTransactions, deletedBalances };
     })();
     if (result.conflict !== undefined) {
       res.status(409).json({ error: "The data changed since the preview. Check the counts and try again.", transactions: result.conflict });
       return;
     }
-    console.log(`[admin] ${req.user.email} deleted ${result.deletedTransactions} transactions and ${result.deletedBalances} opening balances from ${range.from} to ${range.to}`);
-    res.json({ from: range.from, to: range.to, deleted_transactions: result.deletedTransactions, deleted_opening_balances: result.deletedBalances });
+    console.log(`[admin] ${req.user.email} deleted ${result.deletedTransactions} transactions and ${result.deletedBalances} opening balances from ${range.from} to ${range.to} (${store.all ? "every store" : `store ${store.id}`})`);
+    res.json({ from: range.from, to: range.to, store_id: store.all ? null : store.id, deleted_transactions: result.deletedTransactions, deleted_opening_balances: result.deletedBalances });
   });
 };
 
@@ -175,8 +203,10 @@ export const registerAdminRoutes = (app) => {
 // Adds back rows from a CSV this panel exported (transactions or opening balances). Rows are matched
 // by their original id: ids are never reused (AUTOINCREMENT), so a row whose id still exists is
 // already there and is skipped, and a missing one is re-inserted exactly as it was (same id, dates,
-// "entered by"). Opening balances are matched by date (one per day). Rows on closed days are skipped.
+// "entered by", store). Opening balances are matched by store and date. Rows on closed days are skipped.
 // Any invalid row rejects the whole file — a damaged or hand-edited backup is never half-restored.
+// A row's store is its store_id column; backups from before stores go to the store chosen for the
+// restore. Without stores:all, every row must be for your own store.
 
 // Undo csvCell's spreadsheet guard: a leading ' is removed only where csvCell would have added it.
 const unguard = (text) => (text.startsWith("'") && needsGuard(text.slice(1)) ? text.slice(1) : text);
@@ -189,7 +219,7 @@ const parseBackup = (csv) => {
   if (!rows.length) return { error: "The file is empty" };
   const header = rows[0].map((h) => h.trim());
   const has = (columns) => columns.every((c) => header.includes(c));
-  const kind = has(TRANSACTION_CSV_COLUMNS) ? "transactions" : has(BALANCE_CSV_COLUMNS) ? "balances" : null;
+  const kind = has(withoutStore(TRANSACTION_CSV_COLUMNS)) ? "transactions" : has(withoutStore(BALANCE_CSV_COLUMNS)) ? "balances" : null;
   if (!kind) return { error: "This isn't a backup file from the admin panel" };
   if (rows.length - 1 > RESTORE_LIMITS.maxRows) return { error: "The file has too many rows" };
   const records = rows.slice(1).map((row, i) => {
@@ -220,28 +250,36 @@ const validateBalance = (r) => {
   return null;
 };
 
-// What restoring the file would do, without changing anything.
-const planRestore = (csv) => {
+// What restoring the file would do, without changing anything. `user` decides which stores rows
+// may go to; `defaultStore` receives rows without a store_id (null: such rows are invalid).
+const planRestore = (csv, user, defaultStore) => {
   const parsed = parseBackup(csv);
   if (parsed.error) return parsed;
   const { kind, records } = parsed;
+  // Each row's store: its own store_id column, or the store chosen for the restore.
+  records.forEach((r) => { r.store_id = r.store_id ? Number(r.store_id) : defaultStore; });
+  const storeProblem = (r) => (!Number.isInteger(r.store_id) || !storeById(r.store_id) || !inScope(user, r) ? "store_id" : null);
   const validate = kind === "transactions" ? validateTransaction : validateBalance;
   // Each invalid row is reported as { line, field } — the first column whose value isn't valid.
-  const invalid = records.map((r) => ({ line: r.line, field: validate(r) })).filter((x) => x.field);
+  const invalid = records.map((r) => ({ line: r.line, field: validate(r) || storeProblem(r) })).filter((x) => x.field);
   const dayOf = (r) => (kind === "transactions" ? transactionDay(r) : r.date);
-  const closed = new Set(closedAmong(records.map(dayOf)));
+  const closedKeys = new Set();
+  if (!invalid.length) {
+    [...new Set(records.map((r) => r.store_id))].forEach((storeId) =>
+      closedAmong(storeId, records.filter((r) => r.store_id === storeId).map(dayOf)).forEach((date) => closedKeys.add(`${storeId}|${date}`)));
+  }
 
   const existsById = db.prepare("SELECT 1 FROM transactions WHERE id = ?");
-  const existsByDate = db.prepare("SELECT 1 FROM daily_balances WHERE date = ?");
+  const existsByDate = db.prepare("SELECT 1 FROM daily_balances WHERE store_id = ? AND date = ?");
   const seen = new Set();
   const plan = { toAdd: [], existing: 0, onClosedDays: 0, duplicatesInFile: 0 };
   if (!invalid.length) {
     for (const r of records) {
-      const key = kind === "transactions" ? Number(r.id) : r.date;
+      const key = kind === "transactions" ? Number(r.id) : `${r.store_id}|${r.date}`;
       if (seen.has(key)) { plan.duplicatesInFile += 1; continue; }
       seen.add(key);
-      if (closed.has(dayOf(r))) plan.onClosedDays += 1;
-      else if (kind === "transactions" ? existsById.get(key) : existsByDate.get(key)) plan.existing += 1;
+      if (closedKeys.has(`${r.store_id}|${dayOf(r)}`)) plan.onClosedDays += 1;
+      else if (kind === "transactions" ? existsById.get(key) : existsByDate.get(r.store_id, r.date)) plan.existing += 1;
       else plan.toAdd.push(r);
     }
   }
@@ -258,7 +296,7 @@ const planRestore = (csv) => {
       existing: plan.existing,
       on_closed_days: plan.onClosedDays,
       duplicates_in_file: plan.duplicatesInFile,
-      closed_days: [...closed].sort(),
+      closed_days: [...new Set([...closedKeys].map((k) => k.split("|")[1]))].sort(),
       first_date: days[0] ?? null,
       last_date: days.at(-1) ?? null,
       total_in: kind === "transactions" ? sum("cash_in") : null,
@@ -272,26 +310,32 @@ const planRestore = (csv) => {
 const insertBackupTransaction = (r) =>
   db.prepare(
     `INSERT INTO transactions (id, type, amount, commission, sender_name, receiver_name, phone, customer_number, note,
-       reference_number, service, currency, status, transaction_date, sort_order, created_by, created_date, updated_date)
+       reference_number, service, currency, status, transaction_date, sort_order, created_by, created_date, updated_date, store_id)
      VALUES (@id, @type, @amount, @commission, @sender_name, @receiver_name, @phone, @customer_number, @note,
-       @reference_number, @service, @currency, @status, @transaction_date, @sort_order, @created_by, @created_date, @updated_date)`
+       @reference_number, @service, @currency, @status, @transaction_date, @sort_order, @created_by, @created_date, @updated_date, @store_id)`
   ).run({
     id: Number(r.id), type: r.type, amount: number(r.amount), commission: number(r.commission || "0"),
     sender_name: r.sender_name, receiver_name: r.receiver_name, phone: r.phone, customer_number: r.customer_number,
     note: r.note, reference_number: r.reference_number, service: r.service, currency: r.currency || "USD",
     status: r.status || "completed", transaction_date: r.transaction_date || null, sort_order: Number(r.sort_order) || 0,
     created_by: r.created_by || LEGACY_OWNER_EMAIL, created_date: r.created_date, updated_date: r.updated_date || r.created_date,
+    store_id: r.store_id,
   });
 
 const insertBackupBalance = (r) =>
-  db.prepare("INSERT INTO daily_balances (date, opening_balance, created_by, created_date, updated_date) VALUES (?, ?, ?, ?, ?)")
-    .run(r.date, number(r.opening_balance), r.created_by || LEGACY_OWNER_EMAIL, r.created_date, r.updated_date || r.created_date);
+  db.prepare("INSERT INTO daily_balances (date, opening_balance, created_by, created_date, updated_date, store_id) VALUES (?, ?, ?, ?, ?, ?)")
+    .run(r.date, number(r.opening_balance), r.created_by || LEGACY_OWNER_EMAIL, r.created_date, r.updated_date || r.created_date, r.store_id);
 
 export const registerRestoreRoutes = (app) => {
   const canRestore = requirePermission(P.DATA_RESTORE);
 
+  // The store that receives rows without a store_id (backups from before stores): the one asked
+  // for, your own, or the only store. With several stores and none chosen, such rows are invalid.
+  const defaultStoreFor = (req) => resolveStore(req.user, req.body?.store_id).id ?? null;
+
   app.post("/local-api/admin/restore/preview", canRestore, (req, res) => {
-    const result = planRestore(req.body?.csv);
+    if (req.body?.store_id != null && targetStore(req, res, req.body.store_id) === null) return;
+    const result = planRestore(req.body?.csv, req.user, defaultStoreFor(req));
     if (result.error) {
       res.status(400).json({ error: result.error });
       return;
@@ -308,9 +352,11 @@ export const registerRestoreRoutes = (app) => {
       res.status(400).json({ error: "expected_count is required" });
       return;
     }
+    if (req.body?.store_id != null && targetStore(req, res, req.body.store_id) === null) return;
+    const defaultStore = defaultStoreFor(req);
     let outcome;
     db.transaction(() => {
-      const result = planRestore(req.body?.csv);
+      const result = planRestore(req.body?.csv, req.user, defaultStore);
       if (result.error) { outcome = { status: 400, body: { error: result.error } }; return; }
       if (result.summary.invalid_count) { outcome = { status: 400, body: { error: "The backup has invalid rows", ...result.summary } }; return; }
       if (result.plan.toAdd.length !== expected) {

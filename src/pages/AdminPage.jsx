@@ -11,6 +11,8 @@ import { notify } from "@/lib/notify";
 import RestoreBackup from "@/components/admin/RestoreBackup";
 import DateRangeFields, { ymd } from "@/components/admin/DateRangeFields";
 import ReportsSection from "@/components/reports/ReportsSection";
+import StorePicker from "@/components/stores/StorePicker";
+import { useStoreList, withStoreArg } from "@/lib/useStores";
 
 // Admin panel (Admin + Manager): reports (income by month, top senders / recipients), then the
 // office's data: pick a date range, see what it holds, download it as CSV, restore a backup, or
@@ -38,9 +40,14 @@ function Card({ id, icon: Icon, title, description, tone = "blue", children }) {
 
 export default function AdminPage() {
   const { t, dir, errorText, num } = useI18n();
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const canPurge = can(PERMISSIONS.DATA_PURGE);
   const canRestore = can(PERMISSIONS.DATA_RESTORE);
+  // Whose data: a Manager's own store (the server applies it); the Admin picks one store or all.
+  const { stores, multiStore } = useStoreList();
+  const [dataStore, setDataStore] = useState("all");
+  const storeId = multiStore && dataStore !== "all" ? dataStore : undefined;
+  const storeArgs = withStoreArg(storeId);
 
   const today = new Date();
   const [from, setFrom] = useState(ymd(startOfMonth(today)));
@@ -68,14 +75,14 @@ export default function AdminPage() {
     let current = true;
     setLoadingSummary(true);
     setSummaryError("");
-    api.admin.summary(from, to)
+    api.admin.summary(...storeArgs(from, to))
       .then((result) => { if (current) setSummary(result); })
       .catch((err) => { if (current) { setSummary(null); setSummaryError(errorText(err?.message || "")); } })
       .finally(() => { if (current) setLoadingSummary(false); });
     return () => { current = false; };
     // errorText only changes with the language; re-fetching for that isn't needed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [from, to, rangeValid, refreshKey]);
+  }, [from, to, rangeValid, refreshKey, storeId]);
 
   const setRange = (start, end) => {
     setFrom(start);
@@ -85,7 +92,7 @@ export default function AdminPage() {
   const download = async (kind) => {
     setDownloading(kind);
     try {
-      const { blob, filename } = await api.admin.exportCsv(kind, from, to);
+      const { blob, filename } = await api.admin.exportCsv(...storeArgs(kind, from, to));
       saveBlob(blob, filename);
       notify.success(t("admin.downloaded", { file: filename }));
     } catch (err) {
@@ -109,7 +116,7 @@ export default function AdminPage() {
     setDeleting(true);
     setDeleteError("");
     try {
-      const result = await api.admin.purge(from, to, txCount);
+      const result = await api.admin.purge(...storeArgs(from, to, txCount));
       setConfirmOpen(false);
       // A lasting record of what was deleted: kept on screen longer than a usual success.
       notify.success(
@@ -146,7 +153,14 @@ export default function AdminPage() {
 
           <div className="space-y-4 min-w-0" data-testid="admin-data-column">
             <Card id="admin-range" icon={CalendarRange} title={t("admin.range.title")} description={t("admin.range.description")}>
-              <DateRangeFields from={from} to={to} onChange={setRange} testIdPrefix="range" />
+              {multiStore ?
+                <div className="mb-4" data-testid="data-store">
+                  <StorePicker stores={stores} value={dataStore} onChange={setDataStore} allowAll label={t("stores.dataFor")} testId="data-store-select" />
+                </div> :
+              user?.store_name &&
+                <p className="mb-4 text-sm text-gray-600" data-testid="data-store-name">{t("stores.dataForName", { store: user.store_name })}</p>
+              }
+              <DateRangeFields from={from} to={to} onChange={setRange} testIdPrefix="range" storeId={storeId} />
 
               {/* What the range holds — the preview for both the backup and the delete. */}
               <div className="mt-4 rounded-lg bg-gray-50 border px-4 py-3 text-sm" aria-live="polite" data-testid="range-summary">
@@ -186,7 +200,7 @@ export default function AdminPage() {
               <p className="text-xs text-gray-500 mt-3">{t("admin.backup.format")}</p>
             </Card>
 
-            {canRestore && <RestoreBackup onRestored={() => setRefreshKey((k) => k + 1)} />}
+            {canRestore && <RestoreBackup storeId={storeId} onRestored={() => setRefreshKey((k) => k + 1)} />}
 
             {canPurge &&
               <Card id="admin-delete" icon={Trash2} tone="red" title={t("admin.delete.title")} description={t("admin.delete.description")}>

@@ -6,7 +6,8 @@ import { useI18n } from "@/lib/i18n";
 // reports. `testIdPrefix` names the parts: `${prefix}-from`, `${prefix}-to`, `${prefix}-thisMonth` …
 export const ymd = (date) => format(date, "yyyy-MM-dd");
 
-export default function DateRangeFields({ from, to, onChange, testIdPrefix = "range" }) {
+// storeId: "All data" covers that store (the Admin's choice); without it, every store you can see.
+export default function DateRangeFields({ from, to, onChange, testIdPrefix = "range", storeId }) {
   const { t } = useI18n();
   const today = new Date();
   const quickRanges = [
@@ -16,7 +17,7 @@ export default function DateRangeFields({ from, to, onChange, testIdPrefix = "ra
     {
       key: "allData",
       apply: async () => {
-        const { first_date: first, last_date: last } = await api.admin.range();
+        const { first_date: first, last_date: last } = await api.admin.range(...(storeId ? [storeId] : []));
         if (first && last) onChange(first, last);
       },
     },

@@ -54,8 +54,9 @@ const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
 const USER_WITH_ROLE_SQL = `
   SELECT u.id, u.email, u.full_name, u.password_hash, u.is_active, u.last_login, u.previous_login, u.preferences, u.created_date,
+         u.store_id, s.name AS store_name, (s.manager_id = u.id) AS manages_store,
          r.name AS role, r.label AS role_label, r.permissions AS role_permissions
-  FROM users u JOIN roles r ON r.id = u.role_id`;
+  FROM users u JOIN roles r ON r.id = u.role_id LEFT JOIN stores s ON s.id = u.store_id`;
 
 // What the API returns about a user (never the password hash).
 export const publicUser = (row) =>
@@ -71,6 +72,10 @@ export const publicUser = (row) =>
     previous_login: row.previous_login,
     preferences: resolvePreferences(row.preferences),
     created_date: row.created_date,
+    // The store they work in (null: none yet; the Admin works in every store).
+    store_id: row.store_id ?? null,
+    store_name: row.store_name ?? null,
+    manages_store: Boolean(row.manages_store),
   };
 
 const getUserRow = (id) => db.prepare(`${USER_WITH_ROLE_SQL} WHERE u.id = ?`).get(id);
@@ -382,7 +387,7 @@ export const registerAuthRoutes = (app) => {
       return;
     }
 
-    const { full_name, role, is_active, password } = req.body || {};
+    const { full_name, role, is_active, password, store_id } = req.body || {};
     const sets = [];
     const values = [];
     let revoke = false;
@@ -425,6 +430,21 @@ export const registerAuthRoutes = (app) => {
       values.push(hashPassword(password));
       revoke = true; // a reset password signs the user out everywhere
     }
+    // A User's store (the Admin can also do this from the store's page). A store's Manager is set on
+    // the store itself (PUT /stores/:id/manager), so only Users are assigned here.
+    const roleChanged = role !== undefined && role !== existing.role;
+    if (store_id !== undefined) {
+      if ((roleChanged ? role : existing.role) !== "user") {
+        res.status(400).json({ error: "Only users with the User role can be added to a store" });
+        return;
+      }
+      if (store_id !== null && !db.prepare("SELECT 1 FROM stores WHERE id = ?").get(Number(store_id))) {
+        res.status(404).json({ error: "Store not found" });
+        return;
+      }
+      sets.push("store_id = ?");
+      values.push(store_id === null ? null : Number(store_id));
+    }
     if (!sets.length) {
       res.status(400).json({ error: "No changes to apply" });
       return;
@@ -432,7 +452,15 @@ export const registerAuthRoutes = (app) => {
 
     sets.push("updated_date = ?");
     values.push(nowIso(), id);
-    db.prepare(`UPDATE users SET ${sets.join(", ")} WHERE id = ?`).run(...values);
+    db.transaction(() => {
+      // A new role starts without a store: a Manager is assigned to a store on the store's page, and
+      // a former Manager no longer manages theirs.
+      if (roleChanged) {
+        db.prepare("UPDATE stores SET manager_id = NULL, updated_date = ? WHERE manager_id = ?").run(nowIso(), id);
+        if (store_id === undefined) db.prepare("UPDATE users SET store_id = NULL WHERE id = ?").run(id);
+      }
+      db.prepare(`UPDATE users SET ${sets.join(", ")} WHERE id = ?`).run(...values);
+    })();
     const sessionsRevoked = revoke ? revokeUserSessions(id) : 0;
     res.json({ ...publicUser(getUserRow(id)), sessions_revoked: sessionsRevoked });
   });

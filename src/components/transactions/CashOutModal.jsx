@@ -4,7 +4,8 @@ import { X } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { notify } from "@/lib/notify";
 
-export default function CashOutModal({ onClose, onSaved }) {
+// storeId: the store the entry is for, when the Admin picked one (others always enter in their own).
+export default function CashOutModal({ onClose, onSaved, storeId }) {
   const { t, dir, errorText } = useI18n();
   const [form, setForm] = useState({
     sender_name: "",
@@ -26,6 +27,8 @@ export default function CashOutModal({ onClose, onSaved }) {
         type: "cash_out",
         amount: Number(form.amount),
         commission: Number(form.commission) || 0,
+        // The store it's for (the Admin's chosen store); without it the server uses your own store.
+        ...(storeId ? { store_id: storeId } : {}),
       });
       notify.success(t("toast.tx.cashOutSaved"));
       onSaved();

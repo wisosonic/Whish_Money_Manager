@@ -6,10 +6,11 @@ import { registerAdminRoutes, registerRestoreRoutes } from "./admin.js";
 import { authenticate, registerAuthRoutes, requirePermission } from "./auth.js";
 import { parseCsvText } from "./csv.js";
 import { db, dbPath, ensureDefaultRoles, initializeDb, nowIso } from "./db.js";
-import { commissionRateOn, refuseClosedDays, registerOfficeRoutes, transactionDay } from "./office.js";
+import { commissionRateOn, refuseClosedDays, refuseClosedRows, registerOfficeRoutes, transactionDay } from "./office.js";
 import { PERMISSIONS as P, canUpdateTransaction, hasPermission } from "./permissions.js";
 import { registerReportRoutes } from "./reports.js";
 import { ensureInitialAdmin } from "./seed.js";
+import { inScope, registerStoreRoutes, scopeSql, seesAllStores, storeById, targetStore } from "./stores.js";
 
 const __filename = fileURLToPath(import.meta.url);
 
@@ -62,8 +63,10 @@ const getPdfJs = async () => {
   return pdfjsLibPromise;
 };
 
-// Per-entity rules. Everyone in the office sees all rows (no per-user filtering on reads).
-// created_by is always set by the server from the signed-in user; clients cannot set or change it.
+// Per-entity rules. Rows belong to a store: reads and writes are limited to the stores the user may
+// see (server/stores.js — the Admin: every store; others: their own). created_by is always set by
+// the server from the signed-in user, and store_id from the store the write is for; clients can't
+// set created_by, and only the Admin can move a row to another store.
 const ENTITY_CONFIG = {
   transactions: {
     table: "transactions",
@@ -99,6 +102,9 @@ const ENTITY_CONFIG = {
   }
 };
 
+// A row's store and day, for the closed-day checks.
+const rowDay = (config, row) => ({ store_id: row.store_id, date: config.table === "daily_balances" ? row.date : transactionDay(row) });
+
 const entityOr404 = (req, res) => {
   const config = ENTITY_CONFIG[req.params.entity];
   if (!config) {
@@ -115,7 +121,7 @@ const allow = (req, res, permission) => {
   return false;
 };
 
-const insertEntityRecord = (config, item, userEmail) => {
+const insertEntityRecord = (config, item, userEmail, storeId) => {
   const now = nowIso();
   const columns = [];
   const values = [];
@@ -129,9 +135,9 @@ const insertEntityRecord = (config, item, userEmail) => {
     }
   });
 
-  columns.push("created_by", "created_date", "updated_date");
-  values.push(userEmail, now, now);
-  placeholders.push("?", "?", "?");
+  columns.push("created_by", "created_date", "updated_date", "store_id");
+  values.push(userEmail, now, now, storeId);
+  placeholders.push("?", "?", "?", "?");
 
   const stmt = db.prepare(
     `INSERT INTO ${config.table} (${columns.join(",")}) VALUES (${placeholders.join(",")})`
@@ -142,7 +148,7 @@ const insertEntityRecord = (config, item, userEmail) => {
 
 // Filter keys become column names in SQL, so only known columns are accepted (prevents SQL injection).
 const buildFilterWhere = (config, filter = {}) => {
-  const allowedColumns = new Set([...config.mutableFields, "id", "created_by", "created_date", "updated_date"]);
+  const allowedColumns = new Set([...config.mutableFields, "id", "created_by", "created_date", "updated_date", "store_id"]);
   const clauses = [];
   const params = [];
 
@@ -172,6 +178,9 @@ registerAuthRoutes(app);
 
 // Every other API route requires a signed-in user.
 app.use("/local-api", authenticate);
+
+// Stores and who works in which (Admin: stores; a store's Manager: its Users).
+registerStoreRoutes(app);
 
 // Admin panel: CSV backup and delete-by-date-range (Admin + Manager).
 registerAdminRoutes(app);
@@ -539,6 +548,9 @@ const extractPdfTable = async (pdfBuffer) => {
 };
 
 app.post("/local-api/pdf/extract", requirePermission(P.TRANSACTIONS_IMPORT), async (req, res) => {
+  // Commissions use the rate of the store the statement is imported into.
+  const storeId = targetStore(req, res, req.body?.store_id);
+  if (storeId === null) return;
   try {
     const base64 = String(req.body?.base64 || "");
     if (!base64) {
@@ -548,7 +560,7 @@ app.post("/local-api/pdf/extract", requirePermission(P.TRANSACTIONS_IMPORT), asy
 
     const pdfBuffer = Buffer.from(base64, "base64");
     const { pageCount, tableRows } = await extractPdfTable(pdfBuffer);
-    const result = extractTransactionsFromRows(tableRows, { rateFor: commissionRateOn });
+    const result = extractTransactionsFromRows(tableRows, { rateFor: (date) => commissionRateOn(storeId, date) });
 
     res.json({
       ...result,
@@ -772,6 +784,8 @@ const extractTransactionsFromCsv = (text, { rateFor = () => 1 } = {}) => {
 };
 
 app.post("/local-api/csv/extract", requirePermission(P.TRANSACTIONS_IMPORT), (req, res) => {
+  const storeId = targetStore(req, res, req.body?.store_id);
+  if (storeId === null) return;
   try {
     const text = String(req.body?.text || "");
     if (!text.trim()) {
@@ -779,7 +793,7 @@ app.post("/local-api/csv/extract", requirePermission(P.TRANSACTIONS_IMPORT), (re
       return;
     }
 
-    res.json(extractTransactionsFromCsv(text, { rateFor: commissionRateOn }));
+    res.json(extractTransactionsFromCsv(text, { rateFor: (date) => commissionRateOn(storeId, date) }));
   } catch (error) {
     res.status(400).json({ error: error.message || "Failed to parse CSV" });
   }
@@ -787,24 +801,30 @@ app.post("/local-api/csv/extract", requirePermission(P.TRANSACTIONS_IMPORT), (re
 
 // ═══ Duplicate-aware import (used by both PDF and CSV engines) ═══
 // Statement reference numbers (e.g. "tr:626186571") are unique per transaction, so an entry
-// already stored with the same reference is a re-upload of the same statement line. The office
-// shares one set of transactions, so duplicates are detected across all users.
+// already stored with the same reference is a re-upload of the same statement line. Duplicates are
+// found across all users of the store the statement is imported into. A reference already stored
+// in ANOTHER store blocks the import (the money would be counted twice), whoever imports.
 
 const uniqueReferences = (values) =>
   [...new Set((Array.isArray(values) ? values : []).map((value) => String(value || "").trim()).filter(Boolean))];
 
-const findTransactionsByReference = (references) => {
+// Stored rows with these references: in the store (inStore = true) or in every other store (false).
+const findTransactionsByReference = (references, storeId, inStore = true) => {
   if (!references.length) {
     return [];
   }
   const placeholders = references.map(() => "?").join(",");
   return db
-    .prepare(`SELECT * FROM transactions WHERE reference_number IN (${placeholders})`)
-    .all(...references);
+    .prepare(`SELECT * FROM transactions WHERE reference_number IN (${placeholders}) AND store_id ${inStore ? "=" : "!="} ?`)
+    .all(...references, storeId);
 };
 
+const IN_OTHER_STORE_ERROR = "Some of these transactions were already imported into another store";
+
 app.post("/local-api/transactions/find-duplicates", requirePermission(P.TRANSACTIONS_IMPORT), (req, res) => {
-  res.json(findTransactionsByReference(uniqueReferences(req.body?.references)));
+  const storeId = targetStore(req, res, req.body?.store_id);
+  if (storeId === null) return;
+  res.json(findTransactionsByReference(uniqueReferences(req.body?.references), storeId));
 });
 
 app.post("/local-api/transactions/import", requirePermission(P.TRANSACTIONS_IMPORT), (req, res) => {
@@ -812,24 +832,31 @@ app.post("/local-api/transactions/import", requirePermission(P.TRANSACTIONS_IMPO
   const items = Array.isArray(req.body?.records) ? req.body.records : [];
   const overwrite = req.body?.overwrite === true;
 
+  const storeId = targetStore(req, res, req.body?.store_id);
+  if (storeId === null) return;
+
   // Replacing an imported statement deletes the existing entries, so it needs delete rights.
   if (overwrite && !allow(req, res, P.TRANSACTIONS_DELETE)) return;
 
-  const replacedDays = overwrite ? findTransactionsByReference(uniqueReferences(items.map((item) => item.reference_number))).map(transactionDay) : [];
-  if (refuseClosedDays(res, [...items.map(transactionDay), ...replacedDays])) return;
+  const references = uniqueReferences(items.map((item) => item.reference_number));
+  const elsewhere = findTransactionsByReference(references, storeId, false);
+  if (elsewhere.length) {
+    res.status(409).json({ error: IN_OTHER_STORE_ERROR, in_other_stores: elsewhere.length });
+    return;
+  }
+
+  const replacedDays = overwrite ? findTransactionsByReference(references, storeId).map(transactionDay) : [];
+  if (refuseClosedDays(res, storeId, [...items.map(transactionDay), ...replacedDays])) return;
 
   const runImport = db.transaction(() => {
     let replaced = 0;
-    if (overwrite) {
-      const references = uniqueReferences(items.map((item) => item.reference_number));
-      if (references.length) {
-        const placeholders = references.map(() => "?").join(",");
-        replaced = db
-          .prepare(`DELETE FROM transactions WHERE reference_number IN (${placeholders})`)
-          .run(...references).changes;
-      }
+    if (overwrite && references.length) {
+      const placeholders = references.map(() => "?").join(",");
+      replaced = db
+        .prepare(`DELETE FROM transactions WHERE reference_number IN (${placeholders}) AND store_id = ?`)
+        .run(...references, storeId).changes;
     }
-    const ids = items.map((item) => insertEntityRecord(config, item, req.user.email));
+    const ids = items.map((item) => insertEntityRecord(config, item, req.user.email, storeId));
     return { replaced, ids };
   });
 
@@ -844,6 +871,20 @@ const BULK_EDITABLE_FIELDS = ["type", "sender_name", "receiver_name", "service",
 
 const uniqueIds = (values) =>
   [...new Set((Array.isArray(values) ? values : []).map(Number).filter((id) => Number.isInteger(id) && id > 0))];
+
+// The selected transactions, if every one exists in a store the user can see; otherwise responds 404
+// (listing the ids it can't act on) and returns null.
+const selectInScope = (req, res, ids) => {
+  const placeholders = ids.map(() => "?").join(",");
+  const rows = db.prepare(`SELECT * FROM transactions WHERE id IN (${placeholders})`).all(...ids);
+  const visible = rows.filter((row) => inScope(req.user, row));
+  if (visible.length !== ids.length) {
+    const found = new Set(visible.map((row) => row.id));
+    res.status(404).json({ error: "Record not found", not_found: ids.filter((id) => !found.has(id)) });
+    return null;
+  }
+  return visible;
+};
 
 app.post("/local-api/transactions/bulk-update", (req, res) => {
   const ids = uniqueIds(req.body?.ids);
@@ -868,8 +909,12 @@ app.post("/local-api/transactions/bulk-update", (req, res) => {
 
   const placeholders = ids.map(() => "?").join(",");
 
-  const selectedDays = db.prepare(`SELECT transaction_date, created_date FROM transactions WHERE id IN (${placeholders})`).all(...ids).map(transactionDay);
-  if (refuseClosedDays(res, [...selectedDays, changes.transaction_date])) return;
+  // Every selected row must exist in a store the user can see, or nothing changes.
+  const selected = selectInScope(req, res, ids);
+  if (!selected) return;
+  const days = selected.map((row) => ({ store_id: row.store_id, date: transactionDay(row) }));
+  const movedTo = changes.transaction_date === undefined ? [] : selected.map((row) => ({ store_id: row.store_id, date: changes.transaction_date }));
+  if (refuseClosedRows(res, [...days, ...movedTo])) return;
 
   // Users who may only edit their own entries: every selected row must be theirs, or nothing changes.
   if (!hasPermission(req.user, P.TRANSACTIONS_UPDATE_ANY)) {
@@ -925,8 +970,9 @@ app.post("/local-api/transactions/bulk-delete", requirePermission(P.TRANSACTIONS
   }
 
   const placeholders = ids.map(() => "?").join(",");
-  const days = db.prepare(`SELECT transaction_date, created_date FROM transactions WHERE id IN (${placeholders})`).all(...ids).map(transactionDay);
-  if (refuseClosedDays(res, days)) return;
+  const selected = selectInScope(req, res, ids);
+  if (!selected) return;
+  if (refuseClosedRows(res, selected.map((row) => ({ store_id: row.store_id, date: transactionDay(row) })))) return;
   const result = db.prepare(`DELETE FROM transactions WHERE id IN (${placeholders})`).run(...ids);
 
   res.json({ deleted: result.changes });
@@ -947,10 +993,13 @@ app.post("/local-api/:entity/filter", (req, res) => {
   const safeSort = config.mutableFields.includes(sortField) || sortField === "created_date" ? sortField : "created_date";
   const safeLimit = Number.isFinite(Number(limit)) ? Math.min(Math.max(Number(limit), 1), 10000) : 1000;
 
+  // Only rows of the stores the user may see (someone with no store sees none).
+  const scope = scopeSql(req.user);
+  const where = built.where ? `${built.where} AND ${scope.sql}` : `WHERE ${scope.sql}`;
   const stmt = db.prepare(
-    `SELECT * FROM ${config.table} ${built.where} ORDER BY ${safeSort} DESC LIMIT ?`
+    `SELECT * FROM ${config.table} ${where} ORDER BY ${safeSort} DESC LIMIT ?`
   );
-  res.json(stmt.all(...built.params, safeLimit));
+  res.json(stmt.all(...built.params, ...scope.params, safeLimit));
 });
 
 app.post("/local-api/:entity/create", (req, res) => {
@@ -958,11 +1007,13 @@ app.post("/local-api/:entity/create", (req, res) => {
   if (!config || !allow(req, res, config.createPermission)) return;
 
   const payload = req.body || {};
-  if (refuseClosedDays(res, [config.table === "daily_balances" ? payload.date : transactionDay(payload)])) return;
+  const storeId = targetStore(req, res, payload.store_id);
+  if (storeId === null) return;
+  if (refuseClosedDays(res, storeId, [config.table === "daily_balances" ? payload.date : transactionDay(payload)])) return;
 
-  // The office has one opening balance per day: creating one for a date that already has one updates it.
+  // A store has one opening balance per day: creating one for a date that already has one updates it.
   if (config.table === "daily_balances" && payload.date) {
-    const existing = db.prepare("SELECT * FROM daily_balances WHERE date = ? ORDER BY id LIMIT 1").get(payload.date);
+    const existing = db.prepare("SELECT * FROM daily_balances WHERE store_id = ? AND date = ?").get(storeId, payload.date);
     if (existing) {
       db.prepare("UPDATE daily_balances SET opening_balance = ?, updated_date = ? WHERE id = ?")
         .run(Number(payload.opening_balance) || 0, nowIso(), existing.id);
@@ -971,7 +1022,7 @@ app.post("/local-api/:entity/create", (req, res) => {
     }
   }
 
-  const id = insertEntityRecord(config, payload, req.user.email);
+  const id = insertEntityRecord(config, payload, req.user.email, storeId);
   res.status(201).json(db.prepare(`SELECT * FROM ${config.table} WHERE id = ?`).get(id));
 });
 
@@ -985,10 +1036,13 @@ app.post("/local-api/:entity/bulk-create", (req, res) => {
     return;
   }
 
+  // Every record goes to one store: the one asked for (store_id in the body or on the records).
+  const storeId = targetStore(req, res, req.body?.store_id ?? items[0]?.store_id);
+  if (storeId === null) return;
   const days = items.map((item) => (config.table === "daily_balances" ? item.date : transactionDay(item)));
-  if (refuseClosedDays(res, days)) return;
+  if (refuseClosedDays(res, storeId, days)) return;
 
-  const insertOne = db.transaction((item) => insertEntityRecord(config, item, req.user.email));
+  const insertOne = db.transaction((item) => insertEntityRecord(config, item, req.user.email, storeId));
 
   const ids = items.map((item) => insertOne(item));
   const rows = ids.map((id) => db.prepare(`SELECT * FROM ${config.table} WHERE id = ?`).get(id));
@@ -1002,12 +1056,13 @@ app.put("/local-api/:entity/:id", (req, res) => {
 
   const id = Number(req.params.id);
   const existing = db.prepare(`SELECT * FROM ${config.table} WHERE id = ?`).get(id);
-  if (!existing) {
+  // Rows of a store the user can't see don't exist for them.
+  if (!existing || !inScope(req.user, existing)) {
     res.status(404).json({ error: "Record not found" });
     return;
   }
 
-  // Transactions: Admin/Manager may edit any; a User only the ones they entered.
+  // Transactions: Admin/Manager may edit any (in their store); a User only the ones they entered.
   if (config.table === "transactions") {
     if (!canUpdateTransaction(req.user, existing)) {
       res.status(403).json({ error: "You can only edit transactions you entered" });
@@ -1018,13 +1073,27 @@ app.put("/local-api/:entity/:id", (req, res) => {
   }
 
   const payload = req.body || {};
-  const days = config.table === "daily_balances"
-    ? [existing.date, payload.date]
-    : [transactionDay(existing), payload.transaction_date];
-  if (refuseClosedDays(res, days)) return;
+  // Moving a row to another store: only with stores:all (the Admin).
+  const newStore = payload.store_id === undefined || Number(payload.store_id) === existing.store_id ? existing.store_id : Number(payload.store_id);
+  if (newStore !== existing.store_id) {
+    if (!seesAllStores(req.user)) {
+      res.status(403).json({ error: "You can only work in your own store" });
+      return;
+    }
+    if (!storeById(newStore)) {
+      res.status(404).json({ error: "Store not found" });
+      return;
+    }
+  }
+  const newDay = config.table === "daily_balances" ? payload.date ?? existing.date : payload.transaction_date ?? transactionDay(existing);
+  if (refuseClosedRows(res, [rowDay(config, existing), { store_id: newStore, date: newDay }])) return;
 
   const sets = [];
   const values = [];
+  if (newStore !== existing.store_id) {
+    sets.push("store_id = ?");
+    values.push(newStore);
+  }
   config.mutableFields.forEach((field) => {
     if (payload[field] !== undefined) {
       sets.push(`${field} = ?`);
@@ -1036,7 +1105,16 @@ app.put("/local-api/:entity/:id", (req, res) => {
   values.push(nowIso());
   values.push(id);
 
-  db.prepare(`UPDATE ${config.table} SET ${sets.join(",")} WHERE id = ?`).run(...values);
+  try {
+    db.prepare(`UPDATE ${config.table} SET ${sets.join(",")} WHERE id = ?`).run(...values);
+  } catch (error) {
+    // Opening balances: the store already has one on that date.
+    if (/UNIQUE/.test(error.message)) {
+      res.status(409).json({ error: "This store already has an opening balance on that date" });
+      return;
+    }
+    throw error;
+  }
   res.json(db.prepare(`SELECT * FROM ${config.table} WHERE id = ?`).get(id));
 });
 
@@ -1046,7 +1124,11 @@ app.delete("/local-api/:entity/:id", (req, res) => {
 
   const id = Number(req.params.id);
   const existing = db.prepare(`SELECT * FROM ${config.table} WHERE id = ?`).get(id);
-  if (existing && refuseClosedDays(res, [config.table === "daily_balances" ? existing.date : transactionDay(existing)])) return;
+  if (!existing || !inScope(req.user, existing)) {
+    res.status(404).json({ error: "Record not found" });
+    return;
+  }
+  if (refuseClosedRows(res, [rowDay(config, existing)])) return;
   const result = db.prepare(`DELETE FROM ${config.table} WHERE id = ?`).run(id);
 
   if (!result.changes) {

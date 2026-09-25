@@ -18,6 +18,40 @@ export const LEGACY_OWNER_EMAIL = "local@hawalaflow.app";
 // effective_from of the first commission rate (1%): before any real transaction.
 export const BASE_RATE_DATE = "2000-01-01";
 
+// Tables whose unique keys include the store. Kept as constants: the stores upgrade rebuilds older
+// versions of these tables from the same definitions.
+// One opening balance per store per day.
+const DAILY_BALANCES_SQL = `CREATE TABLE IF NOT EXISTS daily_balances (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      date TEXT NOT NULL,
+      opening_balance REAL NOT NULL DEFAULT 0,
+      created_by TEXT NOT NULL DEFAULT '${LEGACY_OWNER_EMAIL}',
+      created_date TEXT NOT NULL,
+      updated_date TEXT NOT NULL,
+      store_id INTEGER NOT NULL REFERENCES stores(id),
+      UNIQUE(store_id, date)
+    );`;
+// Days a store has closed for changes (Admin/Manager). No transaction or opening balance of that
+// store on a closed date can be added, edited or deleted until the day is reopened.
+const CLOSED_DAYS_SQL = `CREATE TABLE IF NOT EXISTS closed_days (
+      store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+      date TEXT NOT NULL,
+      closed_by TEXT NOT NULL,
+      closed_at TEXT NOT NULL,
+      PRIMARY KEY (store_id, date)
+    );`;
+// Each store's commission rate on credits (percent), with the date it applies from. The rate for a
+// day is the store's latest entry on or before it. Stored commissions never change.
+const COMMISSION_RATES_SQL = `CREATE TABLE IF NOT EXISTS commission_rates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+      rate REAL NOT NULL,
+      effective_from TEXT NOT NULL,
+      created_by TEXT NOT NULL,
+      created_date TEXT NOT NULL,
+      UNIQUE(store_id, effective_from)
+    );`;
+
 export const initializeDb = () => {
   db.exec(`
     CREATE TABLE IF NOT EXISTS transactions (
@@ -38,18 +72,25 @@ export const initializeDb = () => {
       sort_order INTEGER DEFAULT 0,
       created_by TEXT NOT NULL DEFAULT '${LEGACY_OWNER_EMAIL}',
       created_date TEXT NOT NULL,
+      updated_date TEXT NOT NULL,
+      store_id INTEGER REFERENCES stores(id)
+    );
+
+    -- Physical or online stores (branches). Every transaction, opening balance, closed day and
+    -- commission rate belongs to one. One Manager per store (manager_id); a User belongs to at most
+    -- one store (users.store_id), and so does the store's Manager.
+    CREATE TABLE IF NOT EXISTS stores (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+      location TEXT NOT NULL DEFAULT '',
+      phone TEXT NOT NULL DEFAULT '',
+      email TEXT NOT NULL DEFAULT '',
+      manager_id INTEGER UNIQUE REFERENCES users(id) ON DELETE SET NULL,
+      created_date TEXT NOT NULL,
       updated_date TEXT NOT NULL
     );
 
-    CREATE TABLE IF NOT EXISTS daily_balances (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      date TEXT NOT NULL,
-      opening_balance REAL NOT NULL DEFAULT 0,
-      created_by TEXT NOT NULL DEFAULT '${LEGACY_OWNER_EMAIL}',
-      created_date TEXT NOT NULL,
-      updated_date TEXT NOT NULL,
-      UNIQUE(date, created_by)
-    );
+    ${DAILY_BALANCES_SQL}
 
     CREATE TABLE IF NOT EXISTS roles (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -87,23 +128,9 @@ export const initializeDb = () => {
 
     CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 
-    -- Days closed for changes (Admin/Manager). No transaction or opening balance on a closed date
-    -- can be added, edited or deleted until the day is reopened.
-    CREATE TABLE IF NOT EXISTS closed_days (
-      date TEXT PRIMARY KEY,   -- YYYY-MM-DD
-      closed_by TEXT NOT NULL,
-      closed_at TEXT NOT NULL
-    );
+    ${CLOSED_DAYS_SQL}
 
-    -- Office commission rate on credits (percent), with the date it applies from. The rate for a
-    -- day is the latest entry on or before it. Stored commissions never change; only new ones use it.
-    CREATE TABLE IF NOT EXISTS commission_rates (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      rate REAL NOT NULL,
-      effective_from TEXT NOT NULL UNIQUE,  -- YYYY-MM-DD
-      created_by TEXT NOT NULL,
-      created_date TEXT NOT NULL
-    );
+    ${COMMISSION_RATES_SQL}
 
     -- One-time upgrade steps already applied (e.g. "granted:data:export").
     CREATE TABLE IF NOT EXISTS app_meta (
@@ -122,11 +149,83 @@ export const initializeDb = () => {
     db.exec("ALTER TABLE users ADD COLUMN preferences TEXT");
   }
 
-  // The rate the app always used (1% on credits) is the starting point of the history.
-  if (!db.prepare("SELECT 1 FROM commission_rates LIMIT 1").get()) {
-    db.prepare("INSERT INTO commission_rates (rate, effective_from, created_by, created_date) VALUES (1, ?, 'system', ?)")
-      .run(BASE_RATE_DATE, nowIso());
-  }
+  upgradeToStores();
+};
+
+// ═══ Stores upgrade ═══
+// Databases from before stores: add store_id where it's missing, rebuild the tables whose unique keys
+// now include the store, create a first store and give it every existing row. Runs at every start;
+// each step only does something once.
+
+const columnsOf = (table) => db.prepare(`PRAGMA table_info(${table})`).all().map((column) => column.name);
+
+// Rebuild `table` from its new definition, copying `columns`. INSERT OR IGNORE in `orderBy` order
+// keeps the first of any rows the new unique key merges: the same row the app read before.
+const rebuildTable = (table, createSql, columns, orderBy) => {
+  db.exec(createSql.replace(`CREATE TABLE IF NOT EXISTS ${table} `, `CREATE TABLE ${table}__new `));
+  db.exec(`INSERT OR IGNORE INTO ${table}__new (${columns.join(", ")}) SELECT ${columns.join(", ")} FROM ${table} ORDER BY ${orderBy}`);
+  db.exec(`DROP TABLE ${table}; ALTER TABLE ${table}__new RENAME TO ${table};`);
+};
+
+// Name of the store that receives the existing data: the office's account name as the importers
+// wrote it (the sender of Cash Out rows), or a plain default. The Admin can rename it.
+export const DEFAULT_STORE_NAME = "Main store";
+const firstStoreName = () => {
+  const account = db.prepare(
+    `SELECT sender_name AS name, COUNT(*) AS n FROM transactions
+     WHERE type = 'cash_out' AND trim(coalesce(sender_name, '')) <> '' GROUP BY sender_name ORDER BY n DESC LIMIT 1`
+  ).get();
+  return account?.name?.trim() || DEFAULT_STORE_NAME;
+};
+
+const upgradeToStores = () => {
+  db.transaction(() => {
+    if (!columnsOf("transactions").includes("store_id")) db.exec("ALTER TABLE transactions ADD COLUMN store_id INTEGER REFERENCES stores(id)");
+    const usersBeforeStores = !columnsOf("users").includes("store_id");
+    if (usersBeforeStores) db.exec("ALTER TABLE users ADD COLUMN store_id INTEGER REFERENCES stores(id) ON DELETE SET NULL");
+
+    // There is always at least one store.
+    let first = db.prepare("SELECT id FROM stores ORDER BY id LIMIT 1").get();
+    if (!first) {
+      const now = nowIso();
+      first = { id: db.prepare("INSERT INTO stores (name, created_date, updated_date) VALUES (?, ?, ?)").run(firstStoreName(), now, now).lastInsertRowid };
+    }
+    const storeId = Number(first.id);
+
+    // The people who worked in the office before stores keep seeing its data: every User joins the
+    // first store, and a single Manager becomes its Manager (with several, the Admin picks one —
+    // a store has one Manager). Only once, when the store column is added.
+    if (usersBeforeStores) {
+      db.prepare("UPDATE users SET store_id = ? WHERE role_id IN (SELECT id FROM roles WHERE name = 'user')").run(storeId);
+      const managers = db.prepare("SELECT u.id FROM users u JOIN roles r ON r.id = u.role_id WHERE r.name = 'manager'").all();
+      if (managers.length === 1) {
+        db.prepare("UPDATE stores SET manager_id = ? WHERE id = ?").run(managers[0].id, storeId);
+        db.prepare("UPDATE users SET store_id = ? WHERE id = ?").run(storeId, managers[0].id);
+      }
+    }
+
+    if (!columnsOf("daily_balances").includes("store_id")) {
+      db.exec(`ALTER TABLE daily_balances ADD COLUMN store_id INTEGER; UPDATE daily_balances SET store_id = ${storeId};`);
+      rebuildTable("daily_balances", DAILY_BALANCES_SQL, ["id", "date", "opening_balance", "created_by", "created_date", "updated_date", "store_id"], "id");
+    }
+    if (!columnsOf("closed_days").includes("store_id")) {
+      db.exec(`ALTER TABLE closed_days ADD COLUMN store_id INTEGER; UPDATE closed_days SET store_id = ${storeId};`);
+      rebuildTable("closed_days", CLOSED_DAYS_SQL, ["store_id", "date", "closed_by", "closed_at"], "rowid");
+    }
+    if (!columnsOf("commission_rates").includes("store_id")) {
+      db.exec(`ALTER TABLE commission_rates ADD COLUMN store_id INTEGER; UPDATE commission_rates SET store_id = ${storeId};`);
+      rebuildTable("commission_rates", COMMISSION_RATES_SQL, ["id", "store_id", "rate", "effective_from", "created_by", "created_date"], "id");
+    }
+    db.prepare("UPDATE transactions SET store_id = ? WHERE store_id IS NULL").run(storeId);
+
+    // Every store's rate history starts from the rate the app always used (1% on credits).
+    db.prepare(
+      `INSERT INTO commission_rates (store_id, rate, effective_from, created_by, created_date)
+       SELECT id, 1, ?, 'system', ? FROM stores s
+       WHERE NOT EXISTS (SELECT 1 FROM commission_rates r WHERE r.store_id = s.id AND r.effective_from = ?)`
+    ).run(BASE_RATE_DATE, nowIso(), BASE_RATE_DATE);
+  })();
+  db.exec("CREATE INDEX IF NOT EXISTS idx_transactions_store ON transactions(store_id); CREATE INDEX IF NOT EXISTS idx_users_store ON users(store_id);");
 };
 
 // Insert any missing default role. `reset: true` also restores the default label, description

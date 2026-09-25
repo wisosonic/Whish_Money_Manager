@@ -21,11 +21,11 @@ const req = (method, route, as, body) => client.request(method, route, { as, bod
 const now = "2026-09-24T10:00:00.000Z";
 const addTx = (over = {}) =>
   db.prepare(
-    `INSERT INTO transactions (type, amount, commission, sender_name, reference_number, transaction_date, created_by, created_date, updated_date)
-     VALUES (@type, @amount, @commission, @sender_name, @reference_number, @transaction_date, @created_by, @created_date, @created_date)`
-  ).run({ type: "cash_in", amount: 10, commission: 0.1, sender_name: "A", reference_number: "", transaction_date: "2026-09-10", created_by: "user@test.local", created_date: now, ...over }).lastInsertRowid;
+    `INSERT INTO transactions (type, amount, commission, sender_name, reference_number, transaction_date, created_by, created_date, updated_date, store_id)
+     VALUES (@type, @amount, @commission, @sender_name, @reference_number, @transaction_date, @created_by, @created_date, @created_date, @store_id)`
+  ).run({ type: "cash_in", amount: 10, commission: 0.1, sender_name: "A", reference_number: "", transaction_date: "2026-09-10", created_by: "user@test.local", created_date: now, store_id: 1, ...over }).lastInsertRowid;
 const addBalance = (date, value = 100) =>
-  db.prepare("INSERT INTO daily_balances (date, opening_balance, created_by, created_date, updated_date) VALUES (?, ?, 'admin@test.local', ?, ?)").run(date, value, now, now).lastInsertRowid;
+  db.prepare("INSERT INTO daily_balances (date, opening_balance, created_by, created_date, updated_date, store_id) VALUES (?, ?, 'admin@test.local', ?, ?, 1)").run(date, value, now, now).lastInsertRowid;
 const count = (table, where = "1=1", ...params) => db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE ${where}`).get(...params).n;
 
 beforeEach(() => {
@@ -69,7 +69,7 @@ describe("closing and reopening days", () => {
 
   it("a User can't close or reopen a day", async () => {
     expect((await req("POST", "/closed-days", "user", { date: "2026-09-10" })).status).toBe(403);
-    db.prepare("INSERT INTO closed_days VALUES ('2026-09-10', 'admin@test.local', ?)").run(now);
+    db.prepare("INSERT INTO closed_days (store_id, date, closed_by, closed_at) VALUES (1, '2026-09-10', 'admin@test.local', ?)").run(now);
     expect((await req("DELETE", "/closed-days/2026-09-10", "user")).status).toBe(403);
     expect(count("closed_days")).toBe(1);
   });
@@ -90,7 +90,7 @@ describe("a closed day can't be changed — by anyone, through any route", () =>
     txId = addTx({ transaction_date: CLOSED, reference_number: "tr:1" });
     balanceId = addBalance(CLOSED);
     addTx({ transaction_date: "2026-09-11", reference_number: "tr:open" });
-    db.prepare("INSERT INTO closed_days VALUES (?, 'admin@test.local', ?)").run(CLOSED, now);
+    db.prepare("INSERT INTO closed_days (store_id, date, closed_by, closed_at) VALUES (1, ?, 'admin@test.local', ?)").run(CLOSED, now);
   });
   const locked = (res) => {
     expect(res.status).toBe(423);
@@ -156,9 +156,9 @@ describe("commission rate", () => {
   it("a new rate applies from its date on; earlier days keep the old one", async () => {
     const res = await req("PUT", "/commission-rates", "manager", { rate: 1.5, effective_from: "2026-09-15" });
     expect(res.status).toBe(200);
-    expect(commissionRateOn("2026-09-14")).toBe(1);
-    expect(commissionRateOn("2026-09-15")).toBe(1.5);
-    expect(commissionRateOn("2027-01-01")).toBe(1.5);
+    expect(commissionRateOn(1, "2026-09-14")).toBe(1);
+    expect(commissionRateOn(1, "2026-09-15")).toBe(1.5);
+    expect(commissionRateOn(1, "2027-01-01")).toBe(1.5);
     expect((await req("GET", "/commission-rates?date=2026-09-14", "user")).body.rate).toBe(1);
   });
 
@@ -166,7 +166,7 @@ describe("commission rate", () => {
     await req("PUT", "/commission-rates", "admin", { rate: 2, effective_from: "2026-09-15" });
     await req("PUT", "/commission-rates", "admin", { rate: 1.25, effective_from: "2026-09-15" });
     expect(count("commission_rates", "effective_from = '2026-09-15'")).toBe(1);
-    expect(commissionRateOn("2026-09-20")).toBe(1.25);
+    expect(commissionRateOn(1, "2026-09-20")).toBe(1.25);
   });
 
   it("stored commissions never change when the rate changes", async () => {
@@ -271,7 +271,7 @@ describe("restoring a backup", () => {
     addTx({ transaction_date: "2026-09-06" });
     const csv = await exportCsv("transactions");
     db.exec("DELETE FROM transactions");
-    db.prepare("INSERT INTO closed_days VALUES ('2026-09-06', 'admin@test.local', ?)").run(now);
+    db.prepare("INSERT INTO closed_days (store_id, date, closed_by, closed_at) VALUES (1, '2026-09-06', 'admin@test.local', ?)").run(now);
     const p = await preview(csv);
     expect(p.body).toMatchObject({ to_add: 1, on_closed_days: 1, closed_days: ["2026-09-06"] });
     expect((await restore(csv, 1)).body).toMatchObject({ restored: 1, skipped_closed: 1 });

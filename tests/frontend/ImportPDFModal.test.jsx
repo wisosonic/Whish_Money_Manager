@@ -80,7 +80,8 @@ describe("ImportPDFModal", () => {
     expect(await screen.findByText(/تم استخراج 2 حوالة/)).toBeInTheDocument();
     expect(api.integrations.Core.ExtractCsv).toHaveBeenCalledTimes(1);
     expect(api.integrations.Core.ExtractPdf).not.toHaveBeenCalled();
-    expect(api.entities.Transaction.findDuplicates).toHaveBeenCalledWith(["tr:1", "tr:2"]);
+    // No store is sent with one store (or for a Manager / User): the server uses theirs.
+    expect(api.entities.Transaction.findDuplicates).toHaveBeenCalledWith(["tr:1", "tr:2"], undefined);
     expect(screen.getByText(/الكشف متطابق/)).toBeInTheDocument();
   });
 
@@ -161,7 +162,7 @@ describe("ImportPDFModal", () => {
     // A bare phone number in receiver_name is moved to phone / customer_number.
     expect(records[1]).toMatchObject({ receiver_name: "", phone: "+9613915112", customer_number: "3915112", sort_order: 1 });
 
-    await waitFor(() => expect(onSaved).toHaveBeenCalledWith(100, "2026-09-23"), { timeout: 3000 });
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith(100, "2026-09-23", undefined), { timeout: 3000 });
   });
 
   describe("when the statement was already imported", () => {

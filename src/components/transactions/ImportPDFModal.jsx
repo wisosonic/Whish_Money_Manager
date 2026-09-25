@@ -7,11 +7,19 @@ import { useAuth } from "@/lib/AuthContext";
 import { PERMISSIONS } from "@/lib/permissions";
 import { useI18n } from "@/lib/i18n";
 import { notify } from "@/lib/notify";
-import { X, Upload, FileText, CheckCircle, AlertCircle, Loader2, Calendar } from "lucide-react";
+import { X, Upload, FileText, CheckCircle, AlertCircle, Loader2, Calendar, Store } from "lucide-react";
 
-export default function ImportPDFModal({ onClose, onSaved }) {
+// stores: the Admin's stores when there are several — the statement's store is then picked here, by
+// hand, before the file is read (its commission rate applies). defaultStoreId: pre-selected (the
+// store shown on the dashboard). Everyone else always imports into their own store.
+export default function ImportPDFModal({ onClose, onSaved, stores = [], defaultStoreId = null }) {
   // Replacing an imported statement deletes the old entries, so it needs delete rights.
-  const { can } = useAuth();
+  const { can, user } = useAuth();
+  const pickStore = stores.length > 1;
+  const [storeId, setStoreId] = useState(pickStore ? defaultStoreId ?? "" : undefined);
+  const storeChosen = !pickStore || Boolean(storeId);
+  const storeName = pickStore ? stores.find((store) => store.id === Number(storeId))?.name : user?.store_name;
+  const target = pickStore && storeId ? Number(storeId) : undefined;
   const { t, dir, errorText } = useI18n();
   const canReplace = can(PERMISSIONS.TRANSACTIONS_DELETE);
   const [step, setStep] = useState("upload"); // upload | duplicates | preview | saving | done
@@ -28,6 +36,10 @@ export default function ImportPDFModal({ onClose, onSaved }) {
   const fileRef = useRef(null);
 
   const handleFile = async (file) => {
+    if (!storeChosen) {
+      setError(t("stores.importChoose"));
+      return;
+    }
     const fileType = await detectFileType(file);
     if (!fileType) {
       setError(t("import.wrongFileType"));
@@ -43,8 +55,8 @@ export default function ImportPDFModal({ onClose, onSaved }) {
 
     try {
       const result = fileType === "csv"
-        ? await api.integrations.Core.ExtractCsv(file)
-        : await api.integrations.Core.ExtractPdf(file);
+        ? await api.integrations.Core.ExtractCsv(file, target)
+        : await api.integrations.Core.ExtractPdf(file, target);
       setValidation(result?.validation || null);
 
       const rows = result?.transactions || [];
@@ -96,7 +108,7 @@ export default function ImportPDFModal({ onClose, onSaved }) {
 
       // ═══ كشف العمليات المكررة (نفس رقم العملية مسجل مسبقاً) ═══
       const references = [...new Set(rowsWithDate.map((r) => String(r.reference_number || "").trim()).filter(Boolean))];
-      const existing = references.length ? await api.entities.Transaction.findDuplicates(references) : [];
+      const existing = references.length ? await api.entities.Transaction.findDuplicates(references, target) : [];
 
       setEditRows(rowsWithDate);
       setDuplicates(existing);
@@ -152,14 +164,14 @@ export default function ImportPDFModal({ onClose, onSaved }) {
         };
       });
 
-      await api.entities.Transaction.importRecords(records, { overwrite });
+      await api.entities.Transaction.importRecords(records, { overwrite, storeId: target });
 
       notify.success(overwrite && duplicates.length > 0
         ? t("toast.import.savedReplaced", { count: records.length, replaced: duplicates.length })
         : t("toast.import.saved", { count: records.length }));
       setStep("done");
       setTimeout(() => { 
-        onSaved(openingBalance, finalDate); 
+        onSaved(openingBalance, finalDate, target); 
       }, 1500);
     } catch (error) {
       // The import is one database transaction on the server: on failure nothing was saved.
@@ -207,13 +219,33 @@ export default function ImportPDFModal({ onClose, onSaved }) {
         </div>
 
         <div className="flex-1 overflow-auto p-5">
+          {/* Which store the statement is for: picked by hand (the Admin, several stores), or yours. */}
+          {pickStore && step === "upload" && !loading &&
+            <label className="flex flex-wrap items-center gap-2 mb-4 text-sm font-medium text-gray-700">
+              <Store className="w-4 h-4 text-blue-600" aria-hidden="true" />
+              {t("stores.importInto")}
+              <select value={storeId} onChange={(e) => { setStoreId(e.target.value); setError(""); }} data-testid="import-store"
+                className="border rounded-lg px-3 py-1.5 font-bold bg-white focus:outline-none focus:ring-2 focus:ring-blue-300">
+                <option value="">{t("stores.choose")}</option>
+                {stores.map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}
+              </select>
+            </label>
+          }
+          {storeName && (!pickStore || step !== "upload") &&
+            <p className="flex items-center gap-2 mb-4 text-sm text-gray-600" data-testid="import-store-name">
+              <Store className="w-4 h-4 text-blue-600" aria-hidden="true" />
+              {t("stores.importIntoName", { store: storeName })}
+            </p>
+          }
+
           {/* STEP: Upload */}
           {step === "upload" && !loading && (
             <div
+              aria-disabled={!storeChosen}
               className="border-2 border-dashed border-blue-300 rounded-2xl p-16 text-center cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition"
               onDrop={handleDrop}
               onDragOver={(e) => e.preventDefault()}
-              onClick={() => fileRef.current?.click()}
+              onClick={() => (storeChosen ? fileRef.current?.click() : setError(t("stores.importChoose")))}
             >
               <Upload className="w-12 h-12 text-blue-400 mx-auto mb-4" />
               <p className="text-lg font-semibold text-gray-700">{t("import.dropHere")}</p>

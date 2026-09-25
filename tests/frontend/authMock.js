@@ -19,6 +19,10 @@ export const userWithRole = (role, overrides = {}) => {
     role_label: definition.label,
     permissions: definition.permissions,
     is_active: true,
+    // Stores: Managers and Users work in the first store; the Admin in every store (no store of their own).
+    store_id: role === "admin" ? null : 1,
+    store_name: role === "admin" ? null : "Main store",
+    manages_store: role === "manager",
     ...overrides,
   };
 };

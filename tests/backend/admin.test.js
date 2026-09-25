@@ -20,15 +20,15 @@ const now = "2026-09-24T10:00:00.000Z";
 const addTx = (tx) =>
   db.prepare(
     `INSERT INTO transactions (type, amount, commission, sender_name, receiver_name, phone, note, reference_number,
-       service, transaction_date, sort_order, created_by, created_date, updated_date)
+       service, transaction_date, sort_order, created_by, created_date, updated_date, store_id)
      VALUES (@type, @amount, @commission, @sender_name, @receiver_name, @phone, @note, @reference_number,
-       @service, @transaction_date, @sort_order, 'admin@test.local', @created_date, @created_date)`
+       @service, @transaction_date, @sort_order, 'admin@test.local', @created_date, @created_date, @store_id)`
   ).run({
     type: "cash_in", amount: 10, commission: 0.1, sender_name: "", receiver_name: "", phone: "", note: "",
-    reference_number: "", service: "", transaction_date: null, sort_order: 0, created_date: now, ...tx,
+    reference_number: "", service: "", transaction_date: null, sort_order: 0, created_date: now, store_id: 1, ...tx,
   }).lastInsertRowid;
 const addBalance = (date, opening_balance) =>
-  db.prepare("INSERT INTO daily_balances (date, opening_balance, created_by, created_date, updated_date) VALUES (?, ?, 'admin@test.local', ?, ?)")
+  db.prepare("INSERT INTO daily_balances (date, opening_balance, created_by, created_date, updated_date, store_id) VALUES (?, ?, 'admin@test.local', ?, ?, 1)")
     .run(date, opening_balance, now, now);
 
 const seed = () => {
@@ -99,7 +99,7 @@ describe("range and preview", () => {
     const { status, body } = await get("admin", `/admin/summary?${SEPT}`);
     expect(status).toBe(200);
     expect(body).toEqual({
-      from: "2026-09-01", to: "2026-09-30",
+      from: "2026-09-01", to: "2026-09-30", store_id: null,
       transactions: 4, opening_balances: 2, days: 3,
       first_date: "2026-09-01", last_date: "2026-09-30",
       total_in: 157, total_out: 40, total_commission: 1.57,
@@ -162,7 +162,7 @@ describe("CSV backup", () => {
 
   it("downloads the range's opening balances", async () => {
     const res = await get("manager", `/admin/export?kind=balances&${SEPT}`);
-    expect(res.headers.get("content-disposition")).toBe('attachment; filename="opening-balances_2026-09-01_2026-09-30.csv"');
+    expect(res.headers.get("content-disposition")).toBe('attachment; filename="opening-balances_store-1_2026-09-01_2026-09-30.csv"');
     const [header, ...rows] = lines(res.body);
     expect(header).toBe(BALANCE_CSV_COLUMNS.join(","));
     expect(rows.map((r) => r.split(",").slice(1, 3).join(","))).toEqual(["2026-09-01,1000", "2026-09-15,2000"]);
@@ -196,7 +196,7 @@ describe("deleting a date range", () => {
   it("deletes the range's transactions and opening balances only, in one go", async () => {
     const res = await purge("admin", { from: "2026-09-01", to: "2026-09-30", expected_count: 4 });
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ from: "2026-09-01", to: "2026-09-30", deleted_transactions: 4, deleted_opening_balances: 2 });
+    expect(res.body).toEqual({ from: "2026-09-01", to: "2026-09-30", store_id: null, deleted_transactions: 4, deleted_opening_balances: 2 });
     const left = db.prepare("SELECT sender_name FROM transactions ORDER BY id").all().map((r) => r.sender_name);
     expect(left).toEqual(["BEFORE RANGE", "AFTER RANGE"]);
     expect(db.prepare("SELECT date FROM daily_balances ORDER BY date").all().map((r) => r.date)).toEqual(["2026-08-31", "2026-10-01"]);

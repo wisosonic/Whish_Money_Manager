@@ -15,6 +15,8 @@ export default function UsersPage() {
   const { user: currentUser } = useAuth();
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState([]);
+  // Stores, for the Store column (a User's store is set here; a Manager's on the Stores page).
+  const [stores, setStores] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showCreate, setShowCreate] = useState(false);
@@ -26,6 +28,8 @@ export default function UsersPage() {
       const [userList, roleList] = await Promise.all([api.users.list(), api.roles.list()]);
       setUsers(userList);
       setRoles(roleList);
+      // Not needed to manage users: without it the Store column just shows names.
+      Promise.resolve().then(() => api.stores.list()).then((list) => setStores(Array.isArray(list) ? list : [])).catch(() => {});
       setError("");
     } catch (err) {
       setError(errorText(err.message));
@@ -93,6 +97,7 @@ export default function UsersPage() {
                     <th className="px-4 py-3">{t("users.name")}</th>
                     <th className="px-4 py-3">{t("users.email")}</th>
                     <th className="px-4 py-3">{t("users.role")}</th>
+                    <th className="px-4 py-3">{t("stores.column")}</th>
                     <th className="px-4 py-3">{t("users.status")}</th>
                     <th className="px-4 py-3">{t("users.lastLogin")}</th>
                     <th className="px-4 py-3"></th>
@@ -115,6 +120,30 @@ export default function UsersPage() {
                             className="border border-gray-200 rounded-lg px-2 py-1 text-sm bg-white">
                             {roles.map((role) => <option key={role.name} value={role.name}>{t(`roles.${role.name}`)}</option>)}
                           </select>
+                        </td>
+                        <td className="px-4 py-3" data-testid={`user-store-${u.email}`}>
+                          {u.role === "admin" ?
+                            <span className="text-gray-500">{t("stores.all")}</span> :
+                          u.role === "manager" ?
+                            <span title={t("stores.managerSetOnStores")}>
+                              {u.store_name ? t("stores.managerOf", { store: u.store_name }) : <span className="text-gray-400">{t("stores.none")}</span>}
+                            </span> :
+                            <select
+                              aria-label={t("stores.storeOf", { email: u.email })}
+                              value={u.store_id ?? ""}
+                              onChange={(e) => {
+                                const storeId = e.target.value ? Number(e.target.value) : null;
+                                const name = stores.find((store) => store.id === storeId)?.name;
+                                update(u, { store_id: storeId }, storeId ? t("stores.userMoved", { email: u.email, store: name }) : t("stores.userRemoved", { email: u.email }));
+                              }}
+                              className="border border-gray-200 rounded-lg px-2 py-1 text-sm bg-white">
+                              <option value="">{t("stores.none")}</option>
+                              {/* Until the list loads, at least the current store is shown. */}
+                              {(stores.length ? stores : u.store_id ? [{ id: u.store_id, name: u.store_name }] : []).map((store) =>
+                                <option key={store.id} value={store.id}>{store.name}</option>
+                              )}
+                            </select>
+                          }
                         </td>
                         <td className="px-4 py-3">
                           <span className={`px-2 py-1 rounded-full text-xs font-semibold ${u.is_active ? "bg-green-100 text-green-700" : "bg-gray-200 text-gray-600"}`}>

@@ -89,8 +89,14 @@ export default function TransactionsList({
   closedDates = new Set(),
   canCloseDays = false,
   onCloseDay,
-  onReopenDay
+  onReopenDay,
+  // The Admin's "All stores" view: storeNames maps store id → name (it adds a Store column), and
+  // isRowClosed(t) checks each row's own store. Day actions (Cash In / Out, closing the day, delete
+  // all) need one store, so they're off in that view; importing asks for the store.
+  storeNames = null,
+  isRowClosed
 }) {
+  const allStores = Boolean(storeNames);
   const [deleting, setDeleting] = useState(false);
   const [deleteElapsed, setDeleteElapsed] = useState(0);
   const deleteTimerRef = useRef(null);
@@ -146,9 +152,11 @@ export default function TransactionsList({
   useEffect(() => { setPage(0); }, [selectedDate, search, searchingAllDays, sort.key, sort.dir, pageSize]);
 
   // ═══ Closed days ═══
-  const isOnClosedDay = (t) => closedDates.has(txDateOfRow(t));
+  const isOnClosedDay = (t) => (isRowClosed ? isRowClosed(t) : closedDates.has(txDateOfRow(t)));
   const todayIso = format(new Date(), "yyyy-MM-dd");
   const todayClosed = closedDates.has(todayIso); // Cash In / Cash Out are entered on today's date
+  // Why Cash In / Cash Out are off, if they are.
+  const cashDisabledHint = allStores ? tr("stores.chooseForDayActions") : todayClosed ? tr("day.todayClosedHint") : undefined;
   const [dayDialog, setDayDialog] = useState(null); // "close" | "reopen" | null
   const [dayWorking, setDayWorking] = useState(false);
   const confirmDayChange = async () => {
@@ -343,7 +351,7 @@ export default function TransactionsList({
             
             {tr("list.today")}
           </button>
-          {canCloseDays && (closedDay ?
+          {canCloseDays && !allStores && (closedDay ?
           <button
             type="button"
             onClick={() => setDayDialog("reopen")}
@@ -480,7 +488,7 @@ export default function TransactionsList({
             <Percent className="w-4 h-4" />
             {tr("list.commissionReport")}
           </button>
-          {canDelete && transactions.length > 0 && !searchingAllDays && !closedDay &&
+          {canDelete && transactions.length > 0 && !searchingAllDays && !closedDay && !allStores &&
           <button
             onClick={() => setShowConfirm(true)}
             disabled={deleting}
@@ -499,8 +507,8 @@ export default function TransactionsList({
           </button>
           <button
             onClick={onCashOut}
-            disabled={todayClosed}
-            title={todayClosed ? tr("day.todayClosedHint") : undefined}
+            disabled={todayClosed || allStores}
+            title={cashDisabledHint}
             className="flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white px-4 py-1.5 rounded-lg text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed">
             
             Cash Out
@@ -508,8 +516,8 @@ export default function TransactionsList({
           </button>
           <button
             onClick={onCashIn}
-            disabled={todayClosed}
-            title={todayClosed ? tr("day.todayClosedHint") : undefined}
+            disabled={todayClosed || allStores}
+            title={cashDisabledHint}
             className="flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white px-4 py-1.5 rounded-lg text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed">
             
             Cash In
@@ -630,6 +638,7 @@ export default function TransactionsList({
                     {...headerProps}
                     tooltips={key === "type" ? typeTooltip : sortTooltip} />
                 )}
+                {allStores && <th className="px-3 py-3 text-start font-semibold whitespace-nowrap" data-testid="store-column">{tr("stores.column")}</th>}
                 <th className="px-4 py-3"></th>
               </tr>
             </thead>
@@ -733,6 +742,7 @@ export default function TransactionsList({
                           format(new Date(t.created_date), "yyyy/MM/dd HH:mm"))}
                     </td>
                   }
+                  {allStores && <td className="px-3 py-3 text-gray-700 whitespace-nowrap" data-testid="row-store">{storeNames.get(t.store_id) || "—"}</td>}
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       {rowClosed && (canEditTransaction(t) || canDelete) &&

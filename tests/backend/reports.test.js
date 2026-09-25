@@ -20,11 +20,11 @@ beforeEach(() => db.prepare("DELETE FROM transactions").run());
 const OFFICE = "Office Account"; // the importers' own account: sender of every debit, receiver of every credit
 const insert = (rows) => {
   const statement = db.prepare(
-    `INSERT INTO transactions (type, amount, commission, sender_name, receiver_name, phone, customer_number, transaction_date, created_by, created_date, updated_date)
-     VALUES (@type, @amount, @commission, @sender_name, @receiver_name, @phone, @customer_number, @transaction_date, 'admin@test.local', @created_date, @created_date)`
+    `INSERT INTO transactions (type, amount, commission, sender_name, receiver_name, phone, customer_number, transaction_date, created_by, created_date, updated_date, store_id)
+     VALUES (@type, @amount, @commission, @sender_name, @receiver_name, @phone, @customer_number, @transaction_date, 'admin@test.local', @created_date, @created_date, @store_id)`
   );
   rows.forEach((row) => statement.run({
-    commission: 0, sender_name: "", receiver_name: "", phone: "", customer_number: "", transaction_date: "", created_date: "2026-01-01T00:00:00.000Z", ...row,
+    commission: 0, sender_name: "", receiver_name: "", phone: "", customer_number: "", transaction_date: "", created_date: "2026-01-01T00:00:00.000Z", store_id: 1, ...row,
   }));
 };
 // A deposit from someone (sender) to the office, and a payout from the office to someone (receiver).

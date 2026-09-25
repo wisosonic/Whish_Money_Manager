@@ -72,6 +72,7 @@ It runs entirely on your machine: a React frontend and a small Node.js/Express A
   - The "#" column always shows each row's real number in the day's journal. Selecting rows and bulk actions work the same while sorted.
   - The sort resets when the page reloads.
 - **Settings** (⚙️ in the header), grouped in tabs: language, start-up day, clock, number style, theme, row spacing, summaries, table columns, default sort, rows per page, default search scope and notifications, all saved to each user's account. Admins and Managers also set the office **commission rate** there. See [Settings](#settings).
+- **Stores** (branches): every transaction belongs to a store. The Admin manages the stores and sees all of them; each store has one Manager, who adds its Users; Managers and Users see only their own store. Each store has its own opening balances, closed days and commission rate. See [Stores](#stores).
 - **My profile** (click your name in the header): see your account, and change your own name, email and password. See [My profile](#my-profile).
 - **Closing a day** (Admin and Manager): lock a day so nobody can add, edit, import or delete its transactions or change its opening balance, until it's reopened. See [Closing a day](#closing-a-day).
 - **Admin panel** (Admin and Manager): **reports** (income by month, top senders, top recipients), a CSV backup of any date range, restoring a backup, or permanently deleting all data in a range. See [Admin panel](#admin-panel-admin-and-manager).
@@ -194,7 +195,7 @@ Everyone signs in with their own email and password. There are three roles:
 
 | | Admin | Manager | User |
 |---|:-:|:-:|:-:|
-| See all office transactions, balances, reports and the chart | ✓ | ✓ | ✓ |
+| See transactions, balances, reports and the chart | all stores | their store | their store |
 | Add transactions by hand (Cash In / Cash Out, for rows the import missed) | ✓ | ✓ | ✓ |
 | Import PDF / CSV statements | ✓ | ✓ | ✓ |
 | Edit transactions **they entered** (single and bulk) | ✓ | ✓ | ✓ |
@@ -204,14 +205,18 @@ Everyone signs in with their own email and password. There are three roles:
 | Set or change opening balances | ✓ | ✓ | — |
 | My profile: change own name, email and password | ✓ | ✓ | ✓ |
 | Manage users and roles (المستخدمون page) | ✓ | — | — |
+| Create, edit and delete stores; choose each store's Manager | ✓ | — | — |
+| Add / remove the Users of a store | any store | the store they manage | — |
+| See their store's details (My store) | ✓ | ✓ | ✓ |
 | Admin panel: reports (income, top senders, top recipients) | ✓ | ✓ | — |
 | Admin panel: CSV backup by date range | ✓ | ✓ | — |
 | Admin panel: delete all data in a date range | ✓ | ✓ | — |
-| Close / reopen a day | ✓ | ✓ | — |
-| Settings → Office: commission rate | ✓ | ✓ | — |
+| Close / reopen a day (of a store) | ✓ | ✓ | — |
+| Settings → Office: commission rate (of a store) | ✓ | ✓ | — |
 | Admin panel: restore a backup | ✓ | ✓ | — |
 
-- **Everyone sees everything.** The office shares one set of transactions; roles only limit what people may change.
+- **Each store sees its own data.** The Admin sees every store. A Manager and the Users of a store see only that store's transactions, balances and reports, and can only work in it. Someone who isn't in a store yet sees no transactions until they're added to one.
+- **Within a store, everyone sees everything;** roles only limit what people may change.
 - **The server enforces every rule.** Buttons a user can't use are hidden, but the API also refuses the action (HTTP 403), so the rules can't be bypassed.
 - **"Entered by"** is the account that created the transaction, recorded automatically; users can't change it.
 
@@ -233,6 +238,28 @@ Everyone signs in with their own email and password. There are three roles:
 - **Back to top:** click the logo or the app name in the header to scroll smoothly back to the top of the page (instantly if "reduce motion" is on). It also works from the keyboard: Tab to it, then press Enter.
 - **Header position:** the header (logo, user, logout, clock) stays **fixed at the top of the screen** while you scroll, on every page and screen size. Pop-up windows still appear above it. When the keyboard moves focus to a field lower down, the page scrolls so the field lands just below the header, not behind it.
 - **Header:** shows your name, your role, and **your last login**. That's the date and time of the sign-in *before* the current one (e.g. `آخر دخول: 2026/09/23 08:05 PM`), in your local time. It shows "أول تسجيل دخول" on your first ever sign-in. Because sessions don't expire, it changes only when you sign in again. Signing in on another device counts as a new sign-in.
+
+### Stores
+
+Every transaction belongs to a **store** (a branch, physical or online). Each store keeps its own **opening balances**, **closed days** and **commission rate**. Open **المتاجر** (Stores) in the header; Managers and Users see **متجري** (My store).
+
+- **The Admin** manages every store:
+  - **Add / edit** a store: name (required, unique), location, phone and email.
+  - **Delete** a store: only an empty one (no transactions, no opening balances), after a confirmation. There's always at least one store. Its Manager and Users are left without a store.
+  - **Choose its Manager** from the users with the Manager role. A store has **one Manager**, and a Manager manages **one store**: choosing someone who managed another store moves them, and the previous Manager is left without a store.
+  - **Manage any store's Users,** and set a User's store from the Users page (Store column).
+- **A store's Manager** sees their store's details and **adds or removes its Users** (people with the User role who aren't in a store yet). They can't take a User from another store.
+- **A store's Users** see its details (location, contact, Manager).
+- **Changing someone's role** clears their store; a new Manager gets a store when the Admin assigns them to one.
+- **Upgrading:** the first start after this update creates one store, named after the office account in the imported statements (editable), and moves every existing transaction, opening balance, closed day and rate into it. Existing staff keep their access: every User joins that store, and if there is exactly one Manager, they become its Manager (with several, the Admin chooses, since a store has one Manager). Make a copy of `server/hawalaflow.db` before the first start with this version, as with any upgrade.
+
+**Where the store shows up**
+- **Dashboard:** Managers and Users see their store. With several stores, the Admin gets a store picker (remembered in this browser): one store, or **All stores**, which shows every store's rows with a **Store** column. Adding transactions, importing into a store, closing a day and setting the opening balance need one store, so in All stores Cash In / Cash Out, closing the day and the opening-balance pencil are off (the import asks which store). The opening balance and wallet figures add up the stores'.
+- **Importing:** the store is **picked by hand** in the import screen (the Admin, when there are several stores) before the file is read, because commissions use that store's rate. Managers and Users always import into their own store. A statement line already imported into **another** store blocks the import, so the same money is never counted twice.
+- **Header:** your store's name next to your role.
+- **Admin panel:** the date range, backup, restore and delete work on the chosen store (the Admin can choose All stores; a Manager always gets their own). Reports can be filtered by store, and the Admin has a **Compare stores** report.
+- **Backups** include each row's store; older backups without it are restored into the store chosen at the top of the panel.
+- **With only one store,** nothing changes compared with before stores: there's no picker, and everything goes to that store.
 
 ### My profile
 
@@ -287,7 +314,7 @@ Personal settings apply **immediately** and are **saved to your account** on the
 **Restore my default settings** (at the bottom of the personal tabs) resets every personal setting above except your language.
 
 **Office** (Admin and Manager) → **Commission rate**
-- **What it is:** the commission on credits (Cash In and imported deposits), for the whole office. It starts at the long-standing 1%.
+- **What it is:** the commission on credits (Cash In and imported deposits). **Each store has its own**: a Manager sets their store's; the Admin picks the store at the top (when there are several). Every store starts at the long-standing 1%.
 - **Changing it:** enter a new rate (0–100%, up to 3 decimals) and the day it applies from (default: today), then confirm.
 - **Existing transactions keep their commission;** it's never recalculated.
 - **Which rate applies:** new Cash In entries use today's rate. Imported statements use the rate in effect on each transaction's own date, so an old statement imported later gets the rate of its day.
@@ -295,7 +322,7 @@ Personal settings apply **immediately** and are **saved to your account** on the
 
 ### Closing a day
 
-Admins and Managers can **close** a day once it's been checked, for example after reconciling the statement. Nobody can then change it until it's reopened.
+Admins and Managers can **close** a day once it's been checked, for example after reconciling the statement. Nobody can then change it until it's reopened. Days are closed **per store**: closing a day in one store doesn't lock the same day in another.
 
 - **How:** pick the day, then click **إغلاق اليوم** (Close day) next to the date picker, and confirm. **إعادة فتح اليوم** (Reopen day) unlocks it, also after a confirmation.
 - **What's locked:** adding, editing, importing and deleting that day's transactions, including moving a transaction onto or off the day and bulk actions that include one. The day's opening balance is locked too, and the admin panel can't delete a range that contains it.
@@ -349,7 +376,8 @@ Open **لوحة الإدارة** (Admin panel) in the header. Users don't see th
       - How many are already in the database. These are left exactly as they are.
       - How many are on closed days. These are skipped and the days listed.
    3. **Confirm** to add the missing rows back exactly as they were: same dates and same "entered by". A notification says how many were restored, and the range preview above updates.
-   - **How rows are matched:** transactions by their original ID, which is never reused, so a restore puts back what was deleted and never duplicates what's still there. Opening balances are matched by date (one per day).
+   - **How rows are matched:** transactions by their original ID, which is never reused, so a restore puts back what was deleted and never duplicates what's still there. Opening balances are matched by store and date (one per store per day).
+   - **Stores:** each row goes back to its own store. A Manager can only restore their store's rows (others make the file invalid). Backups made before stores go to the store chosen at the top of the panel.
    - **Files that can't be restored:** a file with any invalid row (e.g. a bad amount or type) is refused, and the preview lists the lines and columns, so a damaged or edited file is never half-restored. A file that isn't a backup is refused too.
    - **If the data changed** after the preview (someone added or deleted rows), nothing is written: you get a warning and the refreshed counts.
    - **Empty text:** a CSV can't tell an empty field from one that was never filled in. Both come back empty, and the app treats them the same.
@@ -358,6 +386,7 @@ Open **لوحة الإدارة** (Admin panel) in the header. Users don't see th
 
 Open **المستخدمون** in the header to:
 - **Add a user:** name, email, role and a password of at least 8 characters.
+- **Set a User's store** in the Store column (a Manager's store is chosen on the Stores page).
 - **Change a role:** takes effect on the user's next action; no re-login needed.
 - **Deactivate or reactivate:** deactivating signs the user out on every device and blocks sign-in. Their transactions are kept.
 - **Reset a password:** signs the user out on every device.
@@ -452,7 +481,7 @@ tests/
 ├── fixtures/statement.csv    # real CSV statement export (127 rows)
 ├── backend/
 │   ├── helpers.js            # test server, one account per role, cookie-keeping client
-│   ├── api.test.js           # HTTP API (as Admin): CRUD, office-wide data, created_by, filter safety,
+│   ├── api.test.js           # HTTP API (as Admin): CRUD, shared store data, created_by, filter safety,
 │   │                         # balances, import, duplicates/overwrite, bulk update/delete
 │   ├── auth.test.js          # login, cookie flags, JWT (no expiry), tampered/forged tokens, 401 on
 │   │                         # every route, logout revocation, never-expiring + sliding sessions, lockout,
@@ -464,6 +493,8 @@ tests/
 │   ├── office.test.js        # closed days on every write route (423), commission rate + engines, restore
 │   ├── admin.test.js         # admin panel API: permissions, preview, CSV (quoting, formula guard, BOM),
 │   │                         # delete by range (409 when counts changed), permission upgrade
+│   ├── stores.test.js        # stores: CRUD, one Manager per store, members, who sees what, per-store balances /
+│   │                         # closed days / rates, cross-store imports, admin panel, reports, restore, upgrade
 │   ├── reports.test.js       # reports API: permissions, income sums (= dashboard chart), top senders /
 │   │                         # recipients: Cash In / Out, dates, ranking, limit, grouping by number/name
 │   ├── users.test.js         # Admin user management, deactivation/reset revoke sessions, last-Admin rules
@@ -489,6 +520,8 @@ tests/
     ├── settingsOptions.test.jsx      # settings tabs (keyboard, link), each new option and what it changes
     ├── dayClosing.test.jsx           # close / reopen a day, what's locked; pages, default sort, digits, Cash In rate
     ├── officeBackup.test.jsx         # office commission rate (history, scheduled), admin panel restore from a backup
+    ├── stores.test.jsx               # Stores page per role, dashboard picker / All stores, import store, Users page,
+    │                                 # rate per store, admin panel filter + compare stores, header link
     ├── AdminReports.test.jsx         # admin panel reports: tabs (keyboard), income chart, top senders / recipients filters
     ├── AdminPage.test.jsx            # admin panel: ranges, preview, downloads, typed-count delete, 409, header link
     ├── theme.test.jsx                # dark mode: saved/system theme, pre-paint script, stylesheet mappings, chart
@@ -522,6 +555,7 @@ server/index.js               Express API routes (with permission checks), PDF +
 server/auth.js                Login/logout, JWT session cookie, authenticate + requirePermission middleware, user admin API
 server/permissions.js         Permission names and the three default roles (shared with the frontend)
 server/db.js                  SQLite connection and schema (transactions, daily_balances, roles, users, sessions)
+server/stores.js              Stores API (manage, Manager, members) and the store-scope helpers every route uses
 server/reports.js             Admin panel reports API: income by month, top senders / recipients (grouping and ranking)
 server/parties.js             Who a transaction's sender / receiver is (display, phone normalization), shared with the table
 server/admin.js               Admin panel API: range preview, CSV export, delete by date range, backup restore
@@ -534,6 +568,7 @@ src/lib/notify.js             Toast notifications (success / info / warning / er
 src/components/layout/AppToaster.jsx  Where notifications appear (direction- and theme-aware)
 src/pages/Dashboard.jsx       Main screen: totals, balances, day filter, search
 src/pages/UsersPage.jsx       Admin: users and roles
+src/pages/StoresPage.jsx      Admin: stores, their Manager and Users; others: their store (members for its Manager)
 src/pages/ProfilePage.jsx     Every user: own account details, name, email and password
 src/pages/SettingsPage.jsx    Every user: language, theme, visible table columns, row spacing, summaries
 src/pages/AdminPage.jsx       Admin + Manager: reports, CSV backup, restore and delete by date range
@@ -556,6 +591,8 @@ tests/                        Test suite
 
 ### API
 
+**Stores:** every route that reads or changes transactions, opening balances, closed days, rates, the admin panel or reports takes an optional `store_id`. Without `stores:all` (everyone but the Admin) it's always your own store: asking for another is refused (403), and rows of other stores don't exist for you (404). With `stores:all`, it's the store asked for; writes need one once there are several stores (400 "Choose a store"), and lists without one cover every store.
+
 All routes are under `/local-api`.
 - **Public:** only `/health`, `/auth/login` and `/auth/logout`. Everything else needs the session cookie (401 without it).
 - **Permissions:** the "Needs" column lists the permission required (403 without it).
@@ -572,13 +609,20 @@ All routes are under `/local-api`.
 | PUT | `/auth/password` | session (own account only) | `{ current_password, new_password }` (at least 8 characters, not the same). Ends the user's other sessions, keeps this one → `{ ok, sessions_revoked }` |
 | GET | `/admin/reports/income?year=YYYY` | `data:export` | `{ year, years, months }`: 12 rows of `{ month, count, profit, cashIn, cashOut }` (raw sums; the page rounds them and blanks future months) |
 | GET | `/admin/reports/parties?party=&from=&to=&by=&limit=` | `data:export` | Top senders (`party=sender`, Cash In) or recipients (`receiver`, Cash Out) between two dates. `by` = `volume` (default) or `count`; `limit` 1–500 (default 10). → `{ totals: { rows, volume, commission, parties, unnamed_rows, unnamed_volume }, rows: [{ rank, name, number, label, count, volume, average, commission, share, first_date, last_date }] }` |
+| GET | `/stores` | session | The stores you can see (Admin: all; others: theirs, or none): details, `manager`, `member_count`, `transaction_count` |
+| GET | `/stores/:id` | session (your store, or Admin) | One store; with `members` for its Manager and the Admin |
+| POST / PUT / DELETE | `/stores` · `/stores/:id` | `stores:manage` | `{ name, location, phone, email }`. Delete: only an empty store, never the last one (409 / 400) |
+| PUT | `/stores/:id/manager` | `stores:manage` | `{ user_id }` (a Manager; `null` clears). One Manager per store, one store per Manager |
+| GET | `/stores/:id/assignable` | its Manager (`stores:members`) or `stores:manage` | Users not in a store yet |
+| POST / DELETE | `/stores/:id/members` · `/stores/:id/members/:userId` | same | Add / remove a User. 409 if the User is in another store (a Manager can't move them) |
+| GET | `/admin/reports/stores?from=&to=` | `data:export` + `stores:all` | Every store side by side: `count`, `cash_in`, `cash_out`, `volume`, `commission`, `share` |
 | GET | `/admin/range` | `data:export` | `{ first_date, last_date }` of all data |
 | POST | `/admin/restore/preview` | `data:restore` | `{ csv }` (a backup CSV) → what restoring it would do: `kind`, `rows`, `to_add`, `existing`, `on_closed_days`, `closed_days`, `invalid` (`{ line, field }`), dates and totals |
 | POST | `/admin/restore` | `data:restore` | `{ csv, expected_count }` adds the missing rows back (same ids) in one database transaction. 409 if `to_add` changed, 400 if any row is invalid |
-| GET | `/closed-days` | `transactions:read` | Every closed day: `{ date, closed_by, closed_at }` |
-| POST / DELETE | `/closed-days` · `/closed-days/:date` | `days:close` | Close (`{ date }`) / reopen a day |
-| GET | `/commission-rates[?date=]` | `transactions:read` | `{ date, rate, current, history }`: the rate on `date`, today's rate, and every rate with its start date |
-| PUT | `/commission-rates` | `settings:office` | `{ rate, effective_from }`: set (or correct) the rate from a date |
+| GET | `/closed-days[?store_id=]` | `transactions:read` | Closed days `{ store_id, date, closed_by, closed_at }` (the Admin without a store: every store's) |
+| POST / DELETE | `/closed-days` · `/closed-days/:date?store_id=` | `days:close` | Close (`{ date, store_id }`) / reopen a store's day |
+| GET | `/commission-rates?store_id=[&date=]` | `transactions:read` | A store's `{ date, rate, current, history }`: the rate on `date`, today's rate, and every rate with its start date |
+| PUT | `/commission-rates` | `settings:office` | `{ rate, effective_from, store_id }`: set (or correct) a store's rate from a date |
 | DELETE | `/commission-rates/:effective_from` | `settings:office` | Remove a rate that hasn't started yet |
 | GET | `/admin/summary?from=&to=` | `data:export` | Counts and totals in the range (dates `YYYY-MM-DD`, both included) |
 | GET | `/admin/export?kind=&from=&to=` | `data:export` | CSV download; `kind` = `transactions` or `balances` |
@@ -587,15 +631,15 @@ All routes are under `/local-api`.
 | POST | `/users` | `users:manage` | `{ email, full_name, password, role }` → create a user |
 | PUT | `/users/:id` | `users:manage` | `{ full_name?, role?, is_active?, password? }`. Deactivation and password reset end the user's sessions |
 | POST | `/pdf/extract` · `/csv/extract` | `transactions:import` | Extract a statement |
-| POST | `/transactions/find-duplicates` | `transactions:import` | `{ references }` → existing transactions with those references (office-wide) |
-| POST | `/transactions/import` | `transactions:import` (+ `transactions:delete` when `overwrite`) | `{ records, overwrite }` |
+| POST | `/transactions/find-duplicates` | `transactions:import` | `{ references, store_id }` → the store's transactions with those references |
+| POST | `/transactions/import` | `transactions:import` (+ `transactions:delete` when `overwrite`) | `{ records, overwrite, store_id }`. 409 if a reference is already in another store |
 | POST | `/transactions/bulk-update` | `transactions:update:any`, or `:own` if every selected row is theirs | `{ ids, changes }` |
 | POST | `/transactions/bulk-delete` | `transactions:delete` | `{ ids }` |
 | POST | `/transactions/filter` · `/daily-balances/filter` | `transactions:read` / `balances:read` | List. Filter keys must be real columns |
 | POST | `/transactions/create` · `/bulk-create` | `transactions:create` / `transactions:import` | `created_by` is always the signed-in user |
 | PUT | `/transactions/:id` | `transactions:update:any`, or `:own` for their own rows | Update |
 | DELETE | `/transactions/:id` | `transactions:delete` | Delete |
-| POST / PUT / DELETE | `/daily-balances/…` | `balances:write` | One opening balance per date (creating an existing date updates it) |
+| POST / PUT / DELETE | `/daily-balances/…` | `balances:write` | One opening balance per store and date (creating an existing one updates it) |
 
 ### Deploying
 

@@ -39,8 +39,9 @@ describe("default role definitions", () => {
     expect(perms.admin.sort()).toEqual(Object.values(P).sort());
   });
 
-  it("Manager has everything except user management", () => {
-    expect(perms.manager.sort()).toEqual(Object.values(P).filter((p) => p !== P.USERS_MANAGE).sort());
+  it("Manager has everything except user management, store management and other stores", () => {
+    expect(perms.manager.sort()).toEqual(Object.values(P).filter((p) => ![P.USERS_MANAGE, P.STORES_MANAGE, P.STORES_ALL].includes(p)).sort());
+    expect(perms.manager).toContain(P.STORES_MEMBERS);
   });
 
   it("User can read, create, import and edit own — nothing else", () => {
@@ -171,9 +172,12 @@ describe("permissions are read live from the database", () => {
 
     await as("admin").put(`/users/${users.user2.id}`, { role: "manager" });
     expect((await as("user2").get("/auth/me")).body.role).toBe("manager");
+    // A new role starts without a store, so the row isn't visible until they manage its store.
+    expect((await as("user2").del(`/transactions/${victim}`)).status).toBe(404);
+    await as("admin").put("/stores/1/manager", { user_id: users.user2.id });
     expect((await as("user2").del(`/transactions/${victim}`)).status).toBe(200);
 
-    await as("admin").put(`/users/${users.user2.id}`, { role: "user" });
+    await as("admin").put(`/users/${users.user2.id}`, { role: "user", store_id: 1 });
     const another = (await as("user2").post("/transactions/create", { type: "cash_in", amount: 9 })).body.id;
     expect((await as("user2").del(`/transactions/${another}`)).status).toBe(403);
   });

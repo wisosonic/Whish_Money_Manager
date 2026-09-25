@@ -9,7 +9,8 @@ const IncomeChart = lazy(() => import("@/components/reports/IncomeChart"));
 
 // Reports → Income: the dashboard's monthly chart, from the server's monthly sums (so it covers
 // every transaction without loading them all in the browser).
-export default function IncomeReport() {
+// storeId: one store (the Admin's filter); without it, every store you can see.
+export default function IncomeReport({ storeId }) {
   const { t, errorText } = useI18n();
   const currentYear = String(new Date().getFullYear());
   const [year, setYear] = useState(currentYear);
@@ -22,7 +23,7 @@ export default function IncomeReport() {
     let current = true;
     setLoading(true);
     setError("");
-    api.admin.reports.income(year)
+    api.admin.reports.income(...(storeId ? [year, storeId] : [year]))
       .then((answer) => { if (current) setResult(answer); })
       .catch((err) => { if (current) setError(errorText(err?.message || "")); })
       .finally(() => { if (current) setLoading(false); });

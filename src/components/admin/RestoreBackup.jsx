@@ -12,7 +12,8 @@ import { Section } from "@/components/settings/SettingsControls";
 const money = (n) => `$${Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 // onRestored: called after rows were added, so the panel can refresh its range summary.
-export default function RestoreBackup({ onRestored }) {
+// storeId: the store rows without a store_id go to (backups from before stores) — the Admin's choice.
+export default function RestoreBackup({ onRestored, storeId }) {
   const { t, dir, num, errorText } = useI18n();
   const fileInput = useRef(null);
   const [csv, setCsv] = useState("");
@@ -36,7 +37,7 @@ export default function RestoreBackup({ onRestored }) {
     setError("");
     setPreview(null);
     try {
-      setPreview(await api.admin.restorePreview(text));
+      setPreview(await api.admin.restorePreview(...(storeId ? [text, storeId] : [text])));
     } catch (err) {
       const message = errorText(err?.message || "") || t("restore.checkFailed");
       setError(message);
@@ -57,7 +58,7 @@ export default function RestoreBackup({ onRestored }) {
   const restore = async () => {
     setRestoring(true);
     try {
-      const result = await api.admin.restore(csv, preview.to_add);
+      const result = await api.admin.restore(...(storeId ? [csv, preview.to_add, storeId] : [csv, preview.to_add]));
       notify.success(t(`toast.restore.done.${result.kind}`, { count: result.restored }), { duration: 10000 });
       setConfirming(false);
       reset();

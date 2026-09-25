@@ -3,7 +3,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { format } from "date-fns";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import SettingsPage from "@/pages/SettingsPage";
 import AdminPage from "@/pages/AdminPage";
 import AppToaster from "@/components/layout/AppToaster";
@@ -25,6 +25,10 @@ vi.mock("@/api/apiClient", () => ({
 
 const today = format(new Date(), "yyyy-MM-dd");
 const history = (extra = []) => [...extra, { rate: 1, effective_from: "2000-01-01", created_by: "system", created_date: "2026-01-01T00:00:00Z" }];
+
+// The admin panel's income report loads the chart on demand (lazy); loading its code once here
+// keeps the tests fast and steady.
+beforeAll(async () => { await import("@/components/reports/IncomeChart"); }, 60000);
 
 beforeEach(() => {
   vi.clearAllMocks();

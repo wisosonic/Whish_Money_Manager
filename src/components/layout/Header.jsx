@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { User, LogOut, Users, LayoutDashboard, Settings, ShieldCheck } from "lucide-react";
+import { User, LogOut, Users, LayoutDashboard, Settings, ShieldCheck, Store } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 import { APP_NAME } from "@/lib/branding";
 import { useI18n } from "@/lib/i18n";
@@ -45,6 +45,10 @@ export default function Header() {
   const onSettingsPage = location.pathname.startsWith("/settings");
   const onAdminPage = location.pathname.startsWith("/admin");
   const onProfilePage = location.pathname.startsWith("/profile");
+  const onStoresPage = location.pathname.startsWith("/stores");
+  // Stores: the Admin manages them all; others see the store they work in (if any).
+  const canManageStores = can(PERMISSIONS.STORES_MANAGE);
+  const showStoresLink = !onStoresPage && (canManageStores || user?.store_id != null);
   const navLink = "flex items-center gap-2 whitespace-nowrap bg-white/10 hover:bg-white/20 rounded-2xl px-4 py-2 transition text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400";
 
   useEffect(() => {
@@ -139,6 +143,11 @@ export default function Header() {
                   {t(`roles.${user.role}`)}
                 </span>
               }
+              {user?.store_name &&
+              <span className="text-[10px] font-bold rounded-full px-2 py-0.5 bg-white/15 text-slate-100" data-testid="store-badge" title={t("stores.column")}>
+                  {user.store_name}
+                </span>
+              }
             </p>
             <p className="text-slate-300 text-xs font-bold" data-testid="last-login">
               {lastLogin}
@@ -160,6 +169,12 @@ export default function Header() {
         <Link to="/users" className={navLink}>
             <Users className="w-4 h-4" />
             <span>{t("header.users")}</span>
+          </Link>
+        }
+        {showStoresLink &&
+        <Link to="/stores" className={navLink} data-testid="stores-link">
+            <Store className="w-4 h-4" aria-hidden="true" />
+            <span>{canManageStores ? t("header.stores") : t("header.myStore")}</span>
           </Link>
         }
         {can(PERMISSIONS.DATA_EXPORT) && !onAdminPage &&

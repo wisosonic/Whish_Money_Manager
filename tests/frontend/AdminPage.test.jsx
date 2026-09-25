@@ -3,7 +3,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { format, startOfMonth, subMonths, endOfMonth } from "date-fns";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import AdminPage from "@/pages/AdminPage";
 import AppToaster from "@/components/layout/AppToaster";
 import { clearToasts, findToast, toastTexts } from "./toastHelpers";
@@ -30,6 +30,10 @@ const monthStart = ymd(startOfMonth(today));
 const summaryOf = (overrides = {}) => ({
   transactions: 128, opening_balances: 30, days: 30, total_in: 40447.67, total_out: 41091.65, total_commission: 404.477, ...overrides,
 });
+
+// The admin panel's income report loads the chart on demand (lazy); loading its code once here
+// keeps the tests fast and steady.
+beforeAll(async () => { await import("@/components/reports/IncomeChart"); }, 60000);
 
 beforeEach(() => {
   setAuthRole("admin");

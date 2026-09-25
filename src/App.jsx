@@ -19,6 +19,7 @@ const UsersPage = lazy(() => import("./pages/UsersPage"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage"));
 const AdminPage = lazy(() => import("./pages/AdminPage"));
 const ProfilePage = lazy(() => import("./pages/ProfilePage"));
+const StoresPage = lazy(() => import("./pages/StoresPage"));
 
 // Route guard for pages that need a permission (the API enforces the same rule).
 export const RequirePermission = ({ permission, children }) => {
@@ -77,6 +78,8 @@ const AuthenticatedApp = () => {
       <Route path="/settings" element={<SettingsPage />} />
       {/* …and their own profile (name, email, password). */}
       <Route path="/profile" element={<ProfilePage />} />
+      {/* Stores: the Admin manages them all; everyone else sees their own store. */}
+      <Route path="/stores" element={<StoresPage />} />
       {/* Add your page Route elements here */}
       <Route path="*" element={<PageNotFound />} />
     </Routes>

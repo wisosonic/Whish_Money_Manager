@@ -14,9 +14,9 @@ beforeAll(async () => {
   client = makeClient(srv.baseUrl);
   // Data created before accounts existed.
   const now = new Date().toISOString();
-  db.prepare("INSERT INTO transactions (type, amount, created_by, created_date, updated_date) VALUES ('cash_in', 5, ?, ?, ?)").run(LEGACY_OWNER_EMAIL, now, now);
-  db.prepare("INSERT INTO transactions (type, amount, created_by, created_date, updated_date) VALUES ('cash_out', 7, ?, ?, ?)").run(LEGACY_OWNER_EMAIL, now, now);
-  db.prepare("INSERT INTO daily_balances (date, opening_balance, created_by, created_date, updated_date) VALUES ('2026-09-23', 10648.51, ?, ?, ?)").run(LEGACY_OWNER_EMAIL, now, now);
+  db.prepare("INSERT INTO transactions (type, amount, created_by, created_date, updated_date, store_id) VALUES ('cash_in', 5, ?, ?, ?, 1)").run(LEGACY_OWNER_EMAIL, now, now);
+  db.prepare("INSERT INTO transactions (type, amount, created_by, created_date, updated_date, store_id) VALUES ('cash_out', 7, ?, ?, ?, 1)").run(LEGACY_OWNER_EMAIL, now, now);
+  db.prepare("INSERT INTO daily_balances (date, opening_balance, created_by, created_date, updated_date, store_id) VALUES ('2026-09-23', 10648.51, ?, ?, ?, 1)").run(LEGACY_OWNER_EMAIL, now, now);
 });
 
 afterAll(() => srv.close());

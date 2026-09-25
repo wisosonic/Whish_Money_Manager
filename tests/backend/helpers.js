@@ -2,6 +2,7 @@
 // test accounts for each role, and a small client that keeps one session cookie per account.
 import { app } from "../../server/index.js";
 import { createUser } from "../../server/auth.js";
+import { db } from "../../server/db.js";
 
 export const PASSWORD = "correct-horse-battery";
 
@@ -15,13 +16,30 @@ export const startServer = async () => {
   };
 };
 
-// One account per role (plus a second User to test "own entries only").
-export const createTestUsers = () => ({
-  admin: createUser({ email: "admin@test.local", full_name: "Test Admin", password: PASSWORD, role: "admin" }),
-  manager: createUser({ email: "manager@test.local", full_name: "Test Manager", password: PASSWORD, role: "manager" }),
-  user: createUser({ email: "user@test.local", full_name: "Test User", password: PASSWORD, role: "user" }),
-  user2: createUser({ email: "user2@test.local", full_name: "Other User", password: PASSWORD, role: "user" }),
-});
+// The store every database starts with (created by initializeDb).
+export const firstStoreId = () => db.prepare("SELECT id FROM stores ORDER BY id LIMIT 1").get().id;
+
+// Puts a user in a store: as its Manager (role manager) or as a member (role user).
+export const assignToStore = (user, storeId) => {
+  if (user.role === "manager") {
+    db.prepare("UPDATE stores SET manager_id = NULL WHERE manager_id = ?").run(user.id);
+    db.prepare("UPDATE stores SET manager_id = ? WHERE id = ?").run(user.id, storeId);
+  }
+  db.prepare("UPDATE users SET store_id = ? WHERE id = ?").run(storeId, user.id);
+  return { ...user, store_id: storeId };
+};
+
+// One account per role (plus a second User to test "own entries only"). The Manager manages the
+// first store and both Users belong to it, so the office works as it did before stores.
+export const createTestUsers = () => {
+  const storeId = firstStoreId();
+  return {
+    admin: createUser({ email: "admin@test.local", full_name: "Test Admin", password: PASSWORD, role: "admin" }),
+    manager: assignToStore(createUser({ email: "manager@test.local", full_name: "Test Manager", password: PASSWORD, role: "manager" }), storeId),
+    user: assignToStore(createUser({ email: "user@test.local", full_name: "Test User", password: PASSWORD, role: "user" }), storeId),
+    user2: assignToStore(createUser({ email: "user2@test.local", full_name: "Other User", password: PASSWORD, role: "user" }), storeId),
+  };
+};
 
 export const makeClient = (baseUrl) => {
   const jar = {};

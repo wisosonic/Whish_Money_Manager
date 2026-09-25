@@ -1,9 +1,13 @@
-// Admin panel → Reports (Admin + Manager, data:export). Read-only summaries of office-wide data.
+// Admin panel → Reports (Admin + Manager, data:export). Read-only summaries.
 //
-//   GET /local-api/admin/reports/income?year=YYYY
+//   GET /local-api/admin/reports/income?year=YYYY[&store_id=]
 //       commissions (profit), cash in, cash out and count per month — the dashboard chart's data
-//   GET /local-api/admin/reports/parties?party=sender|receiver&from=&to=&by=volume|count&limit=
+//   GET /local-api/admin/reports/parties?party=sender|receiver&from=&to=&by=volume|count&limit=[&store_id=]
 //       the top senders (of Cash In) or recipients (of Cash Out) in a date range
+//   GET /local-api/admin/reports/stores?from=&to=          (stores:all — the Admin)
+//       every store side by side: transactions, cash in, cash out, commission, share of the volume
+//
+// Store: the Admin gets one store (store_id) or, without it, every store; a Manager always their own.
 //
 // A transaction's day is transaction_date, or the date part of created_date (as everywhere else).
 import { parseRange } from "./admin.js";
@@ -11,22 +15,26 @@ import { requirePermission } from "./auth.js";
 import { db } from "./db.js";
 import { PERMISSIONS as P } from "./permissions.js";
 import { isPhoneLike, normalizePhone } from "./parties.js";
+import { readStore } from "./stores.js";
 
 const TX_DAY = "COALESCE(NULLIF(transaction_date, ''), substr(created_date, 1, 10))";
 const round = (value, places = 2) => Math.round((Number(value) || 0) * 10 ** places) / 10 ** places;
+// { all: true } or { id } (from readStore) → a condition on store_id.
+const inStore = (store) => (store?.all ? { sql: "1 = 1", params: [] } : { sql: "store_id = ?", params: [store.id] });
 
 // ═══ Income by month ═══
 
 // 12 rows of raw sums (months without transactions are zero); the page rounds them and blanks
 // months that haven't happened yet, like the dashboard chart (src/lib/monthlyChartData.js).
-export const incomeByMonth = (year) => {
+export const incomeByMonth = (year, store = { all: true }) => {
+  const scope = inStore(store);
   const rows = db.prepare(
     `SELECT CAST(substr(day, 6, 2) AS INTEGER) AS month, COUNT(*) AS count,
             COALESCE(SUM(commission), 0) AS profit,
             COALESCE(SUM(CASE WHEN type = 'cash_in' THEN amount END), 0) AS cashIn,
             COALESCE(SUM(CASE WHEN type = 'cash_out' THEN amount END), 0) AS cashOut
-     FROM (SELECT *, ${TX_DAY} AS day FROM transactions) WHERE substr(day, 1, 5) = ? GROUP BY month`
-  ).all(`${year}-`);
+     FROM (SELECT *, ${TX_DAY} AS day FROM transactions WHERE ${scope.sql}) WHERE substr(day, 1, 5) = ? GROUP BY month`
+  ).all(...scope.params, `${year}-`);
   const byMonth = new Map(rows.map((row) => [row.month, row]));
   return Array.from({ length: 12 }, (_, i) => {
     const row = byMonth.get(i + 1);
@@ -35,8 +43,8 @@ export const incomeByMonth = (year) => {
 };
 
 // Years that have transactions, newest first.
-export const yearsWithData = () =>
-  db.prepare(`SELECT DISTINCT substr(${TX_DAY}, 1, 4) AS year FROM transactions ORDER BY year DESC`).all()
+export const yearsWithData = (store = { all: true }) =>
+  db.prepare(`SELECT DISTINCT substr(${TX_DAY}, 1, 4) AS year FROM transactions WHERE ${inStore(store).sql} ORDER BY year DESC`).all(...inStore(store).params)
     .map((row) => row.year)
     .filter((year) => /^\d{4}$/.test(year));
 
@@ -174,7 +182,9 @@ export const registerReportRoutes = (app) => {
       res.status(400).json({ error: "A valid year is required (YYYY)" });
       return;
     }
-    res.json({ year, years: yearsWithData(), months: incomeByMonth(year) });
+    const store = readStore(req, res, req.query.store_id);
+    if (!store) return;
+    res.json({ year, store_id: store.all ? null : store.id, years: yearsWithData(store), months: incomeByMonth(year, store) });
   });
 
   app.get("/local-api/admin/reports/parties", canView, (req, res) => {
@@ -194,11 +204,49 @@ export const registerReportRoutes = (app) => {
       res.status(400).json({ error: "Unknown report option" });
       return;
     }
+    const store = readStore(req, res, req.query.store_id);
+    if (!store) return;
+    const scope = inStore(store);
     const { type, nameField } = PARTY_REPORTS[party];
     const rows = db.prepare(
       `SELECT amount, commission, ${nameField}, phone, customer_number, ${TX_DAY} AS day
-       FROM transactions WHERE type = ? AND ${TX_DAY} BETWEEN ? AND ?`
-    ).all(type, range.from, range.to);
-    res.json({ from: range.from, to: range.to, ...rankParties(rows, party, { by, limit }) });
+       FROM transactions WHERE type = ? AND ${TX_DAY} BETWEEN ? AND ? AND ${scope.sql}`
+    ).all(type, range.from, range.to, ...scope.params);
+    res.json({ from: range.from, to: range.to, store_id: store.all ? null : store.id, ...rankParties(rows, party, { by, limit }) });
+  });
+
+  // Every store in the range, busiest first (stores without transactions are listed too, at 0).
+  app.get("/local-api/admin/reports/stores", canView, requirePermission(P.STORES_ALL), (req, res) => {
+    const range = parseRange(req.query.from, req.query.to);
+    if (range.error) {
+      res.status(400).json({ error: range.error });
+      return;
+    }
+    const rows = db.prepare(
+      `SELECT s.id, s.name, s.location,
+              COUNT(t.id) AS count,
+              COALESCE(SUM(CASE WHEN t.type = 'cash_in' THEN t.amount END), 0) AS cash_in,
+              COALESCE(SUM(CASE WHEN t.type = 'cash_out' THEN t.amount END), 0) AS cash_out,
+              COALESCE(SUM(t.commission), 0) AS commission
+       FROM stores s
+       LEFT JOIN transactions t ON t.store_id = s.id AND COALESCE(NULLIF(t.transaction_date, ''), substr(t.created_date, 1, 10)) BETWEEN ? AND ?
+       GROUP BY s.id`
+    ).all(range.from, range.to);
+    const totalVolume = rows.reduce((sum, row) => sum + row.cash_in + row.cash_out, 0);
+    const stores = rows
+      .map((row) => {
+        const volume = row.cash_in + row.cash_out;
+        return {
+          id: row.id, name: row.name, location: row.location, count: row.count,
+          cash_in: round(row.cash_in), cash_out: round(row.cash_out), volume: round(volume), commission: round(row.commission, 3),
+          share: totalVolume > 0 ? round(volume / totalVolume, 4) : 0,
+        };
+      })
+      .sort((a, b) => b.volume - a.volume || b.count - a.count || a.name.localeCompare(b.name));
+    const totals = stores.reduce(
+      (sum, row) => ({ count: sum.count + row.count, cash_in: round(sum.cash_in + row.cash_in), cash_out: round(sum.cash_out + row.cash_out), volume: round(sum.volume + row.volume), commission: round(sum.commission + row.commission, 3) }),
+      { count: 0, cash_in: 0, cash_out: 0, volume: 0, commission: 0 }
+    );
+    res.json({ from: range.from, to: range.to, totals, stores });
   });
 };
