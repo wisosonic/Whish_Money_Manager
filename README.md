@@ -28,7 +28,7 @@ It runs entirely on your machine: a React frontend and a small Node.js/Express A
   - Rows can be reviewed and edited before saving.
 - **Duplicate protection**: re-importing a statement is detected by transaction reference number (e.g. `tr:626186571`). You choose to replace the existing entries or cancel. Manual entries are never touched.
 - **Search**: names, reference numbers, notes, service, phone and customer numbers (in any format, e.g. `+961 71 389 296` or `071389296`) and amounts (`50`, `50.00`, `$1,500`).
-  - **All days or this day:** a switch next to the search box chooses where to look. **كل الأيام** (all days, the default) searches every day. **هذا اليوم** (this day) searches only the date in the date picker.
+  - **All days or this day:** a switch at the start of the search row, just before the search box, chooses where to look. **كل الأيام** (all days, the default) searches every day. **هذا اليوم** (this day) searches only the date in the date picker.
   - **All-days results:** they show every match in journal order (oldest day first), with a blue line such as "6 نتيجة في 3 يوم" (6 results across 3 days).
   - **In the results:** each date is a link. Click it to open that day, which also clears the search. "#" is each row's number within its own day, and rows from another day name their date for screen readers (e.g. "تحديد العملية 1 بتاريخ 2026-09-22").
   - **What doesn't change:** the day's totals above the table (deposits, withdrawals, commissions) always count the selected day only, whatever the search scope. "Delete all for this day" is hidden while all-days results are shown, so it can't be confused with them.

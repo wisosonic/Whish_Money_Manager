@@ -298,17 +298,7 @@ export default function TransactionsList({
     <div className="bg-white rounded-xl shadow" dir={dir}>
       {/* Search & filters row */}
       <div className="p-4 border-b flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-2 flex-1 min-w-[200px] bg-gray-50 border rounded-lg px-3 py-2">
-          <Search className="w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            placeholder={tr("list.searchPlaceholder")}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="bg-transparent outline-none w-full text-start text-base font-normal" />
-          
-        </div>
-
+        {/* Search scope first in the row (user's request), then the search box. */}
         {setSearchScope &&
         <div className="flex items-center rounded-lg border bg-gray-50 p-0.5 text-sm" role="group" aria-label={tr("list.scope.label")} data-testid="search-scope">
             {["all", "day"].map((scope) =>
@@ -324,6 +314,17 @@ export default function TransactionsList({
           )}
           </div>
         }
+
+        <div className="flex items-center gap-2 flex-1 min-w-[200px] bg-gray-50 border rounded-lg px-3 py-2">
+          <Search className="w-4 h-4 text-gray-400" />
+          <input
+            type="text"
+            placeholder={tr("list.searchPlaceholder")}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="bg-transparent outline-none w-full text-start text-base font-normal" />
+          
+        </div>
 
         <div className="flex items-center gap-2 text-sm text-gray-600">
           <span className="font-medium text-[hsl(var(--foreground))]">{tr("list.journal")}:</span>

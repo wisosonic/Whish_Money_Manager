@@ -164,7 +164,7 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
 - Duplicates are matched by `reference_number` **across the whole office** (everyone shares one set of transactions). On re-import the user chooses **overwrite** (delete same-reference rows, then insert, in one database transaction) or **cancel**. Rows without a reference are never matched or deleted.
 - Manual insertion between table rows ("+ إدراج هنا") was removed at the user's request. Cash In / Cash Out buttons stay. `InsertTransactionModal.jsx` was deleted (2026-09-24).
 - **Search scope** (changed at the user's request on 2026-09-24; it used to cover only the selected day):
-  - A switch next to the search box, **كل الأيام** (default) / **هذا اليوم**. `searchScope` state lives in `Dashboard.jsx`.
+  - A switch at the **start** of the search row (before the search box; user's request, 2026-09-25), **كل الأيام** (default) / **هذا اليوم**. `searchScope` state lives in `Dashboard.jsx`.
   - With a search in "all" scope, the table gets every matching transaction (`tableRows`). Otherwise it gets the selected day's matches (`filtered`).
   - **The day's totals always come from `filtered`** (the selected day plus the search), so other days never leak into them.
   - In all-days results:
@@ -357,6 +357,7 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - `Dashboard` computes `yearly*` figures.
   - Added `StatsCards.test.jsx` and Dashboard summary tests. Total now 104.
 ### 2026-09-25
+- **Search scope switch moved** to the start of the dashboard's search row, before the search box (user's request). A Dashboard test checks the order.
 - **Admin panel reports** (user's request): a Reports section first in the panel, with Income (the dashboard chart, from server-side monthly sums), Top senders (Cash In) and Top recipients (Cash Out) with date range, rank-by and top-N filters.
   - The chart was moved into a shared `IncomeChart`; the dashboard modal uses it unchanged (its 27 tests pass as before).
   - Checked on a **copy** of the real database: 692 cash-ins from 454 senders, 1,151 cash-outs to 867 recipients (most known only by number), and the office account on neither list.

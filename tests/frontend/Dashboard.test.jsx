@@ -99,6 +99,16 @@ describe("Dashboard search — this day", () => {
 });
 
 describe("Dashboard search — all days", () => {
+  it("the scope switch comes first in the search row, before the search box", async () => {
+    const { container } = render(<Dashboard />);
+    await waitFor(() => expect(rowCount(container)).toBe(2));
+    const scope = screen.getByTestId("search-scope");
+    const row = scope.parentElement;
+    expect(row.firstElementChild).toBe(scope);
+    const searchBox = screen.getByPlaceholderText(/بحث/);
+    expect(scope.compareDocumentPosition(searchBox) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it("searches every day by default; the switch shows which scope is active", async () => {
     const { container } = render(<Dashboard />);
     await waitFor(() => expect(rowCount(container)).toBe(2));
