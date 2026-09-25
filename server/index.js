@@ -8,6 +8,7 @@ import { parseCsvText } from "./csv.js";
 import { db, dbPath, ensureDefaultRoles, initializeDb, nowIso } from "./db.js";
 import { commissionRateOn, refuseClosedDays, registerOfficeRoutes, transactionDay } from "./office.js";
 import { PERMISSIONS as P, canUpdateTransaction, hasPermission } from "./permissions.js";
+import { registerReportRoutes } from "./reports.js";
 import { ensureInitialAdmin } from "./seed.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -175,6 +176,8 @@ app.use("/local-api", authenticate);
 // Admin panel: CSV backup and delete-by-date-range (Admin + Manager).
 registerAdminRoutes(app);
 registerRestoreRoutes(app);
+// Admin panel → Reports: income by month, top senders / recipients (Admin + Manager).
+registerReportRoutes(app);
 
 // Closed days and the office commission rate.
 registerOfficeRoutes(app);

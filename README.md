@@ -67,7 +67,7 @@ It runs entirely on your machine: a React frontend and a small Node.js/Express A
 - **Settings** (⚙️ in the header), grouped in tabs: language, start-up day, clock, number style, theme, row spacing, summaries, table columns, default sort, rows per page, default search scope and notifications, all saved to each user's account. Admins and Managers also set the office **commission rate** there. See [Settings](#settings).
 - **My profile** (click your name in the header): see your account, and change your own name, email and password. See [My profile](#my-profile).
 - **Closing a day** (Admin and Manager): lock a day so nobody can add, edit, import or delete its transactions or change its opening balance, until it's reopened. See [Closing a day](#closing-a-day).
-- **Admin panel** (Admin and Manager): download a CSV backup of any date range, or permanently delete all data in a range. See [Admin panel](#admin-panel-admin-and-manager).
+- **Admin panel** (Admin and Manager): **reports** (income by month, top senders, top recipients), a CSV backup of any date range, restoring a backup, or permanently deleting all data in a range. See [Admin panel](#admin-panel-admin-and-manager).
 - **Notifications**: a short message pops up in the bottom corner (bottom-left in Arabic, bottom-right in English; full width on phones) after every action, so you always know whether it worked.
   - **Kinds:** green for success, blue for information, amber for warnings and red for errors. Each has its own icon, and the text says what happened.
   - **Timing:** errors and warnings stay longer (8 and 7 seconds) than confirmations (4 seconds). Every notification has a close button and pauses while you hover over it. Screen readers announce them.
@@ -197,6 +197,7 @@ Everyone signs in with their own email and password. There are three roles:
 | Set or change opening balances | ✓ | ✓ | — |
 | My profile: change own name, email and password | ✓ | ✓ | ✓ |
 | Manage users and roles (المستخدمون page) | ✓ | — | — |
+| Admin panel: reports (income, top senders, top recipients) | ✓ | ✓ | — |
 | Admin panel: CSV backup by date range | ✓ | ✓ | — |
 | Admin panel: delete all data in a date range | ✓ | ✓ | — |
 | Close / reopen a day | ✓ | ✓ | — |
@@ -301,6 +302,20 @@ Admins and Managers can **close** a day once it's been checked, for example afte
 ### Admin panel (Admin and Manager)
 
 Open **لوحة الإدارة** (Admin panel) in the header. Users don't see the link, and opening `/admin` directly shows a "no permission" page.
+
+**Reports** (التقارير) come first, as three tabs. They only read data; nothing here changes anything. Only the open tab is loaded.
+- **Income** (الدخل): the same monthly chart as the dashboard's الرسم البياني: commissions as bars (left axis), cash in and cash out as lines (right axis), the year's totals, the year selector (every year with data) and the table view. The figures are added up by the server, so the report covers every transaction without loading them all in the browser. The dashboard's chart is still there too.
+- **Top senders** (أكبر المرسلين): who sent the most money **in** (Cash In) between two dates.
+- **Top recipients** (أكبر المستلمين): who received the most money (**Cash Out**) between two dates.
+  - **Why only Cash In / Cash Out:** the other side of those rows is the office's own account (imported statements put the account name there), so it never appears in either list.
+  - **Dates:** From / To (both included), with the same quick ranges as below (this month, last month, this year, all data). The default is this year.
+  - **Rank by** total amount (default) or number of transactions, and **show** the top 10, 25, 50 or 100.
+  - **Each row:** rank, name, phone/customer number, number of transactions, total, average, share of the total (with a small bar), commission (senders only, since Cash Out carries none) and the date of the last transaction.
+  - **Above the table:** how many people and transactions the dates hold, and the total. Transactions with neither a name nor a number aren't listed, and a line says how many there are.
+  - **Who counts as the same person:** rows are grouped by **phone number** when there is one, in any format (`+961 71 588 017`, `96171588017` and `71588017` are the same wallet), and otherwise by **name**, ignoring upper/lower case and extra spaces. A name used without a number joins the number it's used with, if it's used with exactly one. The most used spelling is shown.
+
+**Your office's data** (the sections below the reports):
+
 
 1. **Choose a date range:** a start and end date (both included), or a quick range:
    - This month
@@ -439,6 +454,8 @@ tests/
 │   ├── office.test.js        # closed days on every write route (423), commission rate + engines, restore
 │   ├── admin.test.js         # admin panel API: permissions, preview, CSV (quoting, formula guard, BOM),
 │   │                         # delete by range (409 when counts changed), permission upgrade
+│   ├── reports.test.js       # reports API: permissions, income sums (= dashboard chart), top senders /
+│   │                         # recipients: Cash In / Out, dates, ranking, limit, grouping by number/name
 │   ├── users.test.js         # Admin user management, deactivation/reset revoke sessions, last-Admin rules
 │   ├── profile.test.js       # own profile: name, email (password, 409, records follow), password change
 │   │                         # (other sessions revoked, this one kept), rate limit
@@ -462,6 +479,7 @@ tests/
     ├── settingsOptions.test.jsx      # settings tabs (keyboard, link), each new option and what it changes
     ├── dayClosing.test.jsx           # close / reopen a day, what's locked; pages, default sort, digits, Cash In rate
     ├── officeBackup.test.jsx         # office commission rate (history, scheduled), admin panel restore from a backup
+    ├── AdminReports.test.jsx         # admin panel reports: tabs (keyboard), income chart, top senders / recipients filters
     ├── AdminPage.test.jsx            # admin panel: ranges, preview, downloads, typed-count delete, 409, header link
     ├── theme.test.jsx                # dark mode: saved/system theme, pre-paint script, stylesheet mappings, chart
     ├── download.test.js              # saving a CSV download
@@ -493,6 +511,8 @@ server/index.js               Express API routes (with permission checks), PDF +
 server/auth.js                Login/logout, JWT session cookie, authenticate + requirePermission middleware, user admin API
 server/permissions.js         Permission names and the three default roles (shared with the frontend)
 server/db.js                  SQLite connection and schema (transactions, daily_balances, roles, users, sessions)
+server/reports.js             Admin panel reports API: income by month, top senders / recipients (grouping and ranking)
+server/parties.js             Who a transaction's sender / receiver is (display, phone normalization), shared with the table
 server/admin.js               Admin panel API: range preview, CSV export, delete by date range, backup restore
 server/office.js              Closed days (and their enforcement helpers), office commission rate and history
 server/csv.js                 RFC 4180 CSV parser shared by the statement engine and restore
@@ -505,9 +525,10 @@ src/pages/Dashboard.jsx       Main screen: totals, balances, day filter, search
 src/pages/UsersPage.jsx       Admin: users and roles
 src/pages/ProfilePage.jsx     Every user: own account details, name, email and password
 src/pages/SettingsPage.jsx    Every user: language, theme, visible table columns, row spacing, summaries
-src/pages/AdminPage.jsx       Admin + Manager: CSV backup and delete by date range
+src/pages/AdminPage.jsx       Admin + Manager: reports, CSV backup, restore and delete by date range
 src/components/settings/      Settings building blocks and the commission-rate editor
-src/components/admin/         Admin panel cards: backup restore
+src/components/admin/         Admin panel cards: backup restore, date range fields
+src/components/reports/       Reports section (tabs), income report, top senders / recipients, the shared monthly chart
 src/lib/PreferencesContext.jsx  The signed-in user's settings: applied at once, saved in order to the account
 src/components/dashboard/     Stats cards, wallet summary, transactions table, monthly chart
 src/components/transactions/  Import, cash in/out, edit, sender/receiver/commission reports
@@ -538,6 +559,8 @@ All routes are under `/local-api`.
 | PUT | `/auth/preferences` | session (own account only) | Partial change, e.g. `{ density: "compact" }` or `{ hiddenColumns: ["note"] }`, merged over what's stored. Keys: `language` (`ar`/`en`/`null`), `hiddenColumns` (column keys; at least one must stay visible), `density` (`comfortable`/`compact`), `summaries` (`{ month, year }` booleans), `theme` (`light`/`dark`/`system`). Unknown keys or values → 400. Returns the user |
 | PUT | `/auth/profile` | session (own account only) | `{ full_name?, email?, current_password? }`. The email needs the current password (400 if wrong, 429 after 10 wrong); 409 if the address is used by another user or still owns records. Records under the old email move to the new one. Returns the user |
 | PUT | `/auth/password` | session (own account only) | `{ current_password, new_password }` (at least 8 characters, not the same). Ends the user's other sessions, keeps this one → `{ ok, sessions_revoked }` |
+| GET | `/admin/reports/income?year=YYYY` | `data:export` | `{ year, years, months }`: 12 rows of `{ month, count, profit, cashIn, cashOut }` (raw sums; the page rounds them and blanks future months) |
+| GET | `/admin/reports/parties?party=&from=&to=&by=&limit=` | `data:export` | Top senders (`party=sender`, Cash In) or recipients (`receiver`, Cash Out) between two dates. `by` = `volume` (default) or `count`; `limit` 1–500 (default 10). → `{ totals: { rows, volume, commission, parties, unnamed_rows, unnamed_volume }, rows: [{ rank, name, number, label, count, volume, average, commission, share, first_date, last_date }] }` |
 | GET | `/admin/range` | `data:export` | `{ first_date, last_date }` of all data |
 | POST | `/admin/restore/preview` | `data:restore` | `{ csv }` (a backup CSV) → what restoring it would do: `kind`, `rows`, `to_add`, `existing`, `on_closed_days`, `closed_days`, `invalid` (`{ line, field }`), dates and totals |
 | POST | `/admin/restore` | `data:restore` | `{ csv, expected_count }` adds the missing rows back (same ids) in one database transaction. 409 if `to_add` changed, 400 if any row is invalid |

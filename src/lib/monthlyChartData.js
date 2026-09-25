@@ -8,38 +8,37 @@ const roundCents = (value) => Math.round(value * 100) / 100;
 
 // One row per month (always 12, so the x-axis is stable) for the given year.
 // Profit is the office's income: the commissions earned in that month.
-// Months that haven't happened yet (after `today`) get null values, so the chart leaves a gap
-// instead of drawing a misleading drop to $0.
 export const buildMonthlyChartData = (transactions, year, today = new Date(), monthLabels = MONTH_LABELS) => {
-  const currentYear = today.getFullYear();
-  const isFutureMonth = (month) =>
-    Number(year) > currentYear || (Number(year) === currentYear && month > today.getMonth() + 1);
-
-  const rows = monthLabels.map((label, index) => ({
-    month: index + 1,
-    label,
-    profit: 0,
-    cashIn: 0,
-    cashOut: 0,
-    count: 0,
-  }));
-
+  const sums = Array.from({ length: 12 }, (_, index) => ({ month: index + 1, profit: 0, cashIn: 0, cashOut: 0, count: 0 }));
   (transactions || []).forEach((t) => {
     const date = transactionDate(t);
     if (!date.startsWith(`${year}-`)) return;
-    const row = rows[Number(date.slice(5, 7)) - 1];
+    const row = sums[Number(date.slice(5, 7)) - 1];
     if (!row) return;
     row.count += 1;
     row.profit += Number(t.commission) || 0;
     if (t.type === "cash_in") row.cashIn += Number(t.amount) || 0;
     if (t.type === "cash_out") row.cashOut += Number(t.amount) || 0;
   });
+  return finalizeMonthlyRows(sums, year, today, monthLabels);
+};
 
-  return rows.map((row) =>
-    isFutureMonth(row.month) && row.count === 0
-      ? { ...row, profit: null, cashIn: null, cashOut: null, count: null }
-      : { ...row, profit: roundCents(row.profit), cashIn: roundCents(row.cashIn), cashOut: roundCents(row.cashOut) }
-  );
+// Month sums (from the transactions above, or from the server's income report) → chart rows:
+// labelled, rounded to cents, and with null values for months that haven't happened yet (after
+// `today`), so the chart leaves a gap instead of drawing a misleading drop to $0.
+export const finalizeMonthlyRows = (sums, year, today = new Date(), monthLabels = MONTH_LABELS) => {
+  const currentYear = today.getFullYear();
+  const isFutureMonth = (month) =>
+    Number(year) > currentYear || (Number(year) === currentYear && month > today.getMonth() + 1);
+  const byMonth = new Map((sums || []).map((row) => [Number(row.month), row]));
+  return monthLabels.map((label, index) => {
+    const month = index + 1;
+    const row = byMonth.get(month) || {};
+    const count = Number(row.count) || 0;
+    return isFutureMonth(month) && count === 0
+      ? { month, label, profit: null, cashIn: null, cashOut: null, count: null }
+      : { month, label, profit: roundCents(Number(row.profit) || 0), cashIn: roundCents(Number(row.cashIn) || 0), cashOut: roundCents(Number(row.cashOut) || 0), count };
+  });
 };
 
 // Year totals over the chart rows (future months are null and contribute nothing).

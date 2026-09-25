@@ -19,7 +19,7 @@ vi.mock("@/lib/AuthContext", async () => (await import("./authMock")).authContex
 vi.mock("@/lib/download", () => ({ saveBlob: vi.fn() }));
 vi.mock("@/api/apiClient", () => ({
   api: {
-    admin: { range: vi.fn(), summary: vi.fn(), exportCsv: vi.fn(), purge: vi.fn() },
+    admin: { range: vi.fn(), summary: vi.fn(), exportCsv: vi.fn(), purge: vi.fn(), reports: { income: vi.fn(async (year) => ({ year, years: [year], months: [] })), parties: vi.fn(async ({ party, from, to, by }) => ({ party, from, to, by, totals: { rows: 0, volume: 0, commission: 0, parties: 0, unnamed_rows: 0, unnamed_volume: 0 }, rows: [] })) } },
     auth: { updatePreferences: vi.fn() },
   },
 }));

@@ -174,6 +174,14 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ from, to, expected_count: expectedCount }),
       }),
+    // Reports (data:export). income: { year, years, months: [{ month, count, profit, cashIn, cashOut }] }.
+    // parties: party "sender" (of Cash In) or "receiver" (of Cash Out) in a range, ranked by
+    // "volume" or "count" → { totals, rows: [{ rank, name, number, count, volume, average, share, … }] }.
+    reports: {
+      income: async (year) => apiRequest(`/admin/reports/income?${new URLSearchParams({ year })}`, { method: 'GET' }),
+      parties: async ({ party, from, to, by = 'volume', limit = 10 }) =>
+        apiRequest(`/admin/reports/parties?${new URLSearchParams({ party, from, to, by, limit: String(limit) })}`, { method: 'GET' }),
+    },
     // Restore a backup CSV (data:restore): preview what it would add, then add it. expectedCount is
     // the number of rows the preview showed; the server refuses (409) if that changed.
     restorePreview: async (csv) => apiRequest('/admin/restore/preview', { method: 'POST', body: JSON.stringify({ csv }) }),

@@ -89,6 +89,14 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
     - `StatsCards` takes `defaultOpen` from `preferences.summaries`.
   - Without a provider (unit tests), `usePreferences()` returns the defaults, so existing component tests are unaffected.
   - **Header:** the nav row is `flex-wrap` and the links are `whitespace-nowrap`. Admins have up to 5 items there, and the non-wrapping row made the page 663px wide on a ~500px phone (measured in Edge via `scrollWidth`).
+- **Admin panel → Reports** (user's request, 2026-09-25): `src/components/reports/ReportsSection.jsx`, the first section of `AdminPage` (section `admin-reports`), as WAI-ARIA tabs (arrows mirrored in RTL, Home/End). Only the open report is rendered and fetched. API: `server/reports.js`, `data:export` (like the rest of the panel).
+  - **Income** (`IncomeReport.jsx`): the dashboard chart from `GET /admin/reports/income?year=` (SQL monthly sums). The chart body now lives in `src/components/reports/IncomeChart.jsx`, shared by `MonthlyChartModal` (which re-exports `CHART_SERIES` / `CHART_INK` / tooltip / legend) and the report. `monthlyChartData.js` is split into aggregation and `finalizeMonthlyRows` (labels, rounding, future months → null), so both paths share the same null / rounding rules. A backend test checks the server sums equal `buildMonthlyChartData`.
+  - **Top senders / recipients** (`PartyReport.jsx`, `GET /admin/reports/parties`): senders come from **cash_in** rows only and recipients from **cash_out** only. The other side of those rows is the office's own account (the importers write the account name there: 1,151 of 1,151 debits in the real data), so this keeps the office off both lists without knowing its name. **Don't widen the type filter.**
+    - **Grouping** (`rankParties`, pure and unit-tested): by `normalizePhone(customer_number || phone || phone-like name)` when it has ≥ 7 digits, else by name (case/space-insensitive). A name-only group merges into a number group when that name is used with exactly one number. Rows with neither are counted as `unnamed_*`, not listed. The shown name/number is the most used; ties go to the shortest (the table's short customer number).
+    - The phone on these rows belongs to that party (see `matchesReceiver`), which is why the number can identify them.
+    - Default dates are this year; `DateRangeFields` (`src/components/admin/`) is shared with the panel's range card (test ids `${prefix}-from/-to/-thisMonth…`; the panel keeps `range-*`).
+    - **Mutation checks:** counting both types failed 1 test, dropping the name→number merge 1, not stripping 961 3.
+  - `server/parties.js` holds `isPhoneLike`, `receiverDisplay`, `senderDisplay` and `normalizePhone`. `src/lib/transactionSearch.js` re-exports `receiverDisplay` from it, so the table and the reports share one rule.
 - **Admin panel** (`src/pages/AdminPage.jsx`, route `/admin`; API in `server/admin.js`):
   - **Who:** Admin and Manager, via `data:export` (page, preview, CSV) and `data:purge` (delete). The page's route guard needs `data:export`, and the delete card needs `data:purge`.
   - **Day rule:** a transaction's day is `COALESCE(NULLIF(transaction_date,''), substr(created_date,1,10))`, the same as the dashboard's. Ranges are inclusive `YYYY-MM-DD`, validated by `parseRange`.
@@ -178,7 +186,7 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
     - Every part has `motion-reduce:` overrides.
     - Tests assert hidden or visible state, not presence. Don't go back to conditional rendering, which would kill the animation.
     - Headless screenshots can't capture mid-transition. Check computed `transition*` styles instead.
-- **Monthly chart** ("الرسم البياني", `MonthlyChartModal.jsx`, data in `src/lib/monthlyChartData.js`):
+- **Monthly chart** ("الرسم البياني", `MonthlyChartModal.jsx` → the shared `src/components/reports/IncomeChart.jsx`, data in `src/lib/monthlyChartData.js`; also Admin panel → Reports → Income):
   - The user specified the layout: x = months, **left y-axis = profit** (commissions, blue bars), **right y-axis = cash in + cash out** (lines).
   - Two y-axes normally go against charting best practice. It was kept on purpose because the user asked for it, and it's softened by different marks (bars vs lines), captions on each axis, a tooltip, and the table view. Don't "fix" it into a single axis without asking.
   - Colors: `#1d4ed8` / `#16a34a` / `#991b1b`. They were checked with the dataviz palette validator: every pair is distinguishable for color-blind readers (ΔE ≥ 17), with at least 3:1 contrast on white. Cash out is also dashed.
@@ -349,6 +357,11 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - `Dashboard` computes `yearly*` figures.
   - Added `StatsCards.test.jsx` and Dashboard summary tests. Total now 104.
 ### 2026-09-25
+- **Admin panel reports** (user's request): a Reports section first in the panel, with Income (the dashboard chart, from server-side monthly sums), Top senders (Cash In) and Top recipients (Cash Out) with date range, rank-by and top-N filters.
+  - The chart was moved into a shared `IncomeChart`; the dashboard modal uses it unchanged (its 27 tests pass as before).
+  - Checked on a **copy** of the real database: 692 cash-ins from 454 senders, 1,151 cash-outs to 867 recipients (most known only by number), and the office account on neither list.
+  - **Tests:** `tests/backend/reports.test.js` (16) and `tests/frontend/AdminReports.test.jsx` (16); admin page mocks gained `reports`.
+  - **Checked in Edge** (Arabic, English dark, phone). Found there: an amount written after an Arabic word inside one `dir="ltr"` span still rendered as "150,000.00$ الإجمالي" (a number after Arabic letters joins their right-to-left run). Amounts now get their own `<span dir="ltr">` next to the label; the panel's existing range summary had the same bug and was fixed too. **Put amounts in their own span, never inside an Arabic string or an LTR span with Arabic text.**
 - **Profile page** (user's request): `/profile` (click your name in the header) shows the account and lets every user change their name, email (current password needed; their records move to the new address) and password (other devices signed out).
   - **Tests:** `tests/backend/profile.test.js` (15), `tests/frontend/ProfilePage.test.jsx` (11), and an API-client test. Mutation checks listed under Architecture.
 - **Restore moved from Settings to the admin panel** (user's request):

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { format, startOfMonth, startOfYear, subMonths, endOfMonth } from "date-fns";
+import { startOfMonth } from "date-fns";
 import { CalendarRange, Download, Trash2, Loader2, AlertTriangle } from "lucide-react";
 import Header from "@/components/layout/Header";
 import { api } from "@/api/apiClient";
@@ -9,11 +9,13 @@ import { PERMISSIONS } from "@/lib/permissions";
 import { saveBlob } from "@/lib/download";
 import { notify } from "@/lib/notify";
 import RestoreBackup from "@/components/admin/RestoreBackup";
+import DateRangeFields, { ymd } from "@/components/admin/DateRangeFields";
+import ReportsSection from "@/components/reports/ReportsSection";
 
-// Admin panel (Admin + Manager): pick a date range, see what it holds, download it as CSV, or
+// Admin panel (Admin + Manager): reports (income by month, top senders / recipients), then the
+// office's data: pick a date range, see what it holds, download it as CSV, restore a backup, or
 // delete it. Deleting needs a typed confirmation of the exact number of transactions shown, and the
 // server refuses if the data changed in between (see server/admin.js).
-const ymd = (date) => format(date, "yyyy-MM-dd");
 const money = (n) => `$${Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 function Card({ id, icon: Icon, title, description, tone = "blue", children }) {
@@ -80,19 +82,6 @@ export default function AdminPage() {
     setTo(end);
   };
 
-  const quickRanges = [
-    { key: "thisMonth", apply: () => setRange(ymd(startOfMonth(today)), ymd(today)) },
-    { key: "lastMonth", apply: () => { const last = subMonths(today, 1); setRange(ymd(startOfMonth(last)), ymd(endOfMonth(last))); } },
-    { key: "thisYear", apply: () => setRange(ymd(startOfYear(today)), ymd(today)) },
-    {
-      key: "allData",
-      apply: async () => {
-        const { first_date: first, last_date: last } = await api.admin.range();
-        if (first && last) setRange(first, last);
-      },
-    },
-  ];
-
   const download = async (kind) => {
     setDownloading(kind);
     try {
@@ -147,27 +136,10 @@ export default function AdminPage() {
           <p className="text-sm text-gray-500">{t("admin.subtitle")}</p>
         </div>
 
+        <ReportsSection />
+
         <Card id="admin-range" icon={CalendarRange} title={t("admin.range.title")} description={t("admin.range.description")}>
-          <div className="flex flex-wrap items-end gap-3">
-            <label className="flex flex-col gap-1 text-sm font-medium text-gray-700">
-              {t("admin.range.from")}
-              <input type="date" value={from} max={to || undefined} onChange={(e) => setRange(e.target.value, to)}
-                className="border rounded-lg px-3 py-2 font-bold focus:outline-none focus:ring-2 focus:ring-blue-300" data-testid="range-from" />
-            </label>
-            <label className="flex flex-col gap-1 text-sm font-medium text-gray-700">
-              {t("admin.range.to")}
-              <input type="date" value={to} min={from || undefined} onChange={(e) => setRange(from, e.target.value)}
-                className="border rounded-lg px-3 py-2 font-bold focus:outline-none focus:ring-2 focus:ring-blue-300" data-testid="range-to" />
-            </label>
-            <div className="flex flex-wrap gap-2" role="group" aria-label={t("admin.range.quick")}>
-              {quickRanges.map(({ key, apply }) =>
-                <button key={key} type="button" onClick={apply} data-testid={`range-${key}`}
-                  className="px-3 py-2 rounded-lg border text-sm text-gray-700 hover:bg-gray-50 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400">
-                  {t(`admin.range.${key}`)}
-                </button>
-              )}
-            </div>
-          </div>
+          <DateRangeFields from={from} to={to} onChange={setRange} testIdPrefix="range" />
 
           {/* What the range holds — the preview for both the backup and the delete. */}
           <div className="mt-4 rounded-lg bg-gray-50 border px-4 py-3 text-sm" aria-live="polite" data-testid="range-summary">
@@ -181,9 +153,9 @@ export default function AdminPage() {
               <div className="flex flex-wrap gap-x-6 gap-y-1">
                 <span className="font-bold text-gray-800">{t("admin.summary.transactions", { count: txCount, days: summary.days })}</span>
                 <span className="text-gray-700">{t("admin.summary.balances", { count: balanceCount })}</span>
-                <span className="text-green-700" dir="ltr">{t("admin.summary.in")} {num(money(summary.total_in))}</span>
-                <span className="text-red-700" dir="ltr">{t("admin.summary.out")} {num(money(summary.total_out))}</span>
-                <span className="text-orange-600" dir="ltr">{t("admin.summary.commission")} {num(money(summary.total_commission))}</span>
+                <span className="text-green-700">{t("admin.summary.in")} <span dir="ltr">{num(money(summary.total_in))}</span></span>
+                <span className="text-red-700">{t("admin.summary.out")} <span dir="ltr">{num(money(summary.total_out))}</span></span>
+                <span className="text-orange-600">{t("admin.summary.commission")} <span dir="ltr">{num(money(summary.total_commission))}</span></span>
               </div>
             }
           </div>

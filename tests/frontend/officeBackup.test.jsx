@@ -19,7 +19,7 @@ vi.mock("@/api/apiClient", () => ({
   api: {
     auth: { updatePreferences: vi.fn() },
     commissionRates: { get: vi.fn(), set: vi.fn(), remove: vi.fn() },
-    admin: { restorePreview: vi.fn(), restore: vi.fn(), summary: vi.fn(), range: vi.fn(), exportCsv: vi.fn(), purge: vi.fn() },
+    admin: { restorePreview: vi.fn(), restore: vi.fn(), summary: vi.fn(), range: vi.fn(), exportCsv: vi.fn(), purge: vi.fn(), reports: { income: vi.fn(async (year) => ({ year, years: [year], months: [] })), parties: vi.fn(async ({ party, from, to, by }) => ({ party, from, to, by, totals: { rows: 0, volume: 0, commission: 0, parties: 0, unnamed_rows: 0, unnamed_volume: 0 }, rows: [] })) } },
   },
 }));
 
@@ -205,7 +205,7 @@ describe("Admin panel → restore from a backup", () => {
   it("sits in the admin panel, after Backup and before Delete data, and points to the Backup section", async () => {
     openAdmin();
     const sections = [...document.querySelectorAll("main section[data-testid]")].map((el) => el.dataset.testid);
-    expect(sections).toEqual(["admin-range", "admin-backup", "admin-restore", "admin-delete"]);
+    expect(sections).toEqual(["admin-reports", "admin-range", "admin-backup", "admin-restore", "admin-delete"]);
     expect(screen.getByRole("region", { name: "الاستعادة من نسخة احتياطية" })).toHaveTextContent("استخدم ملفاً تم تنزيله من قسم النسخة الاحتياطية أعلاه");
     expect(screen.queryByRole("link", { name: "تنزيل نسخة احتياطية" })).not.toBeInTheDocument();
     await screen.findByTestId("range-summary");
