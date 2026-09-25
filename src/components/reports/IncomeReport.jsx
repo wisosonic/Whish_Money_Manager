@@ -1,8 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { api } from "@/api/apiClient";
-import IncomeChart from "@/components/reports/IncomeChart";
+import ChartFallback from "@/components/reports/ChartFallback";
 import { useI18n } from "@/lib/i18n";
 import { finalizeMonthlyRows } from "@/lib/monthlyChartData";
+
+// Recharts is a separate download (shared with the dashboard's chart window), fetched on first use.
+const IncomeChart = lazy(() => import("@/components/reports/IncomeChart"));
 
 // Reports → Income: the dashboard's monthly chart, from the server's monthly sums (so it covers
 // every transaction without loading them all in the browser).
@@ -38,6 +41,7 @@ export default function IncomeReport() {
 
   return (
     <div className="border rounded-xl overflow-hidden" data-testid="income-report">
+      <Suspense fallback={<ChartFallback />}>
       <IncomeChart
         data={data}
         years={years}
@@ -50,6 +54,7 @@ export default function IncomeReport() {
             <p className="text-xs text-gray-500">{t("adminReports.income.description")}</p>
           </div>
         } />
+      </Suspense>
       {error && <p role="alert" className="px-4 pb-4 text-sm text-red-600">{error}</p>}
     </div>
   );

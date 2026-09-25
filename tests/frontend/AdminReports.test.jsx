@@ -4,7 +4,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { format, startOfYear } from "date-fns";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import AdminPage from "@/pages/AdminPage";
 import ReportsSection from "@/components/reports/ReportsSection";
 import { LanguageProvider } from "@/lib/i18n";
@@ -48,6 +48,9 @@ const partiesOf = ({ party, from, to, by, limit }, overrides = {}) => ({
   ].slice(0, limit),
   ...overrides,
 });
+
+// The chart is loaded on demand (lazy); loading its code once here keeps the tests fast.
+beforeAll(async () => { await import("@/components/reports/IncomeChart"); }, 60000);
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
@@ -128,6 +131,18 @@ describe("reports section", () => {
     expect(tab("أكبر المستلمين")).toHaveAttribute("aria-selected", "true");
     fireEvent.keyDown(tab("أكبر المستلمين"), { key: "Home" });
     expect(tab("الدخل")).toHaveAttribute("aria-selected", "true");
+  });
+});
+
+describe("chart loading placeholder (the chart code downloads on first use)", () => {
+  it("inline in the report, and as a window-sized overlay on the dashboard (above the header)", async () => {
+    const { default: ChartFallback } = await import("@/components/reports/ChartFallback");
+    const { unmount } = render(wrap(<ChartFallback />));
+    expect(screen.getByRole("status")).toHaveTextContent("جاري التحميل");
+    expect(screen.getByTestId("chart-code-loading").closest(".fixed")).toBeNull();
+    unmount();
+    render(wrap(<ChartFallback overlay />));
+    expect(screen.getByTestId("chart-code-loading").closest(".fixed")).toHaveClass("inset-0", "z-50");
   });
 });
 

@@ -133,7 +133,13 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
     - Passive loads (the admin preview, the users list) keep inline errors only.
   - **Settings:** saves use one toast id (`settings-save`), so quick changes update a single toast. Every save reports success or failure, language included. The toast text is read from `i18nNow` (a ref to the current `t`/`errorText`) when the save settles, so switching to English confirms in English. A closure captured the old language, and a test caught it.
   - **Silent failures fixed at the same time:** the import save (only `console.error`), the Edit modal (only `console.error`), and Cash In/Out, which had no try/catch and stayed stuck on "saving".
-  - **Other toast libraries:** `react-hot-toast` and `@radix-ui/react-toast` are still installed but unused. Don't add a second notification system.
+  - **One notification system:** `react-hot-toast`, `@radix-ui/react-toast` and the shadcn `ui/toast.jsx` / `toaster.jsx` / `use-toast.jsx` were removed on 2026-09-25 (`codebase.test.js` checks they stay gone). Don't add a second one.
+- **Code splitting** (2026-09-25; the bundle had grown to 936 kB, over Vite's 500 kB warning):
+  - **Chart:** Recharts is imported only by `src/components/reports/IncomeChart.jsx`. The dashboard's `MonthlyChartModal` (in `TransactionsList`) and `IncomeChart` (in `IncomeReport`) are `lazy(() => import(…))` behind `<Suspense fallback={<ChartFallback …/>}>` (`overlay` for the modal: a z-50 window-sized placeholder).
+  - **Pages:** `App.jsx` loads Users, Settings, Admin and Profile with `lazy()` behind one `<Suspense fallback={<PageSpinner />}>` around `<Routes>`. The Dashboard (what everyone opens) stays static.
+  - **Result:** main `index-*.js` 936 → 446 kB, `IncomeChart-*.js` 424 kB on demand, pages 7–27 kB each, and no size warning.
+  - **Keep it:** don't import `IncomeChart` or `MonthlyChartModal` statically anywhere else (`codebase.test.js` fails if you do). `ui/chart.jsx` (shadcn) also imports Recharts but nothing uses it.
+  - **Tests:** a lazy chart's first load takes several seconds under Vitest (transforming Recharts), longer than `findBy`'s 1s. Test files that open it preload the module in `beforeAll` (`TransactionsList.test.jsx`, `AdminReports.test.jsx`).
 - `src/lib/permissions.js` **re-exports `server/permissions.js`**, so the UI and the API share one definition. Never duplicate the rules.
 - `src/components/transactions/ImportPDFModal.jsx`: the single import screen for both engines. Steps: upload → (duplicates) → preview → saving → done.
 - `src/pages/Dashboard.jsx`: all totals and balances are calculated in the browser. Search logic is in `src/lib/transactionSearch.js`.
@@ -322,7 +328,6 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - A backup made before an email change restores rows under the old address; they're then editable only by Admin/Manager.
   - Sessions are never pruned; rows are deleted only by logout, deactivation or password reset.
   - Fixed on 2026-09-24: SQL injection through filter keys, the trusted `x-user-email` header, and PUT/DELETE without permission checks.
-- **Bundle size:** the JS bundle is about 796 kB (Recharts), and Vite warns about chunks over 500 kB. Code-splitting the chart modal would fix it.
 - **Import preview**: editing amount or commission rate doesn't recalculate commission, and the phone column is hidden (it was already commented out).
 
 ## Change log
@@ -358,6 +363,11 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - `Dashboard` computes `yearly*` figures.
   - Added `StatsCards.test.jsx` and Dashboard summary tests. Total now 104.
 ### 2026-09-25
+- **Maintenance** (user's request):
+  - **Code splitting:** the chart and the non-dashboard pages load on demand; the main bundle went from 936 kB to 446 kB and Vite's size warning is gone (see Architecture).
+  - **Removed unused packages** `react-hot-toast` and `@radix-ui/react-toast`, and the three shadcn toast files that used them.
+  - **Git remote:** GitHub reports the repository moved to `wisosonic/Whish_Money_Manager`. Changing `origin` was left to the user (the tool's safety check blocks repointing a remote): `git remote set-url origin https://github.com/wisosonic/Whish_Money_Manager.git`.
+  - **Tests:** `codebase.test.js` guards (packages gone, toast files gone, Recharts only in `IncomeChart`, lazy chart and pages), a `ChartFallback` test, and the chart-opening test now waits for the lazy load.
 - **Admin panel in two columns** (user's request): reports | the office's data, from 1280px; stacked below. A test checks which sections sit in which column.
 - **Search scope switch moved** to the start of the dashboard's search row, before the search box (user's request). A Dashboard test checks the order.
 - **Admin panel reports** (user's request): a Reports section first in the panel, with Income (the dashboard chart, from server-side monthly sums), Top senders (Cash In) and Top recipients (Cash Out) with date range, rank-by and top-N filters.

@@ -1,4 +1,5 @@
-// Guards for removed code: the unused modals stay deleted, and the API client keeps its new name.
+// Guards for removed code (the unused modals and toast packages stay deleted, the API client keeps
+// its new name) and for the bundle split (Recharts and the non-dashboard pages load on demand).
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -37,5 +38,63 @@ describe("removed and renamed code", () => {
       .filter((f) => /\bbase44(?:Client)?\b(?!\\?\.com)/.test(fs.readFileSync(f, "utf8")))
       .map((f) => path.relative(root, f));
     expect(leftovers).toEqual([]);
+  });
+});
+
+describe("unused packages", () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+  const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+
+  it.each(["react-hot-toast", "@radix-ui/react-toast"])("%s is uninstalled and not imported (notifications use sonner)", (name) => {
+    expect(deps).not.toHaveProperty(name);
+    const users = sources.filter((f) => f !== __filename && fs.readFileSync(f, "utf8").includes(`"${name}"`));
+    expect(users.map((f) => path.relative(root, f))).toEqual([]);
+  });
+
+  it("the shadcn toast files that used them are deleted; sonner is the only notification system", () => {
+    ["toast.jsx", "toaster.jsx", "use-toast.jsx"].forEach((file) =>
+      expect(fs.existsSync(path.join(root, "src/components/ui", file))).toBe(false));
+    expect(deps).toHaveProperty("sonner");
+  });
+});
+
+describe("bundle split", () => {
+  const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
+  const relative = (f) => path.relative(root, f).split(path.sep).join("/");
+  const appSources = filesUnder("src", /\.jsx?$/);
+  // A static `import … from "<target>"` (as opposed to a lazy `import("<target>")`).
+  const importsStatically = (source, target) =>
+    new RegExp(`^import[^;]*from ["']${target.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")}["']`, "m").test(source);
+
+  it("only the shared chart imports Recharts (ui/chart.jsx is an unused shadcn file)", () => {
+    const users = appSources.filter((f) => /from ["']recharts["']/.test(fs.readFileSync(f, "utf8"))).map(relative);
+    expect(users.sort()).toEqual(["src/components/reports/IncomeChart.jsx", "src/components/ui/chart.jsx"]);
+    expect(appSources.filter((f) => /components\/ui\/chart["']/.test(fs.readFileSync(f, "utf8")))).toEqual([]);
+  });
+
+  it("the chart loads on demand: the dashboard window and the income report use lazy(() => import(…))", () => {
+    const list = read("src/components/dashboard/TransactionsList.jsx");
+    expect(importsStatically(list, "@/components/dashboard/MonthlyChartModal")).toBe(false);
+    expect(list).toContain('lazy(() => import("@/components/dashboard/MonthlyChartModal"))');
+    const report = read("src/components/reports/IncomeReport.jsx");
+    expect(importsStatically(report, "@/components/reports/IncomeChart")).toBe(false);
+    expect(report).toContain('lazy(() => import("@/components/reports/IncomeChart"))');
+    // Nothing else pulls the chart in statically (the window itself is loaded lazily).
+    const staticUsers = appSources
+      .filter((f) => path.basename(f) !== "MonthlyChartModal.jsx")
+      .filter((f) => ["@/components/reports/IncomeChart", "@/components/dashboard/MonthlyChartModal"]
+        .some((target) => importsStatically(fs.readFileSync(f, "utf8"), target)))
+      .map(relative);
+    expect(staticUsers).toEqual([]);
+  });
+
+  it("pages other than the dashboard load on demand, behind a Suspense spinner", () => {
+    const app = read("src/App.jsx");
+    ["UsersPage", "SettingsPage", "AdminPage", "ProfilePage"].forEach((page) => {
+      expect(importsStatically(app, `./pages/${page}`)).toBe(false);
+      expect(app).toContain(`const ${page} = lazy(() => import("./pages/${page}"));`);
+    });
+    expect(importsStatically(app, "./pages/Dashboard")).toBe(true);
+    expect(app).toMatch(/<Suspense fallback={<PageSpinner \/>}>\s*<Routes>/);
   });
 });

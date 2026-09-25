@@ -428,7 +428,7 @@ A sample export is included: `AccountStatementCSV_20200813.csv` (also used as a 
 |---|---|
 | `npm run dev` | Run web app and API together |
 | `npm run seed` | Create/restore the default roles and the first Admin (see First-time setup) |
-| `npm run build` | Production build of the frontend into `dist/` |
+| `npm run build` | Production build of the frontend into `dist/`. The dashboard is the main download (about 446 kB); the chart (Recharts, about 424 kB) and the other pages are separate files, fetched the first time they're opened |
 | `npm run lint` | ESLint |
 | `npm test` | Run the test suite once |
 | `npm run test:watch` | Tests in watch mode |
@@ -491,7 +491,8 @@ tests/
     ├── ReceiverReportModal.test.jsx  # receiver matching, totals, date filter
     ├── branding.test.jsx             # header (logo, name, role, last login, sticky), login page, tab title/icon, manifest
     ├── notifications.test.jsx        # toasts: position/direction/theme, kinds, and each action's feedback
-    ├── codebase.test.js              # the removed modals stay deleted; no leftover base44 names
+    ├── codebase.test.js              # removed modals and toast packages stay gone; no base44 names; the chart
+    │                                 # and non-dashboard pages stay loaded on demand
     ├── i18n.test.jsx                 # language toggle: dictionaries match, no untranslated text, cookie,
     │                                 # page direction, main screens in English
     ├── StatsCards.test.jsx           # monthly/yearly summaries: defaults, collapse, layout, animation

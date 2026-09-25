@@ -1,12 +1,15 @@
 /** @vitest-environment jsdom */
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import TransactionsList from "@/components/dashboard/TransactionsList";
 import { api } from "@/api/apiClient";
 import { setAuthRole } from "./authMock";
 
 vi.mock("@/lib/AuthContext", async () => (await import("./authMock")).authContextMock);
 beforeEach(() => setAuthRole("admin"));
+// The chart window is loaded on demand (lazy). Loading its code once here keeps the first open fast
+// in the tests; the app itself downloads it the first time the chart is opened.
+beforeAll(async () => { await import("@/components/dashboard/MonthlyChartModal"); }, 60000);
 
 vi.mock("@/api/apiClient", () => ({
   api: { entities: { Transaction: { delete: vi.fn(), bulkDelete: vi.fn(), bulkUpdate: vi.fn() } } },
@@ -77,10 +80,10 @@ describe("TransactionsList", () => {
     expect(screen.queryByRole("button", { name: /تحديث/ })).not.toBeInTheDocument();
   });
 
-  it("opens and closes the monthly chart", () => {
+  it("opens and closes the monthly chart (its code loads on first open)", async () => {
     renderList();
     fireEvent.click(screen.getByRole("button", { name: /الرسم البياني/ }));
-    expect(screen.getByText("الرسم البياني الشهري")).toBeInTheDocument();
+    expect(await screen.findByText("الرسم البياني الشهري")).toBeInTheDocument();
     expect(screen.getByLabelText("السنة")).toHaveValue("2026");
     fireEvent.click(screen.getByRole("button", { name: "إغلاق" }));
     expect(screen.queryByText("الرسم البياني الشهري")).not.toBeInTheDocument();

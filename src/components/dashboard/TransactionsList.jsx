@@ -1,8 +1,8 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, lazy, Suspense } from "react";
 import { Search, FileText, Trash2, Pencil, X, Loader2, UserSearch, UserCheck, Percent, BarChart3, ArrowDown, ArrowUp, ArrowUpDown, ChevronUp, ChevronDown, Lock, LockOpen } from "lucide-react";
 import BulkEditModal from "@/components/transactions/BulkEditModal";
 import SenderReportModal from "@/components/transactions/SenderReportModal";
-import MonthlyChartModal from "@/components/dashboard/MonthlyChartModal";
+import ChartFallback from "@/components/reports/ChartFallback";
 import ReceiverReportModal from "@/components/transactions/ReceiverReportModal";
 import { format } from "date-fns";
 import { api } from "@/api/apiClient";
@@ -10,6 +10,9 @@ import EditTransactionModal from "@/components/transactions/EditTransactionModal
 import DailyCommissionReport from "@/components/transactions/DailyCommissionReport";
 import { useAuth } from "@/lib/AuthContext";
 import { PERMISSIONS } from "@/lib/permissions";
+
+// The chart window pulls in Recharts (most of the bundle), so it's downloaded the first time it's opened.
+const MonthlyChartModal = lazy(() => import("@/components/dashboard/MonthlyChartModal"));
 import { useI18n } from "@/lib/i18n";
 import { notify } from "@/lib/notify";
 import { NO_SORT, nextSort, sortTransactions } from "@/lib/transactionSort";
@@ -848,11 +851,12 @@ export default function TransactionsList({
 
       }
       {showChart &&
-      <MonthlyChartModal
-        allTransactions={allTransactions}
-        selectedDate={selectedDate}
-        onClose={() => setShowChart(false)} />
-
+      <Suspense fallback={<ChartFallback overlay />}>
+          <MonthlyChartModal
+            allTransactions={allTransactions}
+            selectedDate={selectedDate}
+            onClose={() => setShowChart(false)} />
+        </Suspense>
       }
       {showReceiverReport &&
       <ReceiverReportModal
