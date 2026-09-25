@@ -64,7 +64,8 @@ It runs entirely on your machine: a React frontend and a small Node.js/Express A
     - Rows with an empty value always go last, and rows with the same value keep their journal order.
   - The "#" column always shows each row's real number in the day's journal. Selecting rows and bulk actions work the same while sorted.
   - The sort resets when the page reloads.
-- **Personal settings** (⚙️ in the header): each user chooses their language, light or dark theme, which table columns to show, compact or comfortable rows, and which summaries start open. Saved to their account. See [Settings](#settings).
+- **Settings** (⚙️ in the header), grouped in tabs: language, start-up day, clock, number style, theme, row spacing, summaries, table columns, default sort, rows per page, default search scope and notifications, all saved to each user's account. Admins and Managers also set the office **commission rate** and **restore backups** there. See [Settings](#settings).
+- **Closing a day** (Admin and Manager): lock a day so nobody can add, edit, import or delete its transactions or change its opening balance, until it's reopened. See [Closing a day](#closing-a-day).
 - **Admin panel** (Admin and Manager): download a CSV backup of any date range, or permanently delete all data in a range. See [Admin panel](#admin-panel-admin-and-manager).
 - **Notifications**: a short message pops up in the bottom corner (bottom-left in Arabic, bottom-right in English; full width on phones) after every action, so you always know whether it worked.
   - **Kinds:** green for success, blue for information, amber for warnings and red for errors. Each has its own icon, and the text says what happened.
@@ -196,6 +197,9 @@ Everyone signs in with their own email and password. There are three roles:
 | Manage users and roles (المستخدمون page) | ✓ | — | — |
 | Admin panel: CSV backup by date range | ✓ | ✓ | — |
 | Admin panel: delete all data in a date range | ✓ | ✓ | — |
+| Close / reopen a day | ✓ | ✓ | — |
+| Settings → Office: commission rate | ✓ | ✓ | — |
+| Settings → Backup & restore: restore a backup | ✓ | ✓ | — |
 
 - **Everyone sees everything.** The office shares one set of transactions; roles only limit what people may change.
 - **The server enforces every rule.** Buttons a user can't use are hidden, but the API also refuses the action (HTTP 403), so the rules can't be bypassed.
@@ -222,25 +226,73 @@ Everyone signs in with their own email and password. There are three roles:
 
 ### Settings
 
-Every user has a **Settings** page: click the ⚙️ gear in the header (next to Log out). Changes apply **immediately** and are **saved to your account** on the server, so they follow you to any device or browser. A small status line at the top says "Saving…", then "Saved", or explains what went wrong. If a save fails, the previous value comes back.
+Every user has a **Settings** page: click the ⚙️ gear in the header (next to Log out). The options are grouped in **tabs**: a column beside the page on a computer, a row you can scroll on a phone. Use the arrow keys to move between tabs. The open tab is part of the address (e.g. `/settings#table`), so it can be bookmarked or shared.
 
-- **Language:** العربية or English. The whole interface switches at once, and the choice is saved to your account.
-- **Table columns:** tick or untick any of the 11 columns of the transactions table:
-  - #, Type, Sender, Receiver, Amount, Commission rate, Commission, Reference, Service, Note, Date
-  - The row checkboxes and the edit/delete buttons always stay.
-  - At least one column must stay visible, so the last one can't be unticked.
+Personal settings apply **immediately** and are **saved to your account** on the server, so they follow you to any device or browser. A status line at the top says "Saving…", then "Saved", or explains what went wrong; if a save fails, the previous value comes back. Personal settings never change what other users see.
+
+**General**
+- **Language:** العربية or English. The whole interface switches at once.
+- **Start on:** *the last day viewed* (the default; remembered in this browser) or *today*.
+- **Clock:** *12-hour* (default), *24-hour*, or *hide the clock*. The "last login" time in the header follows the same choice.
+- **Number style:** *Western digits* (0123, the default) or *Arabic-Indic digits* (٠١٢٣).
+  - It applies to the Arabic interface: amounts, counts, dates, the clock, the summaries, the chart and the admin panel.
+  - Phone numbers, reference and customer numbers, and anything you type stay as they are, because they're codes you copy elsewhere.
+
+**Appearance**
+- **Theme:** *Light* (the default), *Dark*, or *Match system*, which follows the device's light/dark setting and switches with it.
+  - Dark mode covers every screen, pop-up and the chart, which uses its own colours checked for colour-blind readers on the dark background.
+  - The header and login page are dark in both themes.
+  - The theme is also remembered in this browser (cookie `wmm_theme`), so a dark page doesn't flash white while loading.
+- **Row spacing:** *Comfortable* (the default) or *Compact*, which fits more transactions on screen.
+- **Summaries open when the page loads:** whether "ملخص الشهر" and "ملخص السنة" start expanded (default: month open, year closed).
+
+**Transactions table**
+- **Table columns:** tick or untick any of the 11 columns (#, Type, Sender, Receiver, Amount, Commission rate, Commission, Reference, Service, Note, Date).
+  - The row checkboxes and the edit/delete buttons always stay, and at least one column must stay visible.
   - "Show all columns" brings them all back.
-  - Hiding a column you had sorted by returns the table to the journal order.
-- **Display:**
-  - **Theme:** *Light* (the default), *Dark*, or *Match system*, which follows the device's light/dark setting and switches with it (e.g. at sunset, if the device does).
-    - Dark mode covers every screen, pop-up and the chart, which uses its own colours checked for colour-blind readers on the dark background.
-    - The header and login page are dark in both themes.
-    - The theme is also remembered in this browser (cookie `wmm_theme`), so a dark page doesn't flash white while loading.
-  - **Row spacing:** *Comfortable* (the default) or *Compact*, which fits more transactions on screen.
-  - **Summaries open when the page loads:** whether "ملخص الشهر" and "ملخص السنة" start expanded. The defaults are month open and year closed. You can still open or close them on the dashboard at any time.
-- **Restore default display settings** resets the theme, columns, row spacing and summaries in one step. Your language is left as it is.
+- **Default sort:** the column and direction the table opens sorted by. The default is the journal order, with no sort. You can still sort by clicking a column header.
+- **Rows per page:** *All on one page* (the default), or *25*, *50* or *100* rows with **Previous / Next** under the table and "1–25 of 230".
+  - Changing the day, the search, the sort or the page size goes back to page 1; editing or deleting a row doesn't.
+  - Selecting "all" selects the rows on the current page, since only visible rows can be selected.
+- **Search in:** whether a search starts on *All days* (default) or *This day*. The switch next to the search box still changes it at any time.
 
-Settings are personal: they never change what other users see.
+**Notifications**
+- **How long they stay:** *Short* (half), *Normal* (4 seconds; warnings 7, errors 8) or *Long* (twice as long).
+- **Confirmations:** untick "Show a message when an action succeeds" to see only warnings and errors, which always show.
+
+**Restore my default settings** (at the bottom of the personal tabs) resets every personal setting above except your language.
+
+**Office** (Admin and Manager) → **Commission rate**
+- **What it is:** the commission on credits (Cash In and imported deposits), for the whole office. It starts at the long-standing 1%.
+- **Changing it:** enter a new rate (0–100%, up to 3 decimals) and the day it applies from (default: today), then confirm.
+- **Existing transactions keep their commission;** it's never recalculated.
+- **Which rate applies:** new Cash In entries use today's rate. Imported statements use the rate in effect on each transaction's own date, so an old statement imported later gets the rate of its day.
+- **The history** lists every rate with its start date and who set it. A rate scheduled for a future date is marked *scheduled* and can be removed; past rates are kept as history. To correct one, set a new rate from the right date.
+
+**Backup & restore** (Admin and Manager) → **Restore from a backup**
+1. **Choose a backup file:** a CSV downloaded from the [admin panel](#admin-panel-admin-and-manager) (transactions or opening balances; the type is detected automatically). There's a link there to make one.
+2. **Check the preview.** Nothing is changed yet. It shows:
+   - How many rows the file holds, and how many will be added (with their dates and totals).
+   - How many are already in the database. These are left exactly as they are.
+   - How many are on closed days. These are skipped and the days listed.
+3. **Confirm** to add the missing rows back exactly as they were: same dates and same "entered by". A notification says how many were restored.
+- **How rows are matched:** transactions by their original ID, which is never reused, so a restore puts back what was deleted and never duplicates what's still there. Opening balances are matched by date (one per day).
+- **Files that can't be restored:** a file with any invalid row (e.g. a bad amount or type) is refused, and the preview lists the lines and columns, so a damaged or edited file is never half-restored. A file that isn't a backup is refused too.
+- **If the data changed** after the preview (someone added or deleted rows), nothing is written: you get a warning and the refreshed counts.
+- **Empty text:** a CSV can't tell an empty field from one that was never filled in. Both come back empty, and the app treats them the same.
+
+### Closing a day
+
+Admins and Managers can **close** a day once it's been checked, for example after reconciling the statement. Nobody can then change it until it's reopened.
+
+- **How:** pick the day, then click **إغلاق اليوم** (Close day) next to the date picker, and confirm. **إعادة فتح اليوم** (Reopen day) unlocks it, also after a confirmation.
+- **What's locked:** adding, editing, importing and deleting that day's transactions, including moving a transaction onto or off the day and bulk actions that include one. The day's opening balance is locked too, and the admin panel can't delete a range that contains it.
+- **Enforced by the server:** the rules hold whatever screen or request is used.
+- **What everyone sees:** a banner, "2026-09-23 is closed: no changes can be made", with who closed it and when. Its rows show a 🔒 instead of the edit/delete buttons.
+  - "Delete all for this day" and the opening-balance pencil are hidden.
+  - Bulk edit/delete are disabled if any selected row is on a closed day.
+  - When *today* is closed, Cash In / Cash Out are disabled, because they're entered on today's date.
+- **Notifications:** closing and reopening each confirm with one. A refused change (e.g. an import that includes a closed day) shows the reason.
 
 ### Admin panel (Admin and Manager)
 
@@ -281,6 +333,7 @@ Safety rules: there must always be at least one active Admin, and an Admin can't
 2. Import that day's statement ("استيراد PDF / CSV") or add entries with **Cash In** / **Cash Out**.
 3. Check the wallet summary: opening balance + deposits − withdrawals = net balance.
 4. Open **ملخص الشهر** / **ملخص السنة** at the top for totals across the whole month or year.
+5. (Admin / Manager) Once the day is checked, **close it** so it can't be changed by mistake.
 
 ### Importing a statement
 
@@ -296,8 +349,8 @@ Safety rules: there must always be at least one active Admin, and an Admin can't
 | Rule | Behaviour |
 |---|---|
 | Direction | Debit → **Cash Out**, credit → **Cash In** |
-| Commission (CSV) | 1% of every credit (rounded to 3 decimals). Debits have no commission. |
-| Commission (PDF) | 1% of credits, except descriptions containing "cashin" or "qr topup" and services containing "reversed". Debits have no commission. |
+| Commission (CSV) | The office commission rate (1% unless changed in Settings → Office) on every credit, using the rate in effect on the transaction's date, rounded to 3 decimals. Debits have no commission. |
+| Commission (PDF) | The office commission rate on credits (as for CSV), except descriptions containing "cashin" or "qr topup" and services containing "reversed". Debits have no commission. |
 | `NAME - 96171588017` | Split in both engines: name → sender/receiver, `phone` = `96171588017`, `customer_number` = `71588017` (without 961) |
 | Bare phone as receiver | Moved to `phone` / `customer_number` on save |
 | Duplicates | Same reference number for the same user |
@@ -367,6 +420,7 @@ tests/
 │   │                         # own-vs-others edits, live role changes
 │   ├── preferences.test.js   # per-user settings: defaults, partial saves, validation (400), per-account,
 │   │                         # tolerant reading of stored JSON, database upgrade
+│   ├── office.test.js        # closed days on every write route (423), commission rate + engines, restore
 │   ├── admin.test.js         # admin panel API: permissions, preview, CSV (quoting, formula guard, BOM),
 │   │                         # delete by range (409 when counts changed), permission upgrade
 │   ├── users.test.js         # Admin user management, deactivation/reset revoke sessions, last-Admin rules
@@ -386,6 +440,9 @@ tests/
     │                                 # multi-select, select-all, bulk edit/delete flows,
     │                                 # type icons, sorting by every column
     ├── transactionSort.test.js       # sort cycle, stability, empty values last, natural/Arabic order
+    ├── settingsOptions.test.jsx      # settings tabs (keyboard, link), each new option and what it changes
+    ├── dayClosing.test.jsx           # close / reopen a day, what's locked; pages, default sort, digits, Cash In rate
+    ├── officeBackup.test.jsx         # office commission rate (history, scheduled), restore from a backup
     ├── AdminPage.test.jsx            # admin panel: ranges, preview, downloads, typed-count delete, 409, header link
     ├── theme.test.jsx                # dark mode: saved/system theme, pre-paint script, stylesheet mappings, chart
     ├── download.test.js              # saving a CSV download
@@ -417,7 +474,9 @@ server/index.js               Express API routes (with permission checks), PDF +
 server/auth.js                Login/logout, JWT session cookie, authenticate + requirePermission middleware, user admin API
 server/permissions.js         Permission names and the three default roles (shared with the frontend)
 server/db.js                  SQLite connection and schema (transactions, daily_balances, roles, users, sessions)
-server/admin.js               Admin panel API: range preview, CSV export, delete by date range
+server/admin.js               Admin panel API: range preview, CSV export, delete by date range, backup restore
+server/office.js              Closed days (and their enforcement helpers), office commission rate and history
+server/csv.js                 RFC 4180 CSV parser shared by the statement engine and restore
 server/preferences.js         Per-user settings: column list, defaults, validation (shared with the frontend)
 server/seed.js                `npm run seed`: default roles + first Admin + legacy data migration
 src/api/apiClient.js          API client for the local Express API
@@ -427,6 +486,7 @@ src/pages/Dashboard.jsx       Main screen: totals, balances, day filter, search
 src/pages/UsersPage.jsx       Admin: users and roles
 src/pages/SettingsPage.jsx    Every user: language, theme, visible table columns, row spacing, summaries
 src/pages/AdminPage.jsx       Admin + Manager: CSV backup and delete by date range
+src/components/settings/      Settings building blocks, the commission-rate editor and backup restore
 src/lib/PreferencesContext.jsx  The signed-in user's settings: applied at once, saved in order to the account
 src/components/dashboard/     Stats cards, wallet summary, transactions table, monthly chart
 src/components/transactions/  Import, cash in/out, edit, sender/receiver/commission reports
@@ -447,6 +507,7 @@ All routes are under `/local-api`.
 - **Public:** only `/health`, `/auth/login` and `/auth/logout`. Everything else needs the session cookie (401 without it).
 - **Permissions:** the "Needs" column lists the permission required (403 without it).
 - **Writes:** must be `application/json`.
+- **Closed days:** any write that would change a transaction or opening balance on a closed day (creating, editing, moving, deleting, bulk actions, imports) is refused with **423** `{ error, closed_days }`, and nothing changes.
 
 | Method | Route | Needs | Purpose |
 |---|---|---|---|
@@ -455,6 +516,13 @@ All routes are under `/local-api`.
 | GET | `/auth/me` | session | The signed-in user, including their `preferences` |
 | PUT | `/auth/preferences` | session (own account only) | Partial change, e.g. `{ density: "compact" }` or `{ hiddenColumns: ["note"] }`, merged over what's stored. Keys: `language` (`ar`/`en`/`null`), `hiddenColumns` (column keys; at least one must stay visible), `density` (`comfortable`/`compact`), `summaries` (`{ month, year }` booleans), `theme` (`light`/`dark`/`system`). Unknown keys or values → 400. Returns the user |
 | GET | `/admin/range` | `data:export` | `{ first_date, last_date }` of all data |
+| POST | `/admin/restore/preview` | `data:restore` | `{ csv }` (a backup CSV) → what restoring it would do: `kind`, `rows`, `to_add`, `existing`, `on_closed_days`, `closed_days`, `invalid` (`{ line, field }`), dates and totals |
+| POST | `/admin/restore` | `data:restore` | `{ csv, expected_count }` adds the missing rows back (same ids) in one database transaction. 409 if `to_add` changed, 400 if any row is invalid |
+| GET | `/closed-days` | `transactions:read` | Every closed day: `{ date, closed_by, closed_at }` |
+| POST / DELETE | `/closed-days` · `/closed-days/:date` | `days:close` | Close (`{ date }`) / reopen a day |
+| GET | `/commission-rates[?date=]` | `transactions:read` | `{ date, rate, current, history }`: the rate on `date`, today's rate, and every rate with its start date |
+| PUT | `/commission-rates` | `settings:office` | `{ rate, effective_from }`: set (or correct) the rate from a date |
+| DELETE | `/commission-rates/:effective_from` | `settings:office` | Remove a rate that hasn't started yet |
 | GET | `/admin/summary?from=&to=` | `data:export` | Counts and totals in the range (dates `YYYY-MM-DD`, both included) |
 | GET | `/admin/export?kind=&from=&to=` | `data:export` | CSV download; `kind` = `transactions` or `balances` |
 | POST | `/admin/purge` | `data:purge` | `{ from, to, expected_count }` deletes the range's transactions and opening balances in one database transaction. 409 (nothing deleted) if the range no longer has `expected_count` transactions |

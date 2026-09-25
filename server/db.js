@@ -15,6 +15,8 @@ export const nowIso = () => new Date().toISOString();
 // Owner of every row created before accounts existed (the old single "admin/admin" login).
 // The seed script reassigns these rows to the initial admin account.
 export const LEGACY_OWNER_EMAIL = "local@hawalaflow.app";
+// effective_from of the first commission rate (1%): before any real transaction.
+export const BASE_RATE_DATE = "2000-01-01";
 
 export const initializeDb = () => {
   db.exec(`
@@ -85,6 +87,24 @@ export const initializeDb = () => {
 
     CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 
+    -- Days closed for changes (Admin/Manager). No transaction or opening balance on a closed date
+    -- can be added, edited or deleted until the day is reopened.
+    CREATE TABLE IF NOT EXISTS closed_days (
+      date TEXT PRIMARY KEY,   -- YYYY-MM-DD
+      closed_by TEXT NOT NULL,
+      closed_at TEXT NOT NULL
+    );
+
+    -- Office commission rate on credits (percent), with the date it applies from. The rate for a
+    -- day is the latest entry on or before it. Stored commissions never change; only new ones use it.
+    CREATE TABLE IF NOT EXISTS commission_rates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      rate REAL NOT NULL,
+      effective_from TEXT NOT NULL UNIQUE,  -- YYYY-MM-DD
+      created_by TEXT NOT NULL,
+      created_date TEXT NOT NULL
+    );
+
     -- One-time upgrade steps already applied (e.g. "granted:data:export").
     CREATE TABLE IF NOT EXISTS app_meta (
       key TEXT PRIMARY KEY,
@@ -100,6 +120,12 @@ export const initializeDb = () => {
   }
   if (!userColumns.includes("preferences")) {
     db.exec("ALTER TABLE users ADD COLUMN preferences TEXT");
+  }
+
+  // The rate the app always used (1% on credits) is the starting point of the history.
+  if (!db.prepare("SELECT 1 FROM commission_rates LIMIT 1").get()) {
+    db.prepare("INSERT INTO commission_rates (rate, effective_from, created_by, created_date) VALUES (1, ?, 'system', ?)")
+      .run(BASE_RATE_DATE, nowIso());
   }
 };
 

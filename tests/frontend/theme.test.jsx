@@ -88,7 +88,8 @@ describe("theme preference", () => {
   it("choosing Dark / Light / Match system on the Settings page applies at once and saves", async () => {
     const device = deviceTheme(true);
     render(withProviders(<SettingsPage />));
-    expect(screen.getByRole("radiogroup", { name: "المظهر" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "المظهر" })); // the Appearance tab
+    expect(screen.getByRole("radiogroup", { name: "السمة" })).toBeInTheDocument();
     expect(screen.getByTestId("theme-light")).toBeChecked();
 
     fireEvent.click(screen.getByTestId("theme-dark"));

@@ -4,7 +4,8 @@ import { X } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { notify } from "@/lib/notify";
 
-export default function CashInModal({ onClose, onSaved }) {
+// commissionRate: the office rate (percent) for today, from Settings → Office (1% by default).
+export default function CashInModal({ onClose, onSaved, commissionRate = 1 }) {
   const { t, dir, errorText } = useI18n();
   const [form, setForm] = useState({
     sender_name: "",
@@ -12,7 +13,7 @@ export default function CashInModal({ onClose, onSaved }) {
     phone: "",
     amount: "",
     commission: "",
-    commission_rate: "1",
+    commission_rate: String(commissionRate),
     note: "",
     reference_number: "",
     currency: "USD",
@@ -55,7 +56,7 @@ export default function CashInModal({ onClose, onSaved }) {
     setForm((prev) => ({
       ...prev,
       amount: val,
-      commission: amt > 0 ? (amt * 0.01).toFixed(2) : "0",
+      commission: amt > 0 ? (amt * commissionRate / 100).toFixed(3) : "0",
     }));
   };
 
@@ -83,9 +84,9 @@ export default function CashInModal({ onClose, onSaved }) {
             />
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-sm text-gray-600 font-medium">{t("form.commissionOnePercent")}</label>
-            <div className="border rounded-lg px-3 py-2 text-sm bg-green-50 text-green-700 font-semibold">
-              ${(Number(form.amount || 0) * 0.01).toFixed(2)}
+            <label className="text-sm text-gray-600 font-medium">{t("form.commissionAtRate", { rate: commissionRate })}</label>
+            <div className="border rounded-lg px-3 py-2 text-sm bg-green-50 text-green-700 font-semibold" data-testid="cash-in-commission">
+              ${(Number(form.amount || 0) * commissionRate / 100).toFixed(3)}
             </div>
           </div>
           {field(t("columns.reference"), "reference_number", "text", t("form.referencePlaceholder"))}

@@ -18,6 +18,8 @@ vi.mock("@/api/apiClient", () => ({
       Transaction: { filter: vi.fn(), update: vi.fn(), delete: vi.fn() },
       DailyBalance: { filter: vi.fn(), create: vi.fn(), update: vi.fn() },
     },
+    closedDays: { list: vi.fn(), close: vi.fn(), reopen: vi.fn() },
+    commissionRates: { get: vi.fn() },
   },
 }));
 
@@ -52,6 +54,8 @@ beforeEach(() => {
   api.auth.me.mockResolvedValue({ email: "local@hawalaflow.app" });
   api.entities.Transaction.filter.mockResolvedValue(stored);
   api.entities.DailyBalance.filter.mockResolvedValue([]);
+  api.closedDays.list.mockResolvedValue([]);
+  api.commissionRates.get.mockResolvedValue({ rate: 1 });
 });
 
 afterEach(cleanup);

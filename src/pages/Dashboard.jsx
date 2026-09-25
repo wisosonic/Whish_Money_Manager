@@ -11,11 +11,14 @@ import { matchesSearch } from "@/lib/transactionSearch";
 import { useAuth } from "@/lib/AuthContext";
 import { useI18n } from "@/lib/i18n";
 import { notify } from "@/lib/notify";
+import { usePreferences } from "@/lib/PreferencesContext";
 import { PERMISSIONS } from "@/lib/permissions";
 
 export default function Dashboard() {
   const { can } = useAuth();
   const { dir, t, errorText } = useI18n();
+  const { preferences } = usePreferences();
+  const canCloseDays = can(PERMISSIONS.DAYS_CLOSE);
   // Everyone sees all office data; only Admin/Manager may set or clear opening balances.
   const canWriteBalances = can(PERMISSIONS.BALANCES_WRITE);
   const [transactions, setTransactions] = useState([]);
@@ -31,7 +34,9 @@ export default function Dashboard() {
     return `${y}-${m}-${day}`;
   };
   const today = getToday();
+  // Settings → General → Start on: the last day viewed (remembered in this browser) or today.
   const [selectedDate, setSelectedDate] = useState(() => {
+    if (preferences.startOn === "today") return getToday();
     return localStorage.getItem("selectedDate") || getToday();
   });
 
@@ -40,8 +45,45 @@ export default function Dashboard() {
     setSelectedDate(date);
   };
   const [search, setSearch] = useState("");
-  // Where a search looks: "all" days (default) or only the selected "day".
-  const [searchScope, setSearchScope] = useState("all");
+  // Where a search looks: "all" days or only the selected "day" — starts from Settings → Transactions table.
+  const [searchScope, setSearchScope] = useState(preferences.searchScope);
+
+  // ═══ Closed days (no changes allowed) and today's commission rate (for Cash In) ═══
+  const [closedDays, setClosedDays] = useState([]);
+  const [commissionRate, setCommissionRate] = useState(1);
+  const loadClosedDays = async () => {
+    try {
+      setClosedDays(await api.closedDays.list());
+    } catch {
+      // Not critical for viewing; the server still refuses changes to closed days.
+    }
+  };
+  useEffect(() => {
+    loadClosedDays();
+    api.commissionRates.get(getToday()).then((r) => setCommissionRate(r?.rate ?? 1)).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const closedInfo = closedDays.find((d) => d.date === selectedDate) || null;
+  const closedDates = new Set(closedDays.map((d) => d.date));
+
+  const handleCloseDay = async (date) => {
+    try {
+      await api.closedDays.close(date);
+      notify.success(t("toast.day.closed", { date }));
+    } catch (err) {
+      notify.error(err?.message ? errorText(err.message) : t("toast.day.failed"));
+    }
+    await loadClosedDays();
+  };
+  const handleReopenDay = async (date) => {
+    try {
+      await api.closedDays.reopen(date);
+      notify.success(t("toast.day.reopened", { date }));
+    } catch (err) {
+      notify.error(err?.message ? errorText(err.message) : t("toast.day.failed"));
+    }
+    await loadClosedDays();
+  };
   const [openingBalance, setOpeningBalance] = useState(0);
   const [dailyBalances, setDailyBalances] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
@@ -265,7 +307,7 @@ export default function Dashboard() {
           totalWithdrawals={totalWithdrawals}
           totalCommissions={totalCommissions}
           netBalance={dailyNetBalance}
-          onSaveOpeningBalance={canWriteBalances ? (val) => handleSetOpeningBalance(val, selectedDate) : undefined} />
+          onSaveOpeningBalance={canWriteBalances && !closedInfo ? (val) => handleSetOpeningBalance(val, selectedDate) : undefined} />
         
         <TransactionsList
           transactions={tableRows}
@@ -277,6 +319,11 @@ export default function Dashboard() {
           setSearchScope={setSearchScope}
           searchingAllDays={searchingAllDays}
           onOpenDay={(date) => {setSearch("");handleSetSelectedDate(date);}}
+          closedDay={closedInfo}
+          closedDates={closedDates}
+          canCloseDays={canCloseDays}
+          onCloseDay={handleCloseDay}
+          onReopenDay={handleReopenDay}
           selectedDate={selectedDate}
           setSelectedDate={handleSetSelectedDate}
           onToday={handleToday}
@@ -291,6 +338,7 @@ export default function Dashboard() {
 
       {showCashIn &&
       <CashInModal
+        commissionRate={commissionRate}
         onClose={() => setShowCashIn(false)}
         onSaved={() => {setShowCashIn(false);fetchTransactions(currentUser?.email);}} />
 

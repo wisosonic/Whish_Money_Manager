@@ -8,6 +8,7 @@
 //   • Manager: everything with transactions, imports, balances and reports; no user/role management.
 //   • Admin: everything.
 //   • Admin panel (Admin + Manager): download a CSV backup and delete all data for a date range.
+//   • Admin + Manager: restore a backup, close / reopen a day, set the office commission rate.
 
 export const PERMISSIONS = {
   TRANSACTIONS_READ: "transactions:read",
@@ -21,6 +22,9 @@ export const PERMISSIONS = {
   USERS_MANAGE: "users:manage",
   DATA_EXPORT: "data:export", // admin panel: CSV backup of transactions / opening balances by date range
   DATA_PURGE: "data:purge", // admin panel: delete every transaction and opening balance in a date range
+  DATA_RESTORE: "data:restore", // settings → backup & restore: add back rows from a backup CSV
+  DAYS_CLOSE: "days:close", // close / reopen a day (a closed day can't be changed by anyone)
+  OFFICE_SETTINGS: "settings:office", // office-wide settings: the commission rate
 };
 
 const P = PERMISSIONS;
@@ -59,6 +63,9 @@ export const DEFAULT_ROLES = [
 export const PERMISSIONS_ADDED_LATER = {
   [P.DATA_EXPORT]: ["admin", "manager"],
   [P.DATA_PURGE]: ["admin", "manager"],
+  [P.DATA_RESTORE]: ["admin", "manager"],
+  [P.DAYS_CLOSE]: ["admin", "manager"],
+  [P.OFFICE_SETTINGS]: ["admin", "manager"],
 };
 
 export const hasPermission = (user, permission) => Boolean(user?.permissions?.includes(permission));

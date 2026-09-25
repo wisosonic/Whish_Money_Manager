@@ -34,7 +34,7 @@ function Card({ id, icon: Icon, title, description, tone = "blue", children }) {
 }
 
 export default function AdminPage() {
-  const { t, dir, errorText } = useI18n();
+  const { t, dir, errorText, num } = useI18n();
   const { can } = useAuth();
   const canPurge = can(PERMISSIONS.DATA_PURGE);
 
@@ -179,9 +179,9 @@ export default function AdminPage() {
               <div className="flex flex-wrap gap-x-6 gap-y-1">
                 <span className="font-bold text-gray-800">{t("admin.summary.transactions", { count: txCount, days: summary.days })}</span>
                 <span className="text-gray-700">{t("admin.summary.balances", { count: balanceCount })}</span>
-                <span className="text-green-700" dir="ltr">{t("admin.summary.in")} {money(summary.total_in)}</span>
-                <span className="text-red-700" dir="ltr">{t("admin.summary.out")} {money(summary.total_out)}</span>
-                <span className="text-orange-600" dir="ltr">{t("admin.summary.commission")} {money(summary.total_commission)}</span>
+                <span className="text-green-700" dir="ltr">{t("admin.summary.in")} {num(money(summary.total_in))}</span>
+                <span className="text-red-700" dir="ltr">{t("admin.summary.out")} {num(money(summary.total_out))}</span>
+                <span className="text-orange-600" dir="ltr">{t("admin.summary.commission")} {num(money(summary.total_commission))}</span>
               </div>
             }
           </div>

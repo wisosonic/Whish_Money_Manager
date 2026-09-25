@@ -87,31 +87,31 @@ export default function StatsCards({
   yearlyCommissions, yearlyCount, yearlyDeposits, yearlyWithdrawals,
   selectedDate,
 }) {
-  const { t, dir, locale } = useI18n();
+  const { t, dir, locale, num } = useI18n();
   // Which blocks start open is a per-user setting (Settings page); default: month open, year closed.
   const { summaries } = usePreferences().preferences;
   const periodCards =({ count, commissions, withdrawals, deposits, countLabel, commissionsLabel }) => [
     {
       label: countLabel,
-      value: count || 0,
+      value: num(count || 0),
       icon: <Hash className="w-6 h-6 text-white" />,
       iconBg: "bg-purple-600",
     },
     {
       label: commissionsLabel,
-      value: `$${fmt(commissions)}`,
+      value: `$${num(fmt(commissions))}`,
       icon: <Percent className="w-6 h-6 text-white" />,
       iconBg: "bg-orange-500",
     },
     {
       label: t("summary.withdrawals"),
-      value: `$${fmt(withdrawals)}`,
+      value: `$${num(fmt(withdrawals))}`,
       icon: <ArrowUpCircle className="w-6 h-6 text-white" />,
       iconBg: "bg-red-500",
     },
     {
       label: t("summary.deposits"),
-      value: `$${fmt(deposits)}`,
+      value: `$${num(fmt(deposits))}`,
       icon: <ArrowDownCircle className="w-6 h-6 text-white" />,
       iconBg: "bg-green-500",
     },
@@ -120,7 +120,7 @@ export default function StatsCards({
   const monthlyCards = [
     {
       label: t("summary.netWallet"),
-      value: `$${fmt(netBalance)}`,
+      value: `$${num(fmt(netBalance))}`,
       icon: <Wallet className="w-6 h-6 text-white" />,
       iconBg: "bg-blue-600",
     },
@@ -140,18 +140,18 @@ export default function StatsCards({
       <SummarySection
         id="monthly-summary"
         title={t("summary.monthTitle")}
-        period={formatMonthLabel(selectedDate, locale)}
+        period={num(formatMonthLabel(selectedDate, locale))}
         cards={monthlyCards}
-        collapsedSummary={t("summary.monthCollapsed", { net: fmt(netBalance), count: monthlyCount || 0, commissions: fmt(monthlyCommissions) })}
+        collapsedSummary={t("summary.monthCollapsed", { net: num(fmt(netBalance)), count: monthlyCount || 0, commissions: num(fmt(monthlyCommissions)) })}
         defaultOpen={summaries.month}
         gridClassName="grid-cols-2 sm:grid-cols-3 lg:grid-cols-5"
       />
       <SummarySection
         id="yearly-summary"
         title={t("summary.yearTitle")}
-        period={String(selectedDate || "").slice(0, 4)}
+        period={num(String(selectedDate || "").slice(0, 4))}
         cards={yearlyCards}
-        collapsedSummary={t("summary.yearCollapsed", { count: yearlyCount || 0, commissions: fmt(yearlyCommissions) })}
+        collapsedSummary={t("summary.yearCollapsed", { count: yearlyCount || 0, commissions: num(fmt(yearlyCommissions)) })}
         defaultOpen={summaries.year}
         gridClassName="grid-cols-2 lg:grid-cols-4"
       />

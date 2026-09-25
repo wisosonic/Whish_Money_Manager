@@ -12,7 +12,20 @@ import { toast } from "sonner";
 
 export const TOAST_DURATION = { success: 4000, info: 4000, warning: 7000, error: 8000 };
 
-const show = (kind) => (message, options = {}) => toast[kind](message, { duration: TOAST_DURATION[kind], ...options });
+// Settings → Notifications (set by PreferencesProvider): how long toasts stay, and whether success
+// confirmations are shown (warnings and errors always are).
+export const DURATION_SCALE = { short: 0.5, normal: 1, long: 2 };
+const config = { scale: 1, showSuccess: true };
+export const configureNotify = ({ duration = "normal", showSuccess = true } = {}) => {
+  config.scale = DURATION_SCALE[duration] ?? 1;
+  config.showSuccess = showSuccess;
+};
+
+const show = (kind) => (message, options = {}) => {
+  if (kind === "success" && !config.showSuccess) return null;
+  const duration = Math.round((options.duration ?? TOAST_DURATION[kind]) * config.scale);
+  return toast[kind](message, { ...options, duration });
+};
 
 export const notify = {
   success: show("success"),

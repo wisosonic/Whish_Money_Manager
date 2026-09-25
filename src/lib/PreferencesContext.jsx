@@ -15,7 +15,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { api } from "@/api/apiClient";
 import { useAuth } from "@/lib/AuthContext";
 import { useI18n } from "@/lib/i18n";
-import { notify } from "@/lib/notify";
+import { configureNotify, notify } from "@/lib/notify";
 import { DEFAULT_PREFERENCES, resolvePreferences } from "@/lib/preferences";
 
 export const THEME_COOKIE = "wmm_theme";
@@ -37,7 +37,7 @@ const prefersDarkQuery = () =>
 
 export function PreferencesProvider({ children }) {
   const { user, isLoadingAuth } = useAuth();
-  const { setLang, t, errorText } = useI18n();
+  const { setLang, setNumerals, t, errorText } = useI18n();
   // The translation in effect when a save finishes (not when it started): changing the language is
   // itself a save, and its confirmation must appear in the new language.
   const i18nNow = useRef({ t, errorText });
@@ -74,6 +74,8 @@ export function PreferencesProvider({ children }) {
       ...prev,
       ...changes,
       summaries: { ...prev.summaries, ...(changes.summaries || {}) },
+      // A partial default sort (just the direction, or just the column) keeps the other half.
+      defaultSort: { ...prev.defaultSort, ...(changes.defaultSort || {}) },
     }));
     setStatus("saving");
     setError("");
@@ -98,6 +100,12 @@ export function PreferencesProvider({ children }) {
     queue.current = queue.current.then(send);
     return queue.current;
   }, [userId]);
+
+  // Number style (digits in Arabic) and notification settings follow the preferences.
+  useEffect(() => { setNumerals(preferences.numerals); }, [preferences.numerals, setNumerals]);
+  useEffect(() => {
+    configureNotify({ duration: preferences.toastDuration, showSuccess: preferences.toastSuccess });
+  }, [preferences.toastDuration, preferences.toastSuccess]);
 
   // ═══ Theme ═══
   const [isDark, setIsDark] = useState(false);

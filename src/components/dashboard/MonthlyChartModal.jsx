@@ -41,7 +41,7 @@ const SeriesKey = ({ dataKey, color }) =>
 
 // Tooltip: every series for the hovered month, value first, keyed with its mark.
 export function ChartTooltip({ active, payload, label }) {
-  const { dir } = useI18n();
+  const { dir, num } = useI18n();
   const items = (payload || []).filter((item) => item.value != null);
   if (!active || items.length === 0) return null;
   return (
@@ -50,7 +50,7 @@ export function ChartTooltip({ active, payload, label }) {
       {items.map((item) => (
         <div key={item.dataKey} className="flex items-center gap-2 py-0.5">
           <SeriesKey dataKey={item.dataKey} color={item.color} />
-          <span className="font-bold text-gray-900">{formatMoney(item.value)}</span>
+          <span className="font-bold text-gray-900">{num(formatMoney(item.value))}</span>
           <span className="text-gray-500">{item.name}</span>
         </div>
       ))}
@@ -93,8 +93,9 @@ const prefersReducedMotion = () =>
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 export default function MonthlyChartModal({ allTransactions, selectedDate, onClose }) {
-  const { t, dir } = useI18n();
+  const { t, dir, num } = useI18n();
   const { isDark } = usePreferences();
+  const tick = (value) => num(formatCompactMoney(value));
   const ink = isDark ? CHART_INK.dark : CHART_INK.light;
   const colorOf = (key) => (isDark ? CHART_SERIES[key].darkColor : CHART_SERIES[key].color);
   const seriesName = (key) => t(CHART_SERIES[key].nameKey);
@@ -146,9 +147,9 @@ export default function MonthlyChartModal({ allTransactions, selectedDate, onClo
         {/* Year totals */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3 p-3 md:p-4 border-b bg-gray-50">
           {[
-            { key: "profit", label: t("chart.profitYear", { year }), value: formatMoney(totals.profit) },
-            { key: "cashIn", label: t("summary.deposits"), value: formatMoney(totals.cashIn) },
-            { key: "cashOut", label: t("summary.withdrawals"), value: formatMoney(totals.cashOut) },
+            { key: "profit", label: t("chart.profitYear", { year }), value: num(formatMoney(totals.profit)) },
+            { key: "cashIn", label: t("summary.deposits"), value: num(formatMoney(totals.cashIn)) },
+            { key: "cashOut", label: t("summary.withdrawals"), value: num(formatMoney(totals.cashOut)) },
             { key: "count", label: t("chart.count"), value: totals.count },
           ].map((item) => (
             <div key={item.key} className="bg-white rounded-lg border border-gray-100 px-3 py-2">
@@ -177,9 +178,9 @@ export default function MonthlyChartModal({ allTransactions, selectedDate, onClo
                   {data.map((row) => (
                     <tr key={row.month}>
                       <td className="px-3 py-2 font-medium">{row.label}</td>
-                      <td className="px-3 py-2">{formatMoney(row.profit)}</td>
-                      <td className="px-3 py-2">{formatMoney(row.cashIn)}</td>
-                      <td className="px-3 py-2">{formatMoney(row.cashOut)}</td>
+                      <td className="px-3 py-2">{num(formatMoney(row.profit))}</td>
+                      <td className="px-3 py-2">{num(formatMoney(row.cashIn))}</td>
+                      <td className="px-3 py-2">{num(formatMoney(row.cashOut))}</td>
                       <td className="px-3 py-2">{row.count ?? "—"}</td>
                     </tr>
                   ))}
@@ -187,9 +188,9 @@ export default function MonthlyChartModal({ allTransactions, selectedDate, onClo
                 <tfoot className="bg-gray-50 font-bold">
                   <tr>
                     <td className="px-3 py-2">{t("chart.total")}</td>
-                    <td className="px-3 py-2">{formatMoney(totals.profit)}</td>
-                    <td className="px-3 py-2">{formatMoney(totals.cashIn)}</td>
-                    <td className="px-3 py-2">{formatMoney(totals.cashOut)}</td>
+                    <td className="px-3 py-2">{num(formatMoney(totals.profit))}</td>
+                    <td className="px-3 py-2">{num(formatMoney(totals.cashIn))}</td>
+                    <td className="px-3 py-2">{num(formatMoney(totals.cashOut))}</td>
                     <td className="px-3 py-2">{totals.count}</td>
                   </tr>
                 </tfoot>
@@ -219,7 +220,7 @@ export default function MonthlyChartModal({ allTransactions, selectedDate, onClo
                   <YAxis
                     yAxisId="profit"
                     orientation="left"
-                    tickFormatter={formatCompactMoney}
+                    tickFormatter={tick}
                     tick={{ fontSize: isMobile ? 10 : 12, fill: ink.tick }}
                     tickLine={false}
                     axisLine={false}
@@ -229,7 +230,7 @@ export default function MonthlyChartModal({ allTransactions, selectedDate, onClo
                   <YAxis
                     yAxisId="flow"
                     orientation="right"
-                    tickFormatter={formatCompactMoney}
+                    tickFormatter={tick}
                     tick={{ fontSize: isMobile ? 10 : 12, fill: ink.tick }}
                     tickLine={false}
                     axisLine={false}

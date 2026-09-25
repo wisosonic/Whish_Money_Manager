@@ -2,9 +2,11 @@ import cookieParser from "cookie-parser";
 import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
-import { registerAdminRoutes } from "./admin.js";
+import { registerAdminRoutes, registerRestoreRoutes } from "./admin.js";
 import { authenticate, registerAuthRoutes, requirePermission } from "./auth.js";
+import { parseCsvText } from "./csv.js";
 import { db, dbPath, ensureDefaultRoles, initializeDb, nowIso } from "./db.js";
+import { commissionRateOn, refuseClosedDays, registerOfficeRoutes, transactionDay } from "./office.js";
 import { PERMISSIONS as P, canUpdateTransaction, hasPermission } from "./permissions.js";
 import { ensureInitialAdmin } from "./seed.js";
 
@@ -172,6 +174,10 @@ app.use("/local-api", authenticate);
 
 // Admin panel: CSV backup and delete-by-date-range (Admin + Manager).
 registerAdminRoutes(app);
+registerRestoreRoutes(app);
+
+// Closed days and the office commission rate.
+registerOfficeRoutes(app);
 
 const parseAmount = (value) => Number(String(value || "").replace(/,/g, "")) || 0;
 
@@ -384,7 +390,9 @@ const inferIsDebit = (row, service, normalizedDescription) => {
   return false;
 };
 
-const extractTransactionsFromRows = (tableRows) => {
+// rateFor(date) → the office commission rate (percent) on that day; 1% unless the server passes the
+// rate history (tests and callers without a database get the long-standing 1%).
+const extractTransactionsFromRows = (tableRows, { rateFor = () => 1 } = {}) => {
 
   const joinedText = tableRows.map((row) => row.join(" ")).join("\n");
   const dateMatch = joinedText.match(/\b(\d{2}\/\d{2}\/\d{4})\b/);
@@ -421,7 +429,7 @@ const extractTransactionsFromRows = (tableRows) => {
                       service.toLowerCase().includes("reversed")
                     ;
     const type = isDebit ? "cash_out" : "cash_in";
-    const commissionRate = (isDebit || isNoFees) ? 0 : 1;
+    const commissionRate = (isDebit || isNoFees) ? 0 : rateFor(isoDate);
     const commission = (amount * commissionRate / 100).toFixed(3);
     const namePhone = splitNamePhone(description);
     const counterparty = namePhone ? namePhone.name : description;
@@ -473,7 +481,7 @@ const extractTransactionsFromRows = (tableRows) => {
     if (trueType !== transaction.type || offByCents > 1) {
       transaction.type = trueType;
       transaction.amount = trueAmount;
-      const commissionRate = trueType === "cash_out" || transaction.isNoFees ? 0 : 1;
+      const commissionRate = trueType === "cash_out" || transaction.isNoFees ? 0 : rateFor(transaction.date);
       transaction.commission = ((trueAmount * commissionRate) / 100).toFixed(3);
       transaction.commissionRate = commissionRate;
 
@@ -537,7 +545,7 @@ app.post("/local-api/pdf/extract", requirePermission(P.TRANSACTIONS_IMPORT), asy
 
     const pdfBuffer = Buffer.from(base64, "base64");
     const { pageCount, tableRows } = await extractPdfTable(pdfBuffer);
-    const result = extractTransactionsFromRows(tableRows);
+    const result = extractTransactionsFromRows(tableRows, { rateFor: commissionRateOn });
 
     res.json({
       ...result,
@@ -556,48 +564,7 @@ app.post("/local-api/pdf/extract", requirePermission(P.TRANSACTIONS_IMPORT), asy
 // columns are located by header name, not position, so re-saved or reordered files work.
 // Unlike the PDF engine, nothing has to be inferred here: DEBIT/CREDIT are explicit columns.
 
-const parseCsvText = (text, delimiter) => {
-  const rows = [];
-  let row = [];
-  let cell = "";
-  let inQuotes = false;
 
-  for (let i = 0; i < text.length; i += 1) {
-    const char = text[i];
-    if (inQuotes) {
-      if (char === '"' && text[i + 1] === '"') {
-        cell += '"';
-        i += 1;
-      } else if (char === '"') {
-        inQuotes = false;
-      } else {
-        cell += char;
-      }
-    } else if (char === '"') {
-      inQuotes = true;
-    } else if (char === delimiter) {
-      row.push(cell);
-      cell = "";
-    } else if (char === "\n" || char === "\r") {
-      if (char === "\r" && text[i + 1] === "\n") {
-        i += 1;
-      }
-      row.push(cell);
-      rows.push(row);
-      row = [];
-      cell = "";
-    } else {
-      cell += char;
-    }
-  }
-
-  if (cell || row.length) {
-    row.push(cell);
-    rows.push(row);
-  }
-
-  return rows;
-};
 
 // Excel-safe exports wrap values as ="23/09/2026" so Excel won't reformat them.
 const cleanCsvCell = (value) => String(value || "").replace(/^="(.*)"$/, "$1").trim();
@@ -666,7 +633,8 @@ const reconcileWithRounding = ({ opening, closing, rows }) => {
   };
 };
 
-const extractTransactionsFromCsv = (text) => {
+// rateFor(date) → the office commission rate on that day (see extractTransactionsFromRows).
+const extractTransactionsFromCsv = (text, { rateFor = () => 1 } = {}) => {
   const content = String(text || "").replace(/^﻿/, "");
   const firstLine = content.split(/\r?\n/, 1)[0] || "";
   const delimiter = (firstLine.match(/;/g) || []).length > (firstLine.match(/,/g) || []).length ? ";" : ",";
@@ -704,8 +672,9 @@ const extractTransactionsFromCsv = (text) => {
     const credit = parseAmount(record.credit);
     const isDebit = debit > 0;
     const amount = isDebit ? debit : credit;
-    // Fee rule: every credit carries a 1% commission, debits carry none.
-    const commissionRate = isDebit ? 0 : 1;
+    // Fee rule: every credit carries the office commission rate for its day (1% unless changed in
+    // Settings → Office), debits carry none.
+    const commissionRate = isDebit ? 0 : rateFor(csvDateToIso(record.date));
     const description = String(record.description || "").replace(/\s+/g, " ").trim();
     const namePhone = splitNamePhone(description);
     const counterparty = namePhone ? namePhone.name : description;
@@ -807,7 +776,7 @@ app.post("/local-api/csv/extract", requirePermission(P.TRANSACTIONS_IMPORT), (re
       return;
     }
 
-    res.json(extractTransactionsFromCsv(text));
+    res.json(extractTransactionsFromCsv(text, { rateFor: commissionRateOn }));
   } catch (error) {
     res.status(400).json({ error: error.message || "Failed to parse CSV" });
   }
@@ -842,6 +811,9 @@ app.post("/local-api/transactions/import", requirePermission(P.TRANSACTIONS_IMPO
 
   // Replacing an imported statement deletes the existing entries, so it needs delete rights.
   if (overwrite && !allow(req, res, P.TRANSACTIONS_DELETE)) return;
+
+  const replacedDays = overwrite ? findTransactionsByReference(uniqueReferences(items.map((item) => item.reference_number))).map(transactionDay) : [];
+  if (refuseClosedDays(res, [...items.map(transactionDay), ...replacedDays])) return;
 
   const runImport = db.transaction(() => {
     let replaced = 0;
@@ -892,6 +864,9 @@ app.post("/local-api/transactions/bulk-update", (req, res) => {
   }
 
   const placeholders = ids.map(() => "?").join(",");
+
+  const selectedDays = db.prepare(`SELECT transaction_date, created_date FROM transactions WHERE id IN (${placeholders})`).all(...ids).map(transactionDay);
+  if (refuseClosedDays(res, [...selectedDays, changes.transaction_date])) return;
 
   // Users who may only edit their own entries: every selected row must be theirs, or nothing changes.
   if (!hasPermission(req.user, P.TRANSACTIONS_UPDATE_ANY)) {
@@ -947,6 +922,8 @@ app.post("/local-api/transactions/bulk-delete", requirePermission(P.TRANSACTIONS
   }
 
   const placeholders = ids.map(() => "?").join(",");
+  const days = db.prepare(`SELECT transaction_date, created_date FROM transactions WHERE id IN (${placeholders})`).all(...ids).map(transactionDay);
+  if (refuseClosedDays(res, days)) return;
   const result = db.prepare(`DELETE FROM transactions WHERE id IN (${placeholders})`).run(...ids);
 
   res.json({ deleted: result.changes });
@@ -978,6 +955,7 @@ app.post("/local-api/:entity/create", (req, res) => {
   if (!config || !allow(req, res, config.createPermission)) return;
 
   const payload = req.body || {};
+  if (refuseClosedDays(res, [config.table === "daily_balances" ? payload.date : transactionDay(payload)])) return;
 
   // The office has one opening balance per day: creating one for a date that already has one updates it.
   if (config.table === "daily_balances" && payload.date) {
@@ -1003,6 +981,9 @@ app.post("/local-api/:entity/bulk-create", (req, res) => {
     res.json([]);
     return;
   }
+
+  const days = items.map((item) => (config.table === "daily_balances" ? item.date : transactionDay(item)));
+  if (refuseClosedDays(res, days)) return;
 
   const insertOne = db.transaction((item) => insertEntityRecord(config, item, req.user.email));
 
@@ -1034,6 +1015,11 @@ app.put("/local-api/:entity/:id", (req, res) => {
   }
 
   const payload = req.body || {};
+  const days = config.table === "daily_balances"
+    ? [existing.date, payload.date]
+    : [transactionDay(existing), payload.transaction_date];
+  if (refuseClosedDays(res, days)) return;
+
   const sets = [];
   const values = [];
   config.mutableFields.forEach((field) => {
@@ -1056,6 +1042,8 @@ app.delete("/local-api/:entity/:id", (req, res) => {
   if (!config || !allow(req, res, config.deletePermission)) return;
 
   const id = Number(req.params.id);
+  const existing = db.prepare(`SELECT * FROM ${config.table} WHERE id = ?`).get(id);
+  if (existing && refuseClosedDays(res, [config.table === "daily_balances" ? existing.date : transactionDay(existing)])) return;
   const result = db.prepare(`DELETE FROM ${config.table} WHERE id = ?`).run(id);
 
   if (!result.changes) {

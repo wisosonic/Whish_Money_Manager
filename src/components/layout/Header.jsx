@@ -4,16 +4,20 @@ import { User, LogOut, Users, LayoutDashboard, Settings, ShieldCheck } from "luc
 import { useAuth } from "@/lib/AuthContext";
 import { APP_NAME } from "@/lib/branding";
 import { useI18n } from "@/lib/i18n";
+import { usePreferences } from "@/lib/PreferencesContext";
 import { PERMISSIONS } from "@/lib/permissions";
 import AppLogo from "@/components/layout/AppLogo";
 
 // "2026/09/23 08:05 PM" in the viewer's local time, matching the header clock's date format.
-export const formatLastLogin = (iso) => {
+export const formatLastLogin = (iso, { hour24 = false } = {}) => {
   const d = new Date(iso);
   if (!iso || Number.isNaN(d.getTime())) return "";
   const pad = (n) => String(n).padStart(2, "0");
   const hours = d.getHours();
-  return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(hours % 12 || 12)}:${pad(d.getMinutes())} ${hours >= 12 ? "PM" : "AM"}`;
+  const date = `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())}`;
+  return hour24
+    ? `${date} ${pad(hours)}:${pad(d.getMinutes())}`
+    : `${date} ${pad(hours % 12 || 12)}:${pad(d.getMinutes())} ${hours >= 12 ? "PM" : "AM"}`;
 };
 
 // Smooth scroll to the top — instant for users who prefer reduced motion.
@@ -31,7 +35,10 @@ const ROLE_BADGE = {
 export default function Header() {
   const [time, setTime] = useState(new Date());
   const { user, logout, can } = useAuth();
-  const { t, dir, lang } = useI18n();
+  const { t, dir, lang, num } = useI18n();
+  // Settings → General → Clock: 12-hour (default), 24-hour, or hidden.
+  const { clock } = usePreferences().preferences;
+  const hour24 = clock === "24h";
   const location = useLocation();
   const onDashboard = location.pathname === "/";
   const onUsersPage = location.pathname.startsWith("/users");
@@ -67,22 +74,26 @@ export default function Header() {
     let h = d.getHours();
     const m = String(d.getMinutes()).padStart(2, "0");
     const s = String(d.getSeconds()).padStart(2, "0");
+    if (hour24) {
+      h = String(h).padStart(2, "0");
+      return num(lang === "ar" ? `${h} : ${m} : ${s}` : `${h}:${m}:${s}`);
+    }
     const ampm = h >= 12 ? "PM" : "AM";
     h = String(h % 12 || 12).padStart(2, "0");
-    return lang === "ar" ? `${ampm} ${h} : ${m} : ${s}` : `${h}:${m}:${s} ${ampm}`;
+    return num(lang === "ar" ? `${ampm} ${h} : ${m} : ${s}` : `${h}:${m}:${s} ${ampm}`);
   };
 
   const formatDate = (d) => {
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, "0");
     const day = String(d.getDate()).padStart(2, "0");
-    return `${y}/${m}/${day}`;
+    return num(`${y}/${m}/${day}`);
   };
 
   // The sign-in before the current one (recorded by the server at login) — not the current time.
   // The date is kept left-to-right so it isn't reordered inside the Arabic label.
   const lastLogin = !user ? null : user.previous_login ?
-  <>{t("header.lastLogin")}: <span dir="ltr">{formatLastLogin(user.previous_login)}</span></> :
+  <>{t("header.lastLogin")}: <span dir="ltr">{num(formatLastLogin(user.previous_login, { hour24 }))}</span></> :
   t("header.firstLogin");
 
   return (
@@ -166,11 +177,13 @@ export default function Header() {
         {/* No language switch here: signed-in users change it in Settings; the login page has one. */}
       </div>
 
-      {/* Left: Clock */}
-      <div className="bg-white/10 backdrop-blur-sm rounded-2xl px-4 py-2 text-center min-w-[140px]">
-        <p className="text-xl font-mono font-bold">{formatTime(time)}</p>
-        <p className="text-blue-100 text-xs font-bold">{formatDate(time)}</p>
-      </div>
+      {/* Left: Clock (hidden when Settings → General → Clock is "Hide") */}
+      {clock !== "hidden" &&
+      <div className="bg-white/10 backdrop-blur-sm rounded-2xl px-4 py-2 text-center min-w-[140px]" data-testid="header-clock">
+          <p className="text-xl font-mono font-bold">{formatTime(time)}</p>
+          <p className="text-blue-100 text-xs font-bold">{formatDate(time)}</p>
+        </div>
+      }
     </header>);
 
 }

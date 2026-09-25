@@ -48,31 +48,41 @@ const withProviders = (ui, path = "/settings") => (
     </MemoryRouter>
   </LanguageProvider>
 );
-const renderSettings = () => render(withProviders(<SettingsPage />));
+// Opens the Settings page, optionally on a tab (#general, #appearance, #table, #notifications …).
+const renderSettings = (tab) => render(withProviders(<SettingsPage />, tab ? `/settings#${tab}` : "/settings"));
+const openTab = (name) => fireEvent.click(screen.getByRole("tab", { name }));
 const box = (testId) => screen.getByTestId(testId);
 const status = () => screen.getByTestId("settings-status");
 
 describe("Settings page", () => {
-  it("shows the three sections with the current (default) values", () => {
+  it("groups the options in tabs and opens on General; each tab shows its sections with the current values", () => {
     renderSettings();
     expect(screen.getByRole("heading", { level: 1, name: "الإعدادات" })).toBeInTheDocument();
+    // A User gets the four personal tabs only.
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["عام", "المظهر", "جدول العمليات", "الإشعارات"]);
+    expect(screen.getByRole("tab", { name: "عام" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tabpanel")).toHaveAttribute("aria-labelledby", "tab-general");
     expect(screen.getByRole("region", { name: "اللغة" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "أعمدة الجدول" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "العرض" })).toBeInTheDocument();
-
     expect(box("language-ar")).toBeChecked();
     expect(box("language-en")).not.toBeChecked();
-    TABLE_COLUMNS.forEach((key) => expect(box(`column-${key}`)).toBeChecked());
-    expect(screen.getByTestId("columns-count")).toHaveTextContent("11 من 11 أعمدة ظاهرة.");
+
+    openTab("المظهر");
+    expect(screen.getByRole("region", { name: "العرض" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "اللغة" })).not.toBeInTheDocument();
     expect(box("density-comfortable")).toBeChecked();
     expect(box("summary-month")).toBeChecked();
     expect(box("summary-year")).not.toBeChecked();
-    expect(box("settings-reset")).toBeDisabled();
+
+    openTab("جدول العمليات");
+    expect(screen.getByRole("region", { name: "أعمدة الجدول" })).toBeInTheDocument();
+    TABLE_COLUMNS.forEach((key) => expect(box(`column-${key}`)).toBeChecked());
+    expect(screen.getByTestId("columns-count")).toHaveTextContent("11 من 11 أعمدة ظاهرة.");
     expect(screen.getByRole("button", { name: "إظهار كل الأعمدة" })).toBeDisabled();
+    expect(box("settings-reset")).toBeDisabled();
   });
 
   it("each column has a labelled checkbox (in the interface language)", () => {
-    renderSettings();
+    renderSettings("table");
     const group = screen.getByRole("group", { name: "أعمدة الجدول" });
     ["الرقم (#)", "النوع", "المرسل", "المبلغ", "التاريخ"].forEach((name) =>
       expect(within(group).getByRole("checkbox", { name })).toBeInTheDocument());
@@ -83,7 +93,7 @@ describe("Settings page", () => {
     api.auth.updatePreferences.mockImplementationOnce((changes) => new Promise((resolve) => {
       finish = () => resolve({ preferences: applyPreferenceChanges(serverPreferences, changes).preferences });
     }));
-    renderSettings();
+    renderSettings("table");
     fireEvent.click(box("column-note"));
     await waitFor(() => expect(api.auth.updatePreferences).toHaveBeenCalledWith({ hiddenColumns: ["note"] }));
     // Applied immediately, before the server answers.
@@ -98,7 +108,7 @@ describe("Settings page", () => {
   });
 
   it("keeps hidden columns in table order and can show them all again", async () => {
-    renderSettings();
+    renderSettings("table");
     fireEvent.click(box("column-service"));
     await waitFor(() => expect(status()).toHaveTextContent("تم الحفظ"));
     fireEvent.click(box("column-type"));
@@ -111,7 +121,7 @@ describe("Settings page", () => {
 
   it("the last visible column can't be turned off", () => {
     setAuthRole("user", { preferences: { hiddenColumns: TABLE_COLUMNS.filter((k) => k !== "amount") } });
-    renderSettings();
+    renderSettings("table");
     expect(box("column-amount")).toBeChecked();
     expect(box("column-amount")).toBeDisabled();
     expect(box("column-note")).toBeEnabled();
@@ -119,7 +129,7 @@ describe("Settings page", () => {
   });
 
   it("saves row density and the summaries' opening state", async () => {
-    renderSettings();
+    renderSettings("appearance");
     fireEvent.click(box("density-compact"));
     fireEvent.click(box("summary-year"));
     fireEvent.click(box("summary-month"));
@@ -134,13 +144,18 @@ describe("Settings page", () => {
     expect(box("summary-year")).toBeChecked();
   });
 
-  it("restores the default display settings in one save (the language is left alone)", async () => {
-    setAuthRole("user", { preferences: { language: "ar", hiddenColumns: ["note"], density: "compact", summaries: { month: false, year: true }, theme: "dark" } });
-    renderSettings();
+  it("restores every personal default in one save (the language is left alone)", async () => {
+    setAuthRole("user", { preferences: {
+      language: "ar", hiddenColumns: ["note"], density: "compact", summaries: { month: false, year: true }, theme: "dark",
+      clock: "24h", numerals: "arabic", rowsPerPage: 50, defaultSort: { key: "amount", dir: "desc" }, toastSuccess: false,
+    } });
+    renderSettings("appearance");
     fireEvent.click(box("settings-reset"));
     await waitFor(() => expect(api.auth.updatePreferences).toHaveBeenCalledTimes(1));
     expect(api.auth.updatePreferences).toHaveBeenCalledWith({
       hiddenColumns: [], theme: "light", density: "comfortable", summaries: { month: true, year: false },
+      startOn: "last", searchScope: "all", defaultSort: { key: null, dir: "asc" }, clock: "12h", numerals: "western",
+      toastDuration: "normal", toastSuccess: true, rowsPerPage: 0,
     });
     await waitFor(() => expect(box("settings-reset")).toBeDisabled());
   });
@@ -151,7 +166,7 @@ describe("Settings page", () => {
     expect(document.documentElement).toHaveAttribute("lang", "en");
     expect(document.documentElement).toHaveAttribute("dir", "ltr");
     expect(screen.getByRole("heading", { level: 1, name: "Settings" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Table columns" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Transactions table" })).toBeInTheDocument();
     await waitFor(() => expect(api.auth.updatePreferences).toHaveBeenCalledWith({ language: "en" }));
     await waitFor(() => expect(status()).toHaveTextContent("Saved"));
     expect(document.cookie).toContain("wmm_lang=en");
@@ -159,7 +174,7 @@ describe("Settings page", () => {
 
   it("if saving fails, the previous value comes back and the error is shown in the interface language", async () => {
     api.auth.updatePreferences.mockRejectedValueOnce(Object.assign(new Error("At least one column must stay visible"), { status: 400 }));
-    renderSettings();
+    renderSettings("table");
     fireEvent.click(box("column-date"));
     expect(box("column-date")).not.toBeChecked();
     await waitFor(() => expect(status()).toHaveTextContent("يجب أن يبقى عمود واحد على الأقل ظاهراً"));
@@ -177,7 +192,7 @@ describe("Settings page", () => {
         resolve({ preferences });
       });
     }));
-    renderSettings();
+    renderSettings("appearance");
     fireEvent.click(box("density-compact"));
     fireEvent.click(box("summary-year"));
     // Both show at once; the other summary keeps its own value (no flash back to a default).
@@ -207,16 +222,18 @@ describe("Settings page", () => {
     api.auth.updatePreferences.mockImplementation((changes) => new Promise((resolve, reject) => {
       answers.push({ ok: () => resolve({ preferences: (serverPreferences = applyPreferenceChanges(serverPreferences, changes).preferences) }), fail: () => reject(new Error("boom")) });
     }));
-    renderSettings();
+    renderSettings("table");
     fireEvent.click(box("column-note"));
+    openTab("المظهر");
     fireEvent.click(box("density-compact"));
     await waitFor(() => expect(answers).toHaveLength(1));
     await act(async () => answers[0].fail());
     await waitFor(() => expect(answers).toHaveLength(2));
     await act(async () => answers[1].ok());
     // The server never stored the hidden note column: the screen shows exactly what's saved.
-    expect(box("column-note")).toBeChecked();
     expect(box("density-compact")).toBeChecked();
+    openTab("جدول العمليات");
+    expect(box("column-note")).toBeChecked();
     expect(status()).toHaveTextContent("تم الحفظ");
   });
 });
@@ -323,7 +340,7 @@ describe("The dashboard follows the saved settings", () => {
         selectedDate="2026-09-23" setSelectedDate={noop} onToday={noop} onCashIn={noop} onCashOut={noop}
         onImportPDF={noop} onRefresh={noop} onResetOpeningBalance={noop} onDeleteDailyBalanceForDate={noop} />
       <SettingsPage />
-    </>, "/"));
+    </>, "/settings#table"));
     const senders = () => [...container.querySelectorAll("tbody tr")].map((tr) => tr.children[3].textContent);
     fireEvent.click(screen.getByTestId("sort-amount"));
     expect(senders()).toEqual(["MOUNIR", "Vicario"]);

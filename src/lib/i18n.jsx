@@ -6,6 +6,10 @@
 //   t("list.count", { count: 5 })         → "5 عملية" / "5 transactions"
 //
 // Components used without a <LanguageProvider> (e.g. in unit tests) get Arabic.
+//
+// Digits: in Arabic, the Number style setting can show Arabic-Indic digits (٠١٢٣…). t() converts
+// numeric params automatically ({count}); formatted text (amounts, dates, the clock) goes through
+// num(). Identifiers people copy — phones, reference and customer numbers — are left as they are.
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import ar from "@/locales/ar";
 import en from "@/locales/en";
@@ -33,15 +37,24 @@ export const writeLangCookie = (lang) => {
 };
 
 // Looks up a key (falling back to Arabic, then to the key itself), picks a plural form when the
-// entry is { one, other } and `count` is given, and fills {placeholders}.
-export const translate = (lang, key, params = {}) => {
+// entry is { one, other } and `count` is given, and fills {placeholders}. `display` holds the text
+// to show for each param when it differs from the value (e.g. count 5 shown as "٥").
+export const translate = (lang, key, params = {}, display = params) => {
   const dictionary = (LANGUAGES[lang] || LANGUAGES[DEFAULT_LANG]).dictionary;
   let entry = dictionary[key] ?? LANGUAGES[DEFAULT_LANG].dictionary[key] ?? key;
   if (entry && typeof entry === "object") {
     entry = (params.count === 1 ? entry.one : entry.other) ?? entry.other ?? key;
   }
-  return String(entry).replace(/\{(\w+)\}/g, (match, name) => (params[name] !== undefined ? String(params[name]) : match));
+  return String(entry).replace(/\{(\w+)\}/g, (match, name) => (display[name] !== undefined ? String(display[name]) : match));
 };
+
+// "1,234.50" → "١٬٢٣٤٫٥٠": digits, and the separators between digits.
+const ARABIC_DIGITS = "٠١٢٣٤٥٦٧٨٩";
+export const toArabicDigits = (text) =>
+  String(text)
+    .replace(/(\d),(?=\d)/g, "$1٬")
+    .replace(/(\d)\.(?=\d)/g, "$1٫")
+    .replace(/\d/g, (d) => ARABIC_DIGITS[Number(d)]);
 
 // The API answers in English; show known messages in the interface language.
 export const translateServerError = (lang, message) => {
@@ -49,20 +62,34 @@ export const translateServerError = (lang, message) => {
   return errors[message] || message;
 };
 
-const buildValue = (lang, setLang) => ({
-  lang,
-  dir: LANGUAGES[lang].dir,
-  locale: LANGUAGES[lang].locale,
-  t: (key, params) => translate(lang, key, params),
-  errorText: (message) => translateServerError(lang, message),
-  setLang,
-  toggleLang: () => setLang(lang === "ar" ? "en" : "ar"),
-});
+const buildValue = (lang, setLang, numerals = "western", setNumerals = () => {}) => {
+  const arabicDigits = lang === "ar" && numerals === "arabic";
+  const num = (value) => (arabicDigits ? toArabicDigits(value) : String(value));
+  return {
+    lang,
+    dir: LANGUAGES[lang].dir,
+    locale: LANGUAGES[lang].locale,
+    numerals,
+    num,
+    t: (key, params) => {
+      if (!arabicDigits || !params) return translate(lang, key, params);
+      // Numbers passed as numbers ({count}) follow the digit style; text params are left alone.
+      const converted = Object.fromEntries(Object.entries(params).map(([k, v]) => [k, typeof v === "number" ? num(v) : v]));
+      return translate(lang, key, params, converted);
+    },
+    errorText: (message) => translateServerError(lang, message),
+    setLang,
+    setNumerals,
+    toggleLang: () => setLang(lang === "ar" ? "en" : "ar"),
+  };
+};
 
 const I18nContext = createContext(buildValue(DEFAULT_LANG, () => {}));
 
 export function LanguageProvider({ children, initialLang }) {
   const [lang, setLangState] = useState(() => initialLang || readLangCookie() || DEFAULT_LANG);
+  // Set by PreferencesProvider from the signed-in user's Number style setting.
+  const [numerals, setNumerals] = useState("western");
 
   const setLang = useCallback((next) => {
     if (!LANGUAGES[next]) return;
@@ -77,7 +104,7 @@ export function LanguageProvider({ children, initialLang }) {
     document.documentElement.dir = LANGUAGES[lang].dir;
   }, [lang]);
 
-  const value = useMemo(() => buildValue(lang, setLang), [lang, setLang]);
+  const value = useMemo(() => buildValue(lang, setLang, numerals, setNumerals), [lang, setLang, numerals]);
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }
 

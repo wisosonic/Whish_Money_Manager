@@ -24,6 +24,43 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - The only credential is the HTTP-only session cookie; there are **no identity headers and no user in localStorage**.
   - A 401 on a non-auth call fires `SESSION_ENDED_EVENT`.
 - `src/lib/AuthContext.jsx`: session state, loaded from `/auth/me` on start. Exposes `can(permission)` and `canEditTransaction(t)`.
+- **Settings page layout** (user's request, 2026-09-25): WAI-ARIA **tabs**.
+  - **Tabs:** `general` (language, start on, clock, number style), `appearance` (theme, density, summaries), `table` (columns, default sort, rows per page, search scope), `notifications`, and for Admin/Manager `office` (commission rate, `settings:office`) and `backup` (restore, `data:restore`).
+  - **Rendering:** only the active panel is rendered. The active tab lives in the URL hash (`/settings#table`), and an unknown or unauthorized hash falls back to `general`.
+  - **Keyboard:** arrows in both orientations (mirrored in RTL), Home/End, and a roving `tabIndex`.
+  - **Building blocks:** `Section`, `Choice`, `RadioGroup` in `src/components/settings/SettingsControls.jsx`. Radio test ids are `${groupId}-${value}` (e.g. `clock-24h`, `rowsPerPage-50`).
+  - **Tests:** open a tab with `renderSettings("table")` (`/settings#table`) or click `getByRole("tab", { name })`.
+  - **Arabic label clash:** the Theme setting is "السمة", because the Appearance tab is "المظهر" and duplicate names broke role queries.
+- **Newer personal settings** (`server/preferences.js`; defaults reproduce the old behaviour):
+  - `startOn` (`last`, via localStorage `selectedDate` | `today`) and `searchScope` (`all` | `day`): Dashboard initial state.
+  - `defaultSort` `{ key|null, dir }`: TransactionsList initial sort. A partial change keeps the other half on the server (`"key" in value`, since null means journal order) **and** in the optimistic merge.
+  - `clock` (`12h` | `24h` | `hidden`): Header, including the last login.
+  - `numerals` (`western` | `arabic`) → `useI18n().num()` and automatic conversion of numeric `t()` params (plural choice still uses the number: `translate(lang, key, params, display)`). `PreferencesProvider` calls `setNumerals`.
+    - Applied to the header, summaries, wallet, table, chart and admin preview.
+    - **Never** applied to phones, references, customer numbers or inputs.
+  - `toastDuration` (`short` 0.5× | `normal` | `long` 2×) and `toastSuccess`: `configureNotify()` (module config in `notify.js`, set by the provider). Success toasts are dropped when off; warnings and errors always show.
+  - `rowsPerPage` (0 = all | 25 | 50 | 100): pages in TransactionsList.
+    - The page resets on day, search, sort or size change, **not** on refresh after an edit.
+    - The page is clamped after deletes.
+    - Selection and "select all" cover the current page only (`visibleKey` effect).
+- **Closed days** (`server/office.js`, table `closed_days`; `days:close` for Admin/Manager):
+  - **Server enforcement:** `refuseClosedDays(res, dates)` → **423** `{ error, closed_days }`. It runs in create, bulk-create, PUT (old *and* new date), DELETE, bulk-update (rows' days + a new `transaction_date`), bulk-delete and import (new rows + the days of rows an overwrite would delete), for both transactions and daily balances.
+    - Admin purge refuses a range containing closed days.
+    - Restore skips rows on closed days.
+    - Any new write route must call it.
+  - **UI:** the Dashboard loads `/closed-days` and passes `closedDay` / `closedDates` to TransactionsList. The table shows a banner, close/reopen buttons with an `alertdialog` confirmation, 🔒 in place of row edit/delete, hides delete-all, disables bulk when the selection includes a closed-day row, and disables Cash In/Out when *today* is closed (they're saved with today's created_date). The opening-balance pencil is hidden.
+  - **Tests:** a mutation check (`refuseClosedDays` always passing) failed 5 backend tests.
+- **Restore** (`server/admin.js` `planRestore`, `POST /admin/restore/preview` + `/admin/restore`; `data:restore`; UI `src/components/settings/RestoreBackup.jsx`):
+  - **Input:** reads the admin export format. The kind is detected by header, the BOM stripped, and `unguard` removes exactly the `'` that `csvCell`'s `needsGuard` adds.
+  - **Matching:** transactions by id (AUTOINCREMENT never reuses ids, so they're re-inserted with the original id, dates and created_by); balances by date.
+  - **All-or-nothing:** any invalid row (`{ line, field }`) refuses the file.
+  - **Race check:** `expected_count` is re-checked inside the transaction → 409.
+  - **Known loss:** a CSV turns NULL text into "" (the app treats them the same).
+- **Commission rates** (`commission_rates`, seeded with 1% from `BASE_RATE_DATE` 2000-01-01):
+  - PUT upserts by `effective_from`. Only future-dated rates can be deleted.
+  - UI: `src/components/settings/CommissionRates.jsx` (confirmation dialog, history, scheduled badge).
+- **New permissions** `data:restore`, `days:close`, `settings:office` are in `PERMISSIONS_ADDED_LATER` (granted once to admin/manager in existing databases).
+- `server/csv.js`: `parseCsvText`, moved out of `index.js` (still re-exported there) so restore can use it.
 - **Per-user settings** (`src/pages/SettingsPage.jsx`, route `/settings`, ⚙️ link in the header for every role):
   - **Shared rules:** `server/preferences.js` holds the column list (`TABLE_COLUMNS`, which must equal `SORT_VALUES`' keys, and a test checks this), the defaults, the tolerant `resolvePreferences` (used when reading) and the strict `applyPreferenceChanges` (used for `PUT /auth/preferences`). `src/lib/preferences.js` re-exports it.
   - **Storage:** `users.preferences` holds JSON (NULL means defaults), and `initializeDb()` adds the column to older databases. The API returns `preferences` on login and `/auth/me`. No permission is needed, because users can only change their own settings.
@@ -89,7 +126,10 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
 ## Business rules (confirmed by the user — don't change without asking)
 
 - Debit → `cash_out`, credit → `cash_in`.
-- **CSV commission**: 1% on every credit (rounded to 3 decimals), 0 on debits, no exceptions.
+- **CSV commission**: the **office commission rate** on every credit (rounded to 3 decimals), 0 on debits, no exceptions.
+  - The rate is 1% unless changed in Settings → Office (user's request, 2026-09-25). It applies per transaction date: `commissionRateOn(date)` returns the latest `commission_rates` entry on or before that day.
+  - Stored commissions are never recalculated. The engines take `{ rateFor }` (default `() => 1`, so callers and tests without a database keep 1%), and `/csv/extract` and `/pdf/extract` pass `commissionRateOn`.
+  - Cash In gets today's rate from the Dashboard (`commissionRate` prop).
 - **CSV reconciliation is rounding-aware, not tolerant** (`reconcileWithRounding` in `server/index.js`, user's request).
   - **Why:** the provider rounds each amount and each running balance separately from sub-cent internal values. Real statements then show many rows where the balance moves ±0.01 against the amount, and these can net to a cent at the closing balance. The user's `AccountStatementCSV_20200813.csv` has 145 such rows, netting to +0.01.
   - **How:** every printed value is ±½ cent from its exact value. The check walks the rows tracking the interval of possible exact balances, in half-cents so the arithmetic is exact integers; each non-zero amount widens it by ±½ cent, and each printed balance intersects it with ±½ cent. The interval ends are inclusive, because ties round either way.
@@ -102,7 +142,7 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
     - **Caught:** a missing row, an amount off by 1 or 2 cents on a tight row, and the closing balance off by one more cent.
     - **Undetectable by any method:** the opening balance off by 1 cent, and a 1-cent amount error that rounding absorbs.
   - The tests use a synthetic statement. The user's real CSV holds customer names and phones, so don't copy it into `tests/fixtures`.
-- **PDF commission** still has its original exceptions (description contains "cashin" or "qr topup", or service contains "reversed" → 0%). The user hasn't asked to align it with the CSV rule; ask before changing it.
+- **PDF commission** uses the same office rate, but keeps its original exceptions (description contains "cashin" or "qr topup", or service contains "reversed" → 0%). The user hasn't asked to align it with the CSV rule; ask before changing it.
 - `NAME - 96171588017` descriptions are split in **both** engines (`splitNamePhone`): the name goes to sender/receiver, `phone` gets the number as printed, and `customer_number` gets it without the `961` / `+961` prefix.
 - Duplicates are matched by `reference_number` **across the whole office** (everyone shares one set of transactions). On re-import the user chooses **overwrite** (delete same-reference rows, then insert, in one database transaction) or **cancel**. Rows without a reference are never matched or deleted.
 - Manual insertion between table rows ("+ إدراج هنا") was removed at the user's request. Cash In / Cash Out buttons stay. `InsertTransactionModal.jsx` was deleted (2026-09-24).
@@ -299,6 +339,20 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - `Dashboard` computes `yearly*` figures.
   - Added `StatsCards.test.jsx` and Dashboard summary tests. Total now 104.
 ### 2026-09-25
+- **Settings redesign + restore + closing days + 8 new settings** (user's request):
+  - **Settings layout:** grouped into tabs (General, Appearance, Transactions table, Notifications, and Office / Backup & restore for Admin and Manager).
+  - **New settings:** start on, clock (12h / 24h / hidden), Arabic-Indic digits, default sort, rows per page (with pages), default search scope, notification duration and confirmations, and the office commission rate with history. Stored commissions never change.
+  - **Restore from a backup:** preview first, matched by id, all-or-nothing validity, closed days skipped, 409 on a race.
+  - **Closing and reopening days:** confirmation dialogs and toasts, enforced on every write route with 423.
+  - **Bugs caught by the new tests:**
+    - Clearing the default sort (null) kept the old column (`??`).
+    - The optimistic merge dropped half of a partial default sort.
+    - Arabic duplicate names ("المظهر" for both the tab and the theme).
+    - Two tests of my own with wrong expectations (404 vs 400; a PDF row without an opening balance).
+  - **Checked in Edge:** settings tabs (Arabic and English, phone), office, restore preview, a closed day with digits and pages, and the close dialog.
+    - Polish found there: a duplicate language label (now screen-reader only), the RTL clock example (isolated) and the summary year digits.
+  - **Tests:** `office.test.js` (36), `settingsOptions.test.jsx` (13), `dayClosing.test.jsx` (17) and `officeBackup.test.jsx` (13). Preference and settings tests updated for tabs. Total 641.
+  - **Mutation checks** on the closed-day enforcement (server) and the closed-row UI.
 - **Language switch removed from the header** (user's request):
   - **Change:** the Settings page is the place to change it, and the login page keeps its switch for signed-out users.
   - **Language saves now confirm:** "Settings saved" like every other setting; the quiet `silent` option was only for the header switch, and is gone.

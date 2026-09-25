@@ -11,7 +11,7 @@ export default function WalletSummary({
   netBalance,
   onSaveOpeningBalance
 }) {
-  const { t, dir } = useI18n();
+  const { t, dir, num } = useI18n();
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState("");
 
@@ -41,7 +41,7 @@ export default function WalletSummary({
           <div>
             <p className="text-xs md:text-sm font-medium text-[hsl(var(--foreground))]">{t("wallet.net")}</p>
             <p className="text-gray-900 font-bold text-sm md:text-base">
-              ${formatAmount(netBalance)}
+              ${num(formatAmount(netBalance))}
             </p>
           </div>
         </div>
@@ -54,7 +54,7 @@ export default function WalletSummary({
           <div>
             <p className="text-xs md:text-sm font-medium text-[hsl(var(--foreground))]">{t("wallet.commissions")}</p>
             <p className="text-gray-900 font-bold text-sm md:text-base">
-              ${formatAmount(totalCommissions)}
+              ${num(formatAmount(totalCommissions))}
             </p>
           </div>
         </div>
@@ -67,7 +67,7 @@ export default function WalletSummary({
           <div>
             <p className="text-xs md:text-sm font-medium text-start text-[hsl(var(--foreground))]">{t("wallet.withdrawals")}</p>
             <p className="text-gray-900 font-bold text-sm md:text-base">
-              ${formatAmount(totalWithdrawals)}
+              ${num(formatAmount(totalWithdrawals))}
             </p>
           </div>
         </div>
@@ -80,7 +80,7 @@ export default function WalletSummary({
           <div>
             <p className="md:text-sm font-medium text-[hsl(var(--foreground))] text-sm">{t("wallet.deposits")}</p>
             <p className="text-gray-900 font-bold text-sm md:text-base">
-              ${formatAmount(totalDeposits)}
+              ${num(formatAmount(totalDeposits))}
             </p>
           </div>
         </div>
@@ -107,7 +107,7 @@ export default function WalletSummary({
               </div> :
 
             <div className="flex items-center gap-1">
-                <p className="text-gray-900 font-bold text-sm md:text-base">${formatAmount(openingBalance)}</p>
+                <p className="text-gray-900 font-bold text-sm md:text-base">${num(formatAmount(openingBalance))}</p>
                 {onSaveOpeningBalance &&
                 <button onClick={handleEdit} className="text-gray-300 hover:text-indigo-500 transition" aria-label={t("wallet.editOpeningBalance")}><Pencil className="w-3.5 h-3.5" /></button>
                 }

@@ -142,6 +142,7 @@
 .dark .bg-orange-100, .dark .hover\:bg-orange-50:hover { background-color: rgb(249 115 22 / 0.22); }
 .dark .hover\:bg-orange-100:hover { background-color: rgb(249 115 22 / 0.3); }
 .dark .bg-yellow-50, .dark .bg-amber-50 { background-color: rgb(234 179 8 / 0.14); }
+.dark .hover\:bg-amber-50:hover { background-color: rgb(234 179 8 / 0.22); }
 .dark .bg-yellow-100, .dark .hover\:bg-yellow-50:hover { background-color: rgb(234 179 8 / 0.22); }
 .dark .bg-purple-50 { background-color: rgb(168 85 247 / 0.14); }
 .dark .bg-purple-100, .dark .hover\:bg-purple-50:hover { background-color: rgb(168 85 247 / 0.22); }

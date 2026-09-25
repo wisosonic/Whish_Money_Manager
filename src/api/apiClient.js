@@ -125,6 +125,23 @@ export const api = {
     list: async () => apiRequest('/roles', { method: 'GET' }),
   },
 
+  // Closed days: nothing on a closed date can be changed until it's reopened (days:close to change).
+  closedDays: {
+    list: async () => apiRequest('/closed-days', { method: 'GET' }),
+    close: async (date) => apiRequest('/closed-days', { method: 'POST', body: JSON.stringify({ date }) }),
+    reopen: async (date) => apiRequest(`/closed-days/${encodeURIComponent(date)}`, { method: 'DELETE' }),
+  },
+
+  // Office commission rate on credits (percent) and its history (settings:office to change).
+  commissionRates: {
+    // { date, rate (on that date), current (today), history: [{ rate, effective_from, created_by, created_date }] }
+    get: async (date) => apiRequest(`/commission-rates${date ? `?${new URLSearchParams({ date })}` : ''}`, { method: 'GET' }),
+    set: async (rate, effectiveFrom) =>
+      apiRequest('/commission-rates', { method: 'PUT', body: JSON.stringify({ rate, effective_from: effectiveFrom }) }),
+    remove: async (effectiveFrom) =>
+      apiRequest(`/commission-rates/${encodeURIComponent(effectiveFrom)}`, { method: 'DELETE' }),
+  },
+
   // Admin panel (data:export / data:purge — Admin and Manager). Dates are YYYY-MM-DD, inclusive.
   admin: {
     // First and last day that has any data.
@@ -142,6 +159,11 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ from, to, expected_count: expectedCount }),
       }),
+    // Restore a backup CSV (data:restore): preview what it would add, then add it. expectedCount is
+    // the number of rows the preview showed; the server refuses (409) if that changed.
+    restorePreview: async (csv) => apiRequest('/admin/restore/preview', { method: 'POST', body: JSON.stringify({ csv }) }),
+    restore: async (csv, expectedCount) =>
+      apiRequest('/admin/restore', { method: 'POST', body: JSON.stringify({ csv, expected_count: expectedCount }) }),
   },
   entities: {
     Transaction: {

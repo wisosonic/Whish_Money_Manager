@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Search, FileText, Trash2, Pencil, X, Loader2, UserSearch, UserCheck, Percent, BarChart3, ArrowDown, ArrowUp, ArrowUpDown, ChevronUp, ChevronDown } from "lucide-react";
+import { Search, FileText, Trash2, Pencil, X, Loader2, UserSearch, UserCheck, Percent, BarChart3, ArrowDown, ArrowUp, ArrowUpDown, ChevronUp, ChevronDown, Lock, LockOpen } from "lucide-react";
 import BulkEditModal from "@/components/transactions/BulkEditModal";
 import SenderReportModal from "@/components/transactions/SenderReportModal";
 import MonthlyChartModal from "@/components/dashboard/MonthlyChartModal";
@@ -79,7 +79,14 @@ export default function TransactionsList({
   searchScope = "day",
   setSearchScope,
   searchingAllDays = false,
-  onOpenDay
+  onOpenDay,
+  // Closed days: closedDay = { date, closed_by, closed_at } when the selected day is closed;
+  // closedDates = every closed date (rows from other days in all-days results).
+  closedDay = null,
+  closedDates = new Set(),
+  canCloseDays = false,
+  onCloseDay,
+  onReopenDay
 }) {
   const [deleting, setDeleting] = useState(false);
   const [deleteElapsed, setDeleteElapsed] = useState(0);
@@ -95,7 +102,7 @@ export default function TransactionsList({
   // Permissions (the API enforces the same rules; this only hides what the user can't do).
   const { can, canEditTransaction } = useAuth();
   // Translation function is `tr` here: `t` is used throughout this file for a transaction.
-  const { t: tr, dir, locale, errorText } = useI18n();
+  const { t: tr, dir, locale, errorText, num } = useI18n();
 
   // ═══ Display preferences (Settings page): visible columns and row density ═══
   const { preferences } = usePreferences();
@@ -104,7 +111,9 @@ export default function TransactionsList({
   const compact = preferences.density === "compact";
 
   // ═══ Sorting (display only: selection, bulk actions and "#" keep working from `transactions`) ═══
-  const [sort, setSort] = useState(NO_SORT);
+  // Starts from Settings → Transactions table → Default sort (journal order unless set).
+  const [sort, setSort] = useState(() =>
+    preferences.defaultSort.key ? { key: preferences.defaultSort.key, dir: preferences.defaultSort.dir } : NO_SORT);
   // Each row's place in its own day's journal (shown in "#"), and in the whole journal (date, then
   // import order — used to sort by "#", so results from several days sort by day first).
   const journal = new Map();
@@ -121,6 +130,34 @@ export default function TransactionsList({
     indexOf: (t) => journal.get(t.id)?.position ?? transactions.indexOf(t),
   });
   const resultDays = searchingAllDays ? new Set(transactions.map(txDateOfRow)).size : 0;
+
+  // ═══ Pages (Settings → Transactions table → Rows per page; 0 = all on one page) ═══
+  // Back to the first page when the day, search, sort or page size changes — not after an edit or
+  // delete, so the user keeps their place. A page past the end (after deletes) shows the last one.
+  const pageSize = preferences.rowsPerPage;
+  const [page, setPage] = useState(0);
+  const pageCount = pageSize ? Math.max(1, Math.ceil(rows.length / pageSize)) : 1;
+  const currentPage = Math.min(page, pageCount - 1);
+  const pageStart = pageSize ? currentPage * pageSize : 0;
+  const pageRows = pageSize ? rows.slice(pageStart, pageStart + pageSize) : rows;
+  useEffect(() => { setPage(0); }, [selectedDate, search, searchingAllDays, sort.key, sort.dir, pageSize]);
+
+  // ═══ Closed days ═══
+  const isOnClosedDay = (t) => closedDates.has(txDateOfRow(t));
+  const todayIso = format(new Date(), "yyyy-MM-dd");
+  const todayClosed = closedDates.has(todayIso); // Cash In / Cash Out are entered on today's date
+  const [dayDialog, setDayDialog] = useState(null); // "close" | "reopen" | null
+  const [dayWorking, setDayWorking] = useState(false);
+  const confirmDayChange = async () => {
+    setDayWorking(true);
+    try {
+      if (dayDialog === "close") await onCloseDay?.(selectedDate);
+      else await onReopenDay?.(selectedDate);
+    } finally {
+      setDayWorking(false);
+      setDayDialog(null);
+    }
+  };
   const onSort = (column) => setSort((prev) => nextSort(prev, column));
   const sortTooltip = (next, column) => (next === "none" ? tr("list.sort.none") : tr(`list.sort.${next}`, { column }));
   const typeTooltip = (next) => (next === "none" ? tr("list.sort.none") : tr(`list.sortType.${next}`));
@@ -138,16 +175,19 @@ export default function TransactionsList({
 
   // التحديد يشمل فقط العمليات الظاهرة: عند تغيير اليوم أو البحث تُزال المحددة غير الظاهرة،
   // حتى لا يُطبَّق إجراء على عمليات لا يراها المستخدم.
+  // With pages, "visible" means the current page.
+  const visibleKey = pageRows.map((t) => t.id).join(",");
   useEffect(() => {
     setSelectedIds((prev) => {
-      const visible = new Set(transactions.map((t) => t.id));
+      const visible = new Set(visibleKey ? visibleKey.split(",").map(Number) : []);
       const next = new Set([...prev].filter((id) => visible.has(id)));
       return next.size === prev.size ? prev : next;
     });
-  }, [transactions]);
+  }, [visibleKey]);
 
-  const selectedTransactions = transactions.filter((t) => selectedIds.has(t.id));
-  const allVisibleSelected = transactions.length > 0 && selectedTransactions.length === transactions.length;
+  const selectedTransactions = pageRows.filter((t) => selectedIds.has(t.id));
+  const allVisibleSelected = pageRows.length > 0 && selectedTransactions.length === pageRows.length;
+  const selectionHasClosedDay = selectedTransactions.some(isOnClosedDay);
   const someVisibleSelected = selectedTransactions.length > 0 && !allVisibleSelected;
   // A User may bulk-edit only when every selected row is one they entered.
   const canBulkEdit = selectedTransactions.length > 0 && selectedTransactions.every(canEditTransaction);
@@ -165,7 +205,7 @@ export default function TransactionsList({
   };
 
   const toggleSelectAll = () => {
-    setSelectedIds(allVisibleSelected ? new Set() : new Set(transactions.map((t) => t.id)));
+    setSelectedIds(allVisibleSelected ? new Set() : new Set(pageRows.map((t) => t.id)));
   };
 
   const clearSelection = () => setSelectedIds(new Set());
@@ -299,8 +339,68 @@ export default function TransactionsList({
             
             {tr("list.today")}
           </button>
+          {canCloseDays && (closedDay ?
+          <button
+            type="button"
+            onClick={() => setDayDialog("reopen")}
+            data-testid="reopen-day"
+            className="flex items-center gap-1 border border-amber-300 text-amber-800 hover:bg-amber-50 px-3 py-1 rounded-lg text-sm font-medium transition">
+              <LockOpen className="w-4 h-4" aria-hidden="true" />
+              {tr("day.reopen")}
+            </button> :
+          <button
+            type="button"
+            onClick={() => setDayDialog("close")}
+            data-testid="close-day"
+            className="flex items-center gap-1 border border-gray-300 text-gray-700 hover:bg-gray-50 px-3 py-1 rounded-lg text-sm font-medium transition">
+              <Lock className="w-4 h-4" aria-hidden="true" />
+              {tr("day.close")}
+            </button>)
+          }
         </div>
       </div>
+
+      {/* The selected day is closed: say so, for everyone. */}
+      {closedDay &&
+      <div role="status" data-testid="closed-day-banner" className="px-4 py-2 border-b bg-amber-50 text-amber-800 text-sm flex flex-wrap items-center gap-2">
+          <Lock className="w-4 h-4 shrink-0" aria-hidden="true" />
+          <span className="font-bold">{tr("day.closedBanner", { date: num(closedDay.date) })}</span>
+          <span>{tr("day.closedBy", { by: closedDay.closed_by, at: num(format(new Date(closedDay.closed_at), "yyyy/MM/dd HH:mm")) })}</span>
+        </div>
+      }
+
+      {/* Close / reopen confirmation */}
+      {dayDialog &&
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" dir={dir}>
+          <div role="alertdialog" aria-labelledby="day-dialog-title" aria-describedby="day-dialog-body" className="bg-white rounded-2xl shadow-2xl p-6 max-w-md w-full">
+            <div className="flex items-center gap-3 mb-3">
+              <div className={`rounded-full p-2 ${dayDialog === "close" ? "bg-amber-50" : "bg-blue-50"}`}>
+                {dayDialog === "close" ? <Lock className="w-5 h-5 text-amber-700" aria-hidden="true" /> : <LockOpen className="w-5 h-5 text-blue-700" aria-hidden="true" />}
+              </div>
+              <h3 id="day-dialog-title" className="font-bold text-gray-800 text-lg">
+                {tr(dayDialog === "close" ? "day.confirmClose.title" : "day.confirmReopen.title", { date: num(selectedDate) })}
+              </h3>
+            </div>
+            <p id="day-dialog-body" className="text-gray-600 text-sm mb-5">
+              {tr(dayDialog === "close" ? "day.confirmClose.body" : "day.confirmReopen.body")}
+            </p>
+            <div className="flex gap-3">
+              <button type="button" onClick={() => setDayDialog(null)} className="flex-1 border rounded-lg py-2 text-gray-600 hover:bg-gray-50">
+                {tr("common.cancel")}
+              </button>
+              <button
+                type="button"
+                onClick={confirmDayChange}
+                disabled={dayWorking}
+                data-testid="confirm-day-change"
+                className={`flex-1 flex items-center justify-center gap-2 text-white rounded-lg py-2 font-semibold transition disabled:opacity-50 ${dayDialog === "close" ? "bg-amber-600 hover:bg-amber-700" : "bg-blue-600 hover:bg-blue-700"}`}>
+                {dayWorking && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
+                {tr(dayDialog === "close" ? "day.close" : "day.reopen")}
+              </button>
+            </div>
+          </div>
+        </div>
+      }
 
       {/* Confirm Delete Dialog */}
       {showConfirm &&
@@ -376,7 +476,7 @@ export default function TransactionsList({
             <Percent className="w-4 h-4" />
             {tr("list.commissionReport")}
           </button>
-          {canDelete && transactions.length > 0 && !searchingAllDays &&
+          {canDelete && transactions.length > 0 && !searchingAllDays && !closedDay &&
           <button
             onClick={() => setShowConfirm(true)}
             disabled={deleting}
@@ -395,14 +495,18 @@ export default function TransactionsList({
           </button>
           <button
             onClick={onCashOut}
-            className="flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white px-4 py-1.5 rounded-lg text-sm font-semibold transition">
+            disabled={todayClosed}
+            title={todayClosed ? tr("day.todayClosedHint") : undefined}
+            className="flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white px-4 py-1.5 rounded-lg text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed">
             
             Cash Out
             <span className="bg-red-700 rounded-full p-0.5">↑</span>
           </button>
           <button
             onClick={onCashIn}
-            className="flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white px-4 py-1.5 rounded-lg text-sm font-semibold transition">
+            disabled={todayClosed}
+            title={todayClosed ? tr("day.todayClosedHint") : undefined}
+            className="flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white px-4 py-1.5 rounded-lg text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed">
             
             Cash In
             <span className="bg-green-700 rounded-full p-0.5">↓</span>
@@ -419,14 +523,17 @@ export default function TransactionsList({
           <span className="text-sm font-bold text-blue-800" data-testid="bulk-selected-count">
             {tr("list.selectedCount", { count: selectedTransactions.length })}
             <span className="font-normal text-blue-700 ms-2" dir="ltr">
-              (${selectedTransactions.reduce((s, t) => s + (t.amount || 0), 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
+              (${num(selectedTransactions.reduce((s, t) => s + (t.amount || 0), 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }))})
             </span>
           </span>
           <div className="flex flex-wrap items-center gap-2">
+            {selectionHasClosedDay &&
+            <span className="text-xs text-amber-800 flex items-center gap-1" data-testid="bulk-closed-hint"><Lock className="w-3.5 h-3.5" aria-hidden="true" />{tr("day.selectionClosed")}</span>
+            }
             {canBulkEdit &&
             <button
             onClick={() => setShowBulkEdit(true)}
-            disabled={bulkWorking}
+            disabled={bulkWorking || selectionHasClosedDay}
             className="flex items-center gap-1 bg-white border border-blue-200 rounded-lg px-3 py-1.5 text-sm text-blue-700 hover:bg-blue-100 transition disabled:opacity-50">
               <Pencil className="w-4 h-4" />
               {tr("list.bulkEdit")}
@@ -435,7 +542,7 @@ export default function TransactionsList({
             {canDelete &&
             <button
             onClick={() => setShowBulkDeleteConfirm(true)}
-            disabled={bulkWorking}
+            disabled={bulkWorking || selectionHasClosedDay}
             className="flex items-center gap-1 bg-white border border-red-200 rounded-lg px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 transition disabled:opacity-50">
               {bulkWorking ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
               {tr("list.bulkDelete")}
@@ -523,10 +630,11 @@ export default function TransactionsList({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {rows.map((t, i) => {
+              {pageRows.map((t, i) => {
                 // الرقم الحقيقي للعملية في اليوم (ترتيب allTransactions نفسه، مهما كان ترتيب العرض)
                 const realIndex = journal.get(t.id)?.n ?? -1;
-                const displayIndex = realIndex >= 0 ? realIndex + 1 : i + 1;
+                const displayIndex = realIndex >= 0 ? realIndex + 1 : pageStart + i + 1;
+                const rowClosed = isOnClosedDay(t);
                 return (
                   <tr key={t.id} className={`transition ${selectedIds.has(t.id) ? "bg-blue-50 hover:bg-blue-100" : "hover:bg-gray-50"}`} aria-selected={selectedIds.has(t.id)}>
                   <td className="ps-4 pe-1 py-3">
@@ -541,7 +649,7 @@ export default function TransactionsList({
                           className="w-4 h-4 accent-blue-600 cursor-pointer align-middle" />
                   </td>
                   {show.index &&
-                    <td className="px-4 py-3 text-gray-400">{displayIndex}</td>
+                    <td className="px-4 py-3 text-gray-400">{num(displayIndex)}</td>
                   }
                   {show.type &&
                     <td className="px-4 py-3">
@@ -581,15 +689,15 @@ export default function TransactionsList({
                     </td>
                   }
                   {show.amount &&
-                    <td className="px-4 py-3 font-bold text-gray-800">${(t.amount || 0).toFixed(2)}</td>
+                    <td className="px-4 py-3 font-bold text-gray-800">${num((t.amount || 0).toFixed(2))}</td>
                   }
                   {show.commissionRate &&
                     <td className="px-4 py-3 font-bold text-blue-600">
-                      {t.amount > 0 ? (t.commission / t.amount * 100).toFixed(2) + "%" : "-"}
+                      {t.amount > 0 ? num((t.commission / t.amount * 100).toFixed(2)) + "%" : "-"}
                     </td>
                   }
                   {show.commission &&
-                    <td className={`px-4 py-3 font-bold ${t.type === "cash_out" ? "text-red-700" : "text-green-700"}`}>${(t.commission || 0).toFixed(3)}</td>
+                    <td className={`px-4 py-3 font-bold ${t.type === "cash_out" ? "text-red-700" : "text-green-700"}`}>${num((t.commission || 0).toFixed(3))}</td>
                   }
                   {show.reference &&
                     <td className="px-4 py-3 text-gray-700 text-xs font-bold">{t.reference_number || "-"}</td>
@@ -614,16 +722,21 @@ export default function TransactionsList({
                             onClick={() => onOpenDay(txDateOfRow(t))}
                             title={tr("list.openDay")}
                             className="text-blue-700 underline underline-offset-2 hover:text-blue-800 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400">
-                            {t.transaction_date || format(new Date(t.created_date), "yyyy/MM/dd HH:mm")}
+                            {num(t.transaction_date || format(new Date(t.created_date), "yyyy/MM/dd HH:mm"))}
                           </button> :
-                        t.transaction_date ?
+                        num(t.transaction_date ?
                           t.transaction_date :
-                          format(new Date(t.created_date), "yyyy/MM/dd HH:mm")}
+                          format(new Date(t.created_date), "yyyy/MM/dd HH:mm"))}
                     </td>
                   }
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
-                      {canEditTransaction(t) &&
+                      {rowClosed && (canEditTransaction(t) || canDelete) &&
+                      <span title={tr("day.rowClosed")} aria-label={tr("day.rowClosed")} role="img" data-testid="row-closed">
+                          <Lock className="w-4 h-4 text-amber-700" aria-hidden="true" />
+                        </span>
+                      }
+                      {!rowClosed && canEditTransaction(t) &&
                       <button
                             onClick={() => setEditingTransaction(t)}
                             className="text-gray-400 hover:text-blue-500 transition"
@@ -632,7 +745,7 @@ export default function TransactionsList({
                         <Pencil className="w-4 h-4 text-[hsl(var(--sidebar-ring))]" />
                       </button>
                       }
-                      {!canDelete ? null : confirmDeleteId === t.id ?
+                      {!canDelete || rowClosed ? null : confirmDeleteId === t.id ?
                           <div className="flex items-center gap-1">
                           <button
                               onClick={() => handleDeleteOne(t)}
@@ -664,6 +777,28 @@ export default function TransactionsList({
             </tbody>
           </table>
         </div>
+        {pageSize > 0 && rows.length > pageSize &&
+        <nav className="px-4 py-3 border-t flex flex-wrap items-center justify-between gap-2 text-sm text-gray-600" aria-label={tr("list.page.label")} data-testid="pager">
+            <span data-testid="pager-range">{tr("list.page.range", { from: pageStart + 1, to: pageStart + pageRows.length, total: rows.length })}</span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPage(currentPage - 1)}
+                disabled={currentPage === 0}
+                className="border rounded-lg px-3 py-1 hover:bg-gray-50 transition disabled:opacity-40 disabled:hover:bg-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400">
+                {tr("list.page.prev")}
+              </button>
+              <span aria-live="polite">{tr("list.page.of", { page: currentPage + 1, pages: pageCount })}</span>
+              <button
+                type="button"
+                onClick={() => setPage(currentPage + 1)}
+                disabled={currentPage >= pageCount - 1}
+                className="border rounded-lg px-3 py-1 hover:bg-gray-50 transition disabled:opacity-40 disabled:hover:bg-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400">
+                {tr("list.page.next")}
+              </button>
+            </div>
+          </nav>
+        }
         </>
       }
 

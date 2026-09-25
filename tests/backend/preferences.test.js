@@ -22,6 +22,23 @@ beforeAll(async () => {
 
 afterAll(() => srv.close());
 
+// Every setting's default, as the API returns it (the app as it behaved before settings existed).
+const DEFAULTS = {
+  language: null,
+  hiddenColumns: [],
+  density: "comfortable",
+  summaries: { month: true, year: false },
+  theme: "light",
+  startOn: "last",
+  searchScope: "all",
+  defaultSort: { key: null, dir: "asc" },
+  clock: "12h",
+  numerals: "western",
+  toastDuration: "normal",
+  toastSuccess: true,
+  rowsPerPage: 0,
+};
+
 const save = (as, body) => client.request("PUT", "/auth/preferences", { as, body });
 const stored = (email) => db.prepare("SELECT preferences FROM users WHERE email = ?").get(email).preferences;
 
@@ -29,26 +46,14 @@ describe("preferences API", () => {
   it("a new account gets the defaults (every column, comfortable, month open / year closed, no saved language)", async () => {
     const { status, body } = await client.request("GET", "/auth/me", { as: "manager" });
     expect(status).toBe(200);
-    expect(body.preferences).toEqual({
-      language: null,
-      hiddenColumns: [],
-      density: "comfortable",
-      summaries: { month: true, year: false },
-      theme: "light",
-    });
+    expect(body.preferences).toEqual(DEFAULTS);
   });
 
   it("any role can save their own preferences; a partial change is merged over what's stored", async () => {
     let res = await save("user", { hiddenColumns: ["note", "service"], density: "compact" });
     expect(res.status).toBe(200);
     expect(res.body.email).toBe("user@test.local");
-    expect(res.body.preferences).toEqual({
-      language: null,
-      hiddenColumns: ["note", "service"],
-      density: "compact",
-      summaries: { month: true, year: false },
-      theme: "light",
-    });
+    expect(res.body.preferences).toEqual({ ...DEFAULTS, hiddenColumns: ["note", "service"], density: "compact" });
 
     res = await save("user", { summaries: { year: true }, language: "en" });
     expect(res.status).toBe(200);
@@ -77,6 +82,48 @@ describe("preferences API", () => {
     const res = await save("manager", { theme });
     expect(res.status).toBe(200);
     expect(res.body.preferences.theme).toBe(theme);
+  });
+
+  it.each([
+    ["startOn", "today"],
+    ["searchScope", "day"],
+    ["defaultSort", { key: "amount", dir: "desc" }],
+    ["clock", "24h"],
+    ["clock", "hidden"],
+    ["numerals", "arabic"],
+    ["toastDuration", "long"],
+    ["toastSuccess", false],
+    ["rowsPerPage", 50],
+    ["rowsPerPage", 0],
+  ])("saves %s = %j", async (key, value) => {
+    const res = await save("manager", { [key]: value });
+    expect(res.status).toBe(200);
+    expect(res.body.preferences[key]).toEqual(value);
+  });
+
+  it("a partial default sort keeps the other half; key null means journal order", async () => {
+    await save("manager", { defaultSort: { key: "date", dir: "desc" } });
+    let res = await save("manager", { defaultSort: { dir: "asc" } });
+    expect(res.body.preferences.defaultSort).toEqual({ key: "date", dir: "asc" });
+    res = await save("manager", { defaultSort: { key: null } });
+    expect(res.body.preferences.defaultSort).toEqual({ key: null, dir: "asc" });
+  });
+
+  it.each([
+    ["startOn", "yesterday"],
+    ["searchScope", "week"],
+    ["defaultSort", { key: "password", dir: "asc" }],
+    ["defaultSort", { key: "amount", dir: "sideways" }],
+    ["defaultSort", { key: "amount", extra: 1 }],
+    ["clock", "36h"],
+    ["numerals", "roman"],
+    ["toastDuration", "forever"],
+    ["toastSuccess", "no"],
+    ["rowsPerPage", 33],
+    ["rowsPerPage", "50"],
+  ])("rejects %s = %j", async (key, value) => {
+    const res = await save("user2", { [key]: value });
+    expect(res.status).toBe(400);
   });
 
   it("can clear the saved language back to null", async () => {
@@ -115,11 +162,12 @@ describe("preferences API", () => {
 
 describe("preferences rules (shared with the UI)", () => {
   it("resolvePreferences reads stored JSON tolerantly, falling back to defaults for anything invalid", () => {
-    expect(resolvePreferences(null)).toEqual({ ...DEFAULT_PREFERENCES, hiddenColumns: [], summaries: { month: true, year: false }, theme: "light" });
+    expect(resolvePreferences(null)).toEqual(DEFAULTS);
+    expect(Object.keys(DEFAULT_PREFERENCES).sort()).toEqual(Object.keys(DEFAULTS).sort());
     expect(resolvePreferences("not json")).toEqual(resolvePreferences(null));
     expect(resolvePreferences(JSON.stringify({
       language: "fr", hiddenColumns: ["note", "note", "bogus"], density: "tiny", summaries: { month: false, year: "x" }, theme: "neon",
-    }))).toEqual({ language: null, hiddenColumns: ["note"], density: "comfortable", summaries: { month: false, year: false }, theme: "light" });
+    }))).toEqual({ ...DEFAULTS, hiddenColumns: ["note"], summaries: { month: false, year: false } });
     // A stored "hide everything" can never blank the table.
     expect(resolvePreferences({ hiddenColumns: TABLE_COLUMNS }).hiddenColumns).toEqual([]);
   });

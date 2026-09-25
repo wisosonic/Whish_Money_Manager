@@ -294,9 +294,11 @@ describe("settings", () => {
 
   it("changes are confirmed with a single 'Settings saved' toast, however many are made quickly", async () => {
     render(withApp(<SettingsPage />));
+    fireEvent.click(screen.getByRole("tab", { name: "المظهر" }));
     fireEvent.click(screen.getByTestId("density-compact"));
-    fireEvent.click(screen.getByTestId("column-note"));
     fireEvent.click(screen.getByTestId("summary-year"));
+    fireEvent.click(screen.getByRole("tab", { name: "جدول العمليات" }));
+    fireEvent.click(screen.getByTestId("column-note"));
     await waitFor(() => expect(api.auth.updatePreferences).toHaveBeenCalledTimes(3));
     expect(await findToast("تم حفظ الإعدادات.")).toHaveAttribute("data-type", "success");
     await waitFor(() => expect(toastTexts()).toEqual(["تم حفظ الإعدادات."]));
@@ -305,6 +307,7 @@ describe("settings", () => {
   it("a failed save is reported with the server's reason", async () => {
     api.auth.updatePreferences.mockRejectedValueOnce(new Error("At least one column must stay visible"));
     render(withApp(<SettingsPage />));
+    fireEvent.click(screen.getByRole("tab", { name: "جدول العمليات" }));
     fireEvent.click(screen.getByTestId("column-note"));
     expect(await findToast("يجب أن يبقى عمود واحد على الأقل ظاهراً")).toHaveAttribute("data-type", "error");
   });
