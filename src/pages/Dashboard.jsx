@@ -47,6 +47,8 @@ export default function Dashboard() {
   const allStoresView = multiStore && chosenStore === null;
   const noStore = !seesAll && Boolean(user) && user.store_id == null;
   const storeNames = allStoresView ? new Map(stores.map((store) => [store.id, store.name])) : null;
+  // What the store field lists: the Admin's stores, or the one store a Manager / User works in.
+  const pickerStores = seesAll ? stores : user?.store_id != null ? [{ id: user.store_id, name: user.store_name }] : [];
   // The store is sent only when the Admin picked one of several; otherwise the server knows it.
   const storeFilter = chosenStore ? { store_id: chosenStore } : {};
   const withStore = (...args) => (chosenStore ? [...args, chosenStore] : args);
@@ -275,18 +277,22 @@ export default function Dashboard() {
     <div className="min-h-screen bg-gray-100" dir={dir}>
       <Header />
       <div className="p-2 md:p-4 space-y-2 md:space-y-4 w-full bg-[hsl(var(--sidebar-border))]">
-        {multiStore &&
+        {/* The store shown is always visible (user's request). Only the Admin with several stores can
+            change it; otherwise the field shows the one store, greyed out. */}
+        {pickerStores.length > 0 &&
           <div className="bg-white rounded-xl shadow px-4 py-3 flex flex-wrap items-center gap-3" data-testid="store-picker">
             <label className="flex items-center gap-2 text-sm font-semibold text-gray-700">
               <Store className="w-4 h-4 text-blue-600" aria-hidden="true" />
               {t("stores.showing")}
-              <select value={chosenStore ?? "all"} onChange={(e) => handleStoreChoice(e.target.value)} data-testid="dashboard-store"
-                className="border rounded-lg px-3 py-1.5 font-bold bg-white focus:outline-none focus:ring-2 focus:ring-blue-300">
-                <option value="all">{t("stores.all")}</option>
-                {stores.map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}
+              <select value={multiStore ? chosenStore ?? "all" : pickerStores[0].id} onChange={(e) => handleStoreChoice(e.target.value)} data-testid="dashboard-store"
+                disabled={!multiStore}
+                className="border rounded-lg px-3 py-1.5 font-bold bg-white focus:outline-none focus:ring-2 focus:ring-blue-300 disabled:opacity-70 disabled:cursor-not-allowed">
+                {multiStore && <option value="all">{t("stores.all")}</option>}
+                {pickerStores.map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}
               </select>
             </label>
             {allStoresView && <span className="text-xs text-gray-500">{t("stores.allHint")}</span>}
+            {!multiStore && <span className="text-xs text-gray-500" data-testid="store-picker-hint">{seesAll ? t("stores.onlyOneHint") : t("stores.ownStoreHint")}</span>}
           </div>
         }
         <StatsCards
@@ -353,7 +359,7 @@ export default function Dashboard() {
       }
       {showImportPDF &&
       <ImportPDFModal
-        stores={multiStore ? stores : []}
+        stores={pickerStores}
         defaultStoreId={chosenStore}
         onClose={() => setShowImportPDF(false)}
         onSaved={(ob, obDate, importStore) => {

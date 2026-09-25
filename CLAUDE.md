@@ -70,6 +70,7 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - **Frontend:**
     - **Only the Admin chooses a store:** `useStoreList()` (`src/lib/useStores.js`) and `StorePicker`.
     - **When the store is sent:** only when the Admin picked one of *several* stores (`withStoreArg`). With one store, or for Managers / Users, calls look exactly as before, and the server applies the store. This is why the old tests didn't change.
+    - **Store fields always shown** (user's request, 2026-09-25): the dashboard's `dashboard-store` and the import screen's `import-store` are visible whenever a store is known: the Admin's list (`pickerStores`), or the Manager's / User's own store from the session (`user.store_id` / `store_name`). They're **disabled** when there's nothing to choose (one store, or not the Admin), with a hint, and "All stores" is offered only with several. What's *sent* doesn't change: a store only when the Admin picked one of several.
     - **Dashboard:** "All stores" (`storeNames` → Store column, `isRowClosed` per row's store). Cash In / Out, close day, delete-all and the opening balance are off there; the import modal asks for the store.
     - **Wallet figures:** `src/lib/walletMath.js` (moved unchanged from Dashboard); `walletFiguresByStore` sums per store.
     - **Pages:** `StoresPage` (`/stores`, header "المتاجر" / "متجري"); the Users page has a Store column; the rate editor, admin panel data column and Reports have a store picker (Admin, several stores); Reports has a "Compare stores" tab (`/admin/reports/stores`, `stores:all`).
@@ -399,6 +400,7 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - `Dashboard` computes `yearly*` figures.
   - Added `StatsCards.test.jsx` and Dashboard summary tests. Total now 104.
 ### 2026-09-25
+- **Store field always shown** (user's request): the dashboard's store field and the import screen's store field appear even with one store (greyed out; also for Managers and Users, showing their store). Requests are unchanged. Tests: the single-store and Manager/User cases in `stores.test.jsx` (24 there now).
 - **Stores** (user's request; decisions: scoped visibility, store picked by hand on import, per-store balances / closed days / rate, existing data moved to a first store):
   - **Server:** the `stores` table and `store_id` everywhere, an idempotent upgrade, `server/stores.js` (CRUD, one Manager per store, members, scope helpers), and every route scoped. Imports are blocked when a reference is already in another store. Reports take a store filter and gain a stores comparison.
   - **Frontend:**

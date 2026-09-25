@@ -9,16 +9,20 @@ import { useI18n } from "@/lib/i18n";
 import { notify } from "@/lib/notify";
 import { X, Upload, FileText, CheckCircle, AlertCircle, Loader2, Calendar, Store } from "lucide-react";
 
-// stores: the Admin's stores when there are several — the statement's store is then picked here, by
-// hand, before the file is read (its commission rate applies). defaultStoreId: pre-selected (the
-// store shown on the dashboard). Everyone else always imports into their own store.
+// stores: the stores the statement can go to — the Admin's stores, or the one a Manager / User works
+// in (by default, their own store from the session). The field is always shown (user's request):
+// with several stores the store is picked here, by hand, before the file is read (its commission
+// rate applies); with one, it's that store, greyed out. defaultStoreId: pre-selected (the store shown
+// on the dashboard).
 export default function ImportPDFModal({ onClose, onSaved, stores = [], defaultStoreId = null }) {
   // Replacing an imported statement deletes the old entries, so it needs delete rights.
   const { can, user } = useAuth();
-  const pickStore = stores.length > 1;
-  const [storeId, setStoreId] = useState(pickStore ? defaultStoreId ?? "" : undefined);
+  const choices = stores.length ? stores : user?.store_id != null ? [{ id: user.store_id, name: user.store_name }] : [];
+  const pickStore = choices.length > 1;
+  const [storeId, setStoreId] = useState(pickStore ? defaultStoreId ?? "" : choices[0]?.id ?? "");
   const storeChosen = !pickStore || Boolean(storeId);
-  const storeName = pickStore ? stores.find((store) => store.id === Number(storeId))?.name : user?.store_name;
+  const storeName = choices.find((store) => store.id === Number(storeId))?.name;
+  // Sent only when there's a real choice; with one store the server knows which.
   const target = pickStore && storeId ? Number(storeId) : undefined;
   const { t, dir, errorText } = useI18n();
   const canReplace = can(PERMISSIONS.TRANSACTIONS_DELETE);
@@ -219,19 +223,21 @@ export default function ImportPDFModal({ onClose, onSaved, stores = [], defaultS
         </div>
 
         <div className="flex-1 overflow-auto p-5">
-          {/* Which store the statement is for: picked by hand (the Admin, several stores), or yours. */}
-          {pickStore && step === "upload" && !loading &&
+          {/* Which store the statement is for: picked by hand (the Admin, several stores), or the only one. */}
+          {choices.length > 0 && step === "upload" && !loading &&
             <label className="flex flex-wrap items-center gap-2 mb-4 text-sm font-medium text-gray-700">
               <Store className="w-4 h-4 text-blue-600" aria-hidden="true" />
               {t("stores.importInto")}
               <select value={storeId} onChange={(e) => { setStoreId(e.target.value); setError(""); }} data-testid="import-store"
-                className="border rounded-lg px-3 py-1.5 font-bold bg-white focus:outline-none focus:ring-2 focus:ring-blue-300">
-                <option value="">{t("stores.choose")}</option>
-                {stores.map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}
+                disabled={!pickStore}
+                className="border rounded-lg px-3 py-1.5 font-bold bg-white focus:outline-none focus:ring-2 focus:ring-blue-300 disabled:opacity-70 disabled:cursor-not-allowed">
+                {pickStore && <option value="">{t("stores.choose")}</option>}
+                {choices.map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}
               </select>
+              {!pickStore && <span className="text-xs font-normal text-gray-500">{t("stores.importOnlyOne")}</span>}
             </label>
           }
-          {storeName && (!pickStore || step !== "upload") &&
+          {storeName && step !== "upload" &&
             <p className="flex items-center gap-2 mb-4 text-sm text-gray-600" data-testid="import-store-name">
               <Store className="w-4 h-4 text-blue-600" aria-hidden="true" />
               {t("stores.importIntoName", { store: storeName })}

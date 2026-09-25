@@ -237,12 +237,33 @@ describe("dashboard", () => {
     expect(api.entities.Transaction.filter).not.toHaveBeenCalled();
   });
 
-  it("with a single store there is no store picker (the office works as before stores)", async () => {
+  it("with a single store the store field is still shown: that store, greyed out; nothing else changes", async () => {
     api.stores.list.mockResolvedValue([BEIRUT]);
     const { container } = wrap(<Dashboard />);
     await waitFor(() => expect(rows(container)).toHaveLength(2));
-    expect(screen.queryByTestId("dashboard-store")).not.toBeInTheDocument();
+    const select = screen.getByTestId("dashboard-store");
+    expect(select).toBeDisabled();
+    expect(select).toHaveValue("1");
+    expect([...select.options].map((o) => o.textContent)).toEqual(["Beirut Main"]); // no "All stores" with one store
+    expect(screen.getByTestId("store-picker-hint")).toHaveTextContent("أضف متاجر من صفحة المتاجر");
+    // Same requests as before stores: the server knows the only store.
+    expect(api.entities.Transaction.filter).toHaveBeenLastCalledWith({}, "created_date", 10000);
     expect(screen.getByRole("button", { name: /Cash In/ })).toBeEnabled();
+    expect(screen.queryByTestId("store-column")).not.toBeInTheDocument();
+  });
+
+  it("a Manager or User sees the store they work in, greyed out (they can't switch)", async () => {
+    for (const role of ["manager", "user"]) {
+      setAuthRole(role);
+      const { container, unmount } = wrap(<Dashboard />);
+      await waitFor(() => expect(rows(container).length).toBeGreaterThan(0));
+      const select = screen.getByTestId("dashboard-store");
+      expect(select).toBeDisabled();
+      expect([...select.options].map((o) => o.textContent)).toEqual(["Main store"]);
+      expect(screen.getByTestId("store-picker-hint")).toHaveTextContent("المتجر الذي تعمل فيه.");
+      expect(api.stores.list).not.toHaveBeenCalled();
+      unmount();
+    }
   });
 });
 
@@ -278,11 +299,32 @@ describe("import into a store", () => {
     await waitFor(() => expect(onSaved).toHaveBeenCalledWith(10, "2026-09-23", 2), { timeout: 3000 });
   });
 
-  it("a Manager or User imports into their own store (named, nothing to pick)", async () => {
+  it("a Manager or User sees the store field with their own store, greyed out", async () => {
     setAuthRole("user");
+    api.integrations.Core.ExtractCsv.mockResolvedValue({ transactions: [{ type: "cash_in", amount: 5, reference_number: "tr:1", date: "2026-09-23" }], statement_date: "2026-09-23" });
+    api.entities.Transaction.findDuplicates.mockResolvedValue([]);
     wrap(<ImportPDFModal onClose={vi.fn()} onSaved={vi.fn()} />);
-    expect(screen.queryByTestId("import-store")).not.toBeInTheDocument();
-    expect(screen.getByTestId("import-store-name")).toHaveTextContent("الاستيراد إلى Main store");
+    const select = screen.getByTestId("import-store");
+    expect(select).toBeDisabled();
+    expect([...select.options].map((o) => o.textContent)).toEqual(["Main store"]);
+    // Nothing to choose: the file can be read straight away, and no store is sent (the server uses theirs).
+    choose(csv());
+    await waitFor(() => expect(api.integrations.Core.ExtractCsv).toHaveBeenCalledWith(expect.any(File), undefined));
+    expect(await screen.findByTestId("import-store-name")).toHaveTextContent("الاستيراد إلى Main store");
+  });
+
+  it("the Admin with one store sees it in the field, greyed out and already chosen", () => {
+    wrap(<ImportPDFModal stores={[BEIRUT]} onClose={vi.fn()} onSaved={vi.fn()} />);
+    const select = screen.getByTestId("import-store");
+    expect(select).toBeDisabled();
+    expect(select).toHaveValue("1");
+    expect(screen.queryByText("اختر متجراً…")).not.toBeInTheDocument();
+  });
+
+  it("with several stores the field starts on the dashboard's store when one is shown there", () => {
+    wrap(<ImportPDFModal stores={[BEIRUT, TRIPOLI]} defaultStoreId={2} onClose={vi.fn()} onSaved={vi.fn()} />);
+    expect(screen.getByTestId("import-store")).toBeEnabled();
+    expect(screen.getByTestId("import-store")).toHaveValue("2");
   });
 });
 
