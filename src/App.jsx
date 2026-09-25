@@ -9,6 +9,7 @@ import Dashboard from "./pages/Dashboard";
 import UsersPage from "./pages/UsersPage";
 import SettingsPage from "./pages/SettingsPage";
 import AdminPage from "./pages/AdminPage";
+import ProfilePage from "./pages/ProfilePage";
 import LoginPage from "@/components/auth/LoginPage";
 import { PERMISSIONS } from "@/lib/permissions";
 import { LanguageProvider, useI18n } from "@/lib/i18n";
@@ -66,6 +67,8 @@ const AuthenticatedApp = () => {
         element={<RequirePermission permission={PERMISSIONS.DATA_EXPORT}><AdminPage /></RequirePermission>} />
       {/* Every signed-in user has their own settings. */}
       <Route path="/settings" element={<SettingsPage />} />
+      {/* …and their own profile (name, email, password). */}
+      <Route path="/profile" element={<ProfilePage />} />
       {/* Add your page Route elements here */}
       <Route path="*" element={<PageNotFound />} />
     </Routes>

@@ -243,6 +243,117 @@ export const registerAuthRoutes = (app) => {
     res.json(publicUser(getUserRow(req.user.id)));
   });
 
+  // ─── Own profile (every signed-in user) ───
+  // Wrong current passwords count towards the same lockout as sign-in failures, so a session left
+  // open on a shared computer can't be used to guess the password.
+  const checkCurrentPassword = (req, res, password) => {
+    const key = `self|${req.user.id}`;
+    if (isRateLimited(key)) {
+      res.status(429).json({ error: "Too many failed attempts. Try again in 15 minutes." });
+      return false;
+    }
+    const row = db.prepare("SELECT password_hash FROM users WHERE id = ?").get(req.user.id);
+    if (!bcrypt.compareSync(String(password || ""), row.password_hash)) {
+      recordFailure(key);
+      res.status(400).json({ error: "Current password is incorrect" });
+      return false;
+    }
+    loginFailures.delete(key);
+    return true;
+  };
+
+  // Everything recorded under a person's email ("entered by", who closed a day, who set a rate).
+  // An email change moves it all to the new address, so the user keeps their own transactions.
+  const EMAIL_COLUMNS = [
+    ["transactions", "created_by"],
+    ["daily_balances", "created_by"],
+    ["closed_days", "closed_by"],
+    ["commission_rates", "created_by"],
+  ];
+  const emailInUse = (email) =>
+    Boolean(db.prepare("SELECT 1 FROM users WHERE email = ?").get(email)) ||
+    // Rows left under an address nobody has any more (e.g. the pre-accounts owner, or a backup
+    // restored after an email change): taking that address would take ownership of those rows.
+    EMAIL_COLUMNS.some(([table, column]) => db.prepare(`SELECT 1 FROM ${table} WHERE ${column} = ? LIMIT 1`).get(email));
+
+  // Body: { full_name?, email?, current_password? } — changing the email needs the current password.
+  app.put("/local-api/auth/profile", authenticate, (req, res) => {
+    const { full_name, email, current_password } = req.body || {};
+    const sets = [];
+    const values = [];
+
+    if (full_name !== undefined) {
+      const name = String(full_name ?? "").trim();
+      if (name.length > 100) {
+        res.status(400).json({ error: "The name must be 100 characters or fewer" });
+        return;
+      }
+      sets.push("full_name = ?");
+      values.push(name);
+    }
+
+    const oldEmail = req.user.email;
+    const newEmail = email === undefined ? oldEmail : normalizeEmail(email);
+    const emailChanged = newEmail !== oldEmail;
+    if (emailChanged) {
+      if (!isValidEmail(newEmail)) {
+        res.status(400).json({ error: "A valid email is required" });
+        return;
+      }
+      if (!current_password) {
+        res.status(400).json({ error: "Enter your current password to change your email" });
+        return;
+      }
+      if (!checkCurrentPassword(req, res, current_password)) return;
+      if (emailInUse(newEmail)) {
+        res.status(409).json({ error: "A user with this email already exists" });
+        return;
+      }
+      sets.push("email = ?");
+      values.push(newEmail);
+    }
+
+    if (!sets.length) {
+      res.status(400).json({ error: "No changes to apply" });
+      return;
+    }
+
+    sets.push("updated_date = ?");
+    values.push(nowIso(), req.user.id);
+    const moved = {};
+    db.transaction(() => {
+      db.prepare(`UPDATE users SET ${sets.join(", ")} WHERE id = ?`).run(...values);
+      if (emailChanged) {
+        for (const [table, column] of EMAIL_COLUMNS) {
+          moved[table] = db.prepare(`UPDATE ${table} SET ${column} = ? WHERE ${column} = ?`).run(newEmail, oldEmail).changes;
+        }
+      }
+    })();
+    if (emailChanged) console.log(`[auth] user ${req.user.id} changed their email from ${oldEmail} to ${newEmail}`);
+    res.json(publicUser(getUserRow(req.user.id)));
+  });
+
+  // Body: { current_password, new_password }. Signs the user out everywhere except here.
+  app.put("/local-api/auth/password", authenticate, (req, res) => {
+    const { current_password, new_password } = req.body || {};
+    if (!current_password || !new_password) {
+      res.status(400).json({ error: "Current and new passwords are required" });
+      return;
+    }
+    if (String(new_password).length < MIN_PASSWORD_LENGTH) {
+      res.status(400).json({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` });
+      return;
+    }
+    if (!checkCurrentPassword(req, res, current_password)) return;
+    if (String(new_password) === String(current_password)) {
+      res.status(400).json({ error: "The new password must be different from the current one" });
+      return;
+    }
+    db.prepare("UPDATE users SET password_hash = ?, updated_date = ? WHERE id = ?").run(hashPassword(new_password), nowIso(), req.user.id);
+    const sessionsRevoked = db.prepare("DELETE FROM sessions WHERE user_id = ? AND id != ?").run(req.user.id, req.sessionId).changes;
+    res.json({ ok: true, sessions_revoked: sessionsRevoked });
+  });
+
   // ─── User & role management (Admin only) ───
   const adminOnly = [authenticate, requirePermission(PERMISSIONS.USERS_MANAGE)];
 

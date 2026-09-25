@@ -101,6 +101,21 @@ export const api = {
         body: JSON.stringify(changes),
       }),
 
+    // The signed-in user's own name / email ({ full_name?, email?, current_password? }; the email
+    // needs the current password). Returns the updated user.
+    updateProfile: async (changes) =>
+      apiRequest('/auth/profile', {
+        method: 'PUT',
+        body: JSON.stringify(changes),
+      }),
+
+    // Signs the user out on their other devices; returns { ok, sessions_revoked }.
+    changePassword: async (currentPassword, newPassword) =>
+      apiRequest('/auth/password', {
+        method: 'PUT',
+        body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+      }),
+
     // Deletes the session on the server (the token can't be reused) and clears the cookie.
     logout: async (redirectUrl) => {
       await apiRequest('/auth/logout', { method: 'POST' }).catch(() => {});

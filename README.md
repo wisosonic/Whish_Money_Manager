@@ -65,6 +65,7 @@ It runs entirely on your machine: a React frontend and a small Node.js/Express A
   - The "#" column always shows each row's real number in the day's journal. Selecting rows and bulk actions work the same while sorted.
   - The sort resets when the page reloads.
 - **Settings** (⚙️ in the header), grouped in tabs: language, start-up day, clock, number style, theme, row spacing, summaries, table columns, default sort, rows per page, default search scope and notifications, all saved to each user's account. Admins and Managers also set the office **commission rate** there. See [Settings](#settings).
+- **My profile** (click your name in the header): see your account, and change your own name, email and password. See [My profile](#my-profile).
 - **Closing a day** (Admin and Manager): lock a day so nobody can add, edit, import or delete its transactions or change its opening balance, until it's reopened. See [Closing a day](#closing-a-day).
 - **Admin panel** (Admin and Manager): download a CSV backup of any date range, or permanently delete all data in a range. See [Admin panel](#admin-panel-admin-and-manager).
 - **Notifications**: a short message pops up in the bottom corner (bottom-left in Arabic, bottom-right in English; full width on phones) after every action, so you always know whether it worked.
@@ -194,6 +195,7 @@ Everyone signs in with their own email and password. There are three roles:
 | Delete transactions (single, bulk, "delete all for this day") | ✓ | ✓ | — |
 | Replace an already-imported statement (deletes the old entries) | ✓ | ✓ | — |
 | Set or change opening balances | ✓ | ✓ | — |
+| My profile: change own name, email and password | ✓ | ✓ | ✓ |
 | Manage users and roles (المستخدمون page) | ✓ | — | — |
 | Admin panel: CSV backup by date range | ✓ | ✓ | — |
 | Admin panel: delete all data in a date range | ✓ | ✓ | — |
@@ -211,7 +213,7 @@ Everyone signs in with their own email and password. There are three roles:
 - **Where the session lives:** in a secure cookie that page scripts can't read (`HttpOnly`) and that other websites can't send (`SameSite=Strict`).
 - **The browser cap:** browsers keep cookies for at most about 400 days. The app renews the cookie as you use it, so this only matters if nobody opens the app for 400 days.
 - **Logout:** ends that session on the server immediately. A copy of the token can't be reused, and other devices stay signed in.
-- **Brute-force protection:** after 10 wrong passwords for the same email, sign-in is blocked for 15 minutes.
+- **Brute-force protection:** after 10 wrong passwords for the same email, sign-in is blocked for 15 minutes. Wrong *current* passwords on the profile page count too (10 per 15 minutes per account), so an unattended open session can't be used to guess the password.
 - **Language (العربية / English):** once signed in, change it on the [Settings](#settings) page (⚙️ in the header).
   - **Before signing in:** the login page has an on/off switch. It shows **ع** on the left and **EN** on the right, and a white knob sits on the active language. Click it (or Tab to it and press Space/Enter) to slide to the other one. Screen readers announce it as the "English" switch, on or off.
   - The header has no language switch, to keep it uncluttered.
@@ -223,6 +225,20 @@ Everyone signs in with their own email and password. There are three roles:
 - **Back to top:** click the logo or the app name in the header to scroll smoothly back to the top of the page (instantly if "reduce motion" is on). It also works from the keyboard: Tab to it, then press Enter.
 - **Header position:** the header (logo, user, logout, clock) stays **fixed at the top of the screen** while you scroll, on every page and screen size. Pop-up windows still appear above it. When the keyboard moves focus to a field lower down, the page scrolls so the field lands just below the header, not behind it.
 - **Header:** shows your name, your role, and **your last login**. That's the date and time of the sign-in *before* the current one (e.g. `آخر دخول: 2026/09/23 08:05 PM`), in your local time. It shows "أول تسجيل دخول" on your first ever sign-in. Because sessions don't expire, it changes only when you sign in again. Signing in on another device counts as a new sign-in.
+
+### My profile
+
+Every user has a **profile page** (`/profile`): click **your name** in the header.
+
+- **Account:** your name, email, role, when the account was created, this sign-in and the previous one.
+- **Personal information:**
+  - **Name:** shown in the header and the Users page. Up to 100 characters; no password needed.
+  - **Email:** the address you sign in with. Changing it asks for your **current password**. From then on you sign in with the new address; the old one stops working. Your current session stays signed in.
+  - **Your records follow you:** everything recorded under your old email moves to the new one in the same step: transactions and opening balances you entered (so you can still edit them), days you closed, and commission rates you set.
+  - **Addresses that can't be used:** one another user has, and one that still owns records nobody has any more (for example the pre-accounts owner `local@hawalaflow.app`), so nobody can take over someone else's transactions.
+- **Change password:** your current password, then the new one twice (at least 8 characters, and different from the current one). The form checks this as you type.
+  - **Other devices are signed out**, and the notification says how many; this device stays signed in.
+- **What stays with the Admin:** roles, deactivating accounts, and resetting a password someone has forgotten (on the Users page).
 
 ### Settings
 
@@ -381,7 +397,8 @@ A sample export is included: `AccountStatementCSV_20200813.csv` (also used as a 
 ### Known limitations
 
 - **Scanned PDFs**: the PDF engine needs a text layer.
-- **Passwords:** there's no self-service "change my password" yet; an Admin resets passwords from the Users page.
+- **Forgotten passwords:** there's no "forgot my password" email; an Admin resets it from the Users page. (Anyone signed in can change their own password on [My profile](#my-profile).)
+- **Backups and email changes:** a backup made before someone changed their email still has the old address. Restoring it puts those rows back under the old address: Admins and Managers can still edit them, but a User can't.
 - **HTTPS:** served over plain HTTP, sessions can be intercepted on the network. Put the app behind HTTPS and set `COOKIE_SECURE=true` before using it anywhere other than the office's own computer or network.
 
 ---
@@ -423,6 +440,8 @@ tests/
 │   ├── admin.test.js         # admin panel API: permissions, preview, CSV (quoting, formula guard, BOM),
 │   │                         # delete by range (409 when counts changed), permission upgrade
 │   ├── users.test.js         # Admin user management, deactivation/reset revoke sessions, last-Admin rules
+│   ├── profile.test.js       # own profile: name, email (password, 409, records follow), password change
+│   │                         # (other sessions revoked, this one kept), rate limit
 │   ├── seed.test.js          # default roles, first Admin, generated password, idempotency, data migration
 │   ├── startup.test.js       # auto-seed on server start when no users exist (runs the real server twice)
 │   ├── csvEngine.test.js     # CSV parser, fee rule, name/phone split, validation, format variations
@@ -432,6 +451,7 @@ tests/
     ├── apiClient.test.js     # API client: cookie session (no identity header), 401 handling, errors
     ├── AuthContext.test.jsx  # session restore, login/logout, session-ended, can(), route guard
     ├── UsersPage.test.jsx    # Admin users screen: list, add, role change, deactivate, reset password
+    ├── ProfilePage.test.jsx  # profile page: details, name/email (current password), password checks, header link
     ├── fileType.test.js      # PDF/CSV detection
     ├── transactionSearch.test.js
     ├── ImportPDFModal.test.jsx   # PDF/CSV routing, preview, duplicate prompt, save payload
@@ -483,6 +503,7 @@ src/lib/notify.js             Toast notifications (success / info / warning / er
 src/components/layout/AppToaster.jsx  Where notifications appear (direction- and theme-aware)
 src/pages/Dashboard.jsx       Main screen: totals, balances, day filter, search
 src/pages/UsersPage.jsx       Admin: users and roles
+src/pages/ProfilePage.jsx     Every user: own account details, name, email and password
 src/pages/SettingsPage.jsx    Every user: language, theme, visible table columns, row spacing, summaries
 src/pages/AdminPage.jsx       Admin + Manager: CSV backup and delete by date range
 src/components/settings/      Settings building blocks and the commission-rate editor
@@ -515,6 +536,8 @@ All routes are under `/local-api`.
 | POST | `/auth/logout` | — | Deletes the session and clears the cookie |
 | GET | `/auth/me` | session | The signed-in user, including their `preferences` |
 | PUT | `/auth/preferences` | session (own account only) | Partial change, e.g. `{ density: "compact" }` or `{ hiddenColumns: ["note"] }`, merged over what's stored. Keys: `language` (`ar`/`en`/`null`), `hiddenColumns` (column keys; at least one must stay visible), `density` (`comfortable`/`compact`), `summaries` (`{ month, year }` booleans), `theme` (`light`/`dark`/`system`). Unknown keys or values → 400. Returns the user |
+| PUT | `/auth/profile` | session (own account only) | `{ full_name?, email?, current_password? }`. The email needs the current password (400 if wrong, 429 after 10 wrong); 409 if the address is used by another user or still owns records. Records under the old email move to the new one. Returns the user |
+| PUT | `/auth/password` | session (own account only) | `{ current_password, new_password }` (at least 8 characters, not the same). Ends the user's other sessions, keeps this one → `{ ok, sessions_revoked }` |
 | GET | `/admin/range` | `data:export` | `{ first_date, last_date }` of all data |
 | POST | `/admin/restore/preview` | `data:restore` | `{ csv }` (a backup CSV) → what restoring it would do: `kind`, `rows`, `to_add`, `existing`, `on_closed_days`, `closed_days`, `invalid` (`{ line, field }`), dates and totals |
 | POST | `/admin/restore` | `data:restore` | `{ csv, expected_count }` adds the missing rows back (same ids) in one database transaction. 409 if `to_add` changed, 400 if any row is invalid |

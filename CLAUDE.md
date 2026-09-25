@@ -43,6 +43,15 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
     - The page resets on day, search, sort or size change, **not** on refresh after an edit.
     - The page is clamped after deletes.
     - Selection and "select all" cover the current page only (`visibleKey` effect).
+- **Profile page** (`src/pages/ProfilePage.jsx`, route `/profile`, every role; user's request, 2026-09-25). The header's user chip is a `<Link>` to it (`profile-link`, `aria-current` on the page).
+  - **API** (`server/auth.js`): `PUT /auth/profile` `{ full_name?, email?, current_password? }` and `PUT /auth/password` `{ current_password, new_password }`. There's no id in the route: they only ever change `req.user`.
+  - **Email change** needs the current password, and `EMAIL_COLUMNS` (`transactions.created_by`, `daily_balances.created_by`, `closed_days.closed_by`, `commission_rates.created_by`) is updated to the new address **in the same db transaction**; otherwise a User would lose edit rights on their own rows. **Any new column that stores an email must be added there.**
+    - `emailInUse` refuses addresses of other users *and* addresses that still own rows (the legacy owner, or rows restored from a backup made before an email change), so nobody inherits someone else's rows.
+    - Sessions are keyed by user id (`sub`), so an email change doesn't sign anyone out.
+  - **Password change** ends every other session (`id != req.sessionId`), keeps this one, and refuses the same password.
+  - **Wrong current passwords** return 400 (not 401, which means "no session") and count in the login limiter under `self|<userId>` → 429 after 10.
+  - **Frontend:** `AuthContext.updateUser(user)` replaces the signed-in user with the server's answer (the auth mock implements it too). Password managers get `autocomplete` `name`/`email`/`current-password`/`new-password`.
+  - **Mutation checks:** removing the email move failed 2 tests, revoking every session 1, skipping the current-password check 3.
 - **Closed days** (`server/office.js`, table `closed_days`; `days:close` for Admin/Manager):
   - **Server enforcement:** `refuseClosedDays(res, dates)` → **423** `{ error, closed_days }`. It runs in create, bulk-create, PUT (old *and* new date), DELETE, bulk-update (rows' days + a new `transaction_date`), bulk-delete and import (new rows + the days of rows an overwrite would delete), for both transactions and daily balances.
     - Admin purge refuses a range containing closed days.
@@ -300,7 +309,8 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
 - **Security, remaining:**
   - `/pdf/extract` has no page limit or timeout, and parsing blocks the server's main thread.
   - The login lockout is in memory, so it resets when the server restarts.
-  - There's no self-service "change my password"; an Admin resets passwords.
+  - There's no "forgot password" flow; an Admin resets forgotten passwords. (Self-service change is on the profile page since 2026-09-25.)
+  - A backup made before an email change restores rows under the old address; they're then editable only by Admin/Manager.
   - Sessions are never pruned; rows are deleted only by logout, deactivation or password reset.
   - Fixed on 2026-09-24: SQL injection through filter keys, the trusted `x-user-email` header, and PUT/DELETE without permission checks.
 - **Bundle size:** the JS bundle is about 796 kB (Recharts), and Vite warns about chunks over 500 kB. Code-splitting the chart modal would fix it.
@@ -339,6 +349,8 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - `Dashboard` computes `yearly*` figures.
   - Added `StatsCards.test.jsx` and Dashboard summary tests. Total now 104.
 ### 2026-09-25
+- **Profile page** (user's request): `/profile` (click your name in the header) shows the account and lets every user change their name, email (current password needed; their records move to the new address) and password (other devices signed out).
+  - **Tests:** `tests/backend/profile.test.js` (15), `tests/frontend/ProfilePage.test.jsx` (11), and an API-client test. Mutation checks listed under Architecture.
 - **Restore moved from Settings to the admin panel** (user's request):
   - `RestoreBackup.jsx` moved to `src/components/admin/` and renders in `AdminPage` after Backup (section `admin-restore`); the Settings `backup` tab and the "make a backup" link are gone, and the hint points to the Backup section above.
   - After a restore the panel's range summary refreshes.

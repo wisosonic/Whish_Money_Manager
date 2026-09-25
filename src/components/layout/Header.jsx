@@ -44,6 +44,7 @@ export default function Header() {
   const onUsersPage = location.pathname.startsWith("/users");
   const onSettingsPage = location.pathname.startsWith("/settings");
   const onAdminPage = location.pathname.startsWith("/admin");
+  const onProfilePage = location.pathname.startsWith("/profile");
   const navLink = "flex items-center gap-2 whitespace-nowrap bg-white/10 hover:bg-white/20 rounded-2xl px-4 py-2 transition text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400";
 
   useEffect(() => {
@@ -121,9 +122,15 @@ export default function Header() {
         </button>
       </h1>
 
-      {/* Center: User + navigation. Wraps on narrow screens (Admins have up to five items here). */}
+      {/* Center: User + navigation. Wraps on narrow screens (Admins have up to five items here).
+          The user's name opens their profile. */}
       <div className="flex flex-wrap items-center gap-2 md:gap-3">
-        <div className="flex items-center gap-3 bg-white/10 backdrop-blur-sm rounded-2xl px-4 py-2 hover:bg-white/15 transition">
+        <Link
+          to="/profile"
+          title={t("header.profile")}
+          aria-current={onProfilePage ? "page" : undefined}
+          data-testid="profile-link"
+          className={`flex items-center gap-3 backdrop-blur-sm rounded-2xl px-4 py-2 hover:bg-white/15 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${onProfilePage ? "bg-white/20" : "bg-white/10"}`}>
           <div className="text-start">
             <p className="font-semibold text-sm flex items-center gap-2">
               {user?.full_name || user?.email || t("header.userFallback")}
@@ -138,9 +145,9 @@ export default function Header() {
             </p>
           </div>
           <div className="bg-slate-600 rounded-full p-2">
-            <User className="w-5 h-5" />
+            <User className="w-5 h-5" aria-hidden="true" />
           </div>
-        </div>
+        </Link>
         {/* Navigation: back to the dashboard from any other page, Users (Admin only), Admin panel
             (Admin + Manager), Settings (everyone). */}
         {!onDashboard &&

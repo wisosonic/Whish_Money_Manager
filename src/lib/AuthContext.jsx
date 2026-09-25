@@ -66,6 +66,9 @@ export const AuthProvider = ({ children }) => {
     signedOut();
   };
 
+  // After the profile page saves: the server's answer replaces the signed-in user.
+  const updateUser = useCallback((nextUser) => setUser(nextUser), []);
+
   const can = useCallback((permission) => hasPermission(user, permission), [user]);
   const canEditTransaction = useCallback((transaction) => canUpdateTransaction(user, transaction), [user]);
 
@@ -80,6 +83,7 @@ export const AuthProvider = ({ children }) => {
       login,
       logout,
       checkUserAuth,
+      updateUser,
       can,
       canEditTransaction,
     }}>

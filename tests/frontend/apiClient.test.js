@@ -49,6 +49,21 @@ describe("auth (cookie session)", () => {
     await expect(api.auth.me()).rejects.toMatchObject({ status: 401, message: "Authentication required" });
   });
 
+  it("updateProfile and changePassword send the signed-in user's own changes", async () => {
+    await api.auth.updateProfile({ email: "new@test.local", current_password: "secret-pass" });
+    expect(lastCall()).toMatchObject({
+      url: "/local-api/auth/profile",
+      options: { method: "PUT" },
+      body: { email: "new@test.local", current_password: "secret-pass" },
+    });
+    await api.auth.changePassword("old-pass-1", "new-pass-1");
+    expect(lastCall()).toMatchObject({
+      url: "/local-api/auth/password",
+      options: { method: "PUT" },
+      body: { current_password: "old-pass-1", new_password: "new-pass-1" },
+    });
+  });
+
   it("logout tells the server to end the session", async () => {
     await api.auth.logout();
     expect(lastCall()).toMatchObject({ url: "/local-api/auth/logout", options: { method: "POST" } });
