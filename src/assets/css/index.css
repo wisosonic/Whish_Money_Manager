@@ -110,6 +110,8 @@
 .dark .bg-gray-50\/80 { background-color: rgb(36 50 71 / 0.8); }
 .dark .bg-gray-100 { background-color: #0f172a; }
 .dark .bg-gray-200, .dark .bg-slate-200 { background-color: #334155; }
+/* The edit and bulk-edit windows' soft grey panel: the card colour, like every other window. */
+.dark .bg-\[\#F3F5FA\] { background-color: #1e293b; }
 .dark .hover\:bg-gray-50:hover, .dark .hover\:bg-slate-50:hover, .dark .hover\:bg-white:hover { background-color: #273449; }
 .dark .hover\:bg-gray-200:hover { background-color: #3b4a61; }
 .dark .disabled\:bg-gray-100:disabled { background-color: #243247; }

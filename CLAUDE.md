@@ -147,6 +147,7 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - While `isLoadingAuth`, it leaves the page alone: `index.html` has already applied the `wmm_theme` cookie before first paint, and the provider mirrors the theme there when signed in.
   - **Styling:** one remapping layer at the end of `src/assets/css/index.css` (`.dark .bg-white { … }` and so on), instead of `dark:` variants in every component. The shadcn `.dark` variables were retuned to the same slate palette.
   - **`theme.test.jsx` fails if a screen uses a light colour class with no dark mapping**, so add the mapping when you add such a class.
+  - **Hard-coded colours** (`bg-[#…]`, `text-[#…]`, `border-[#…]`) need their own mapping too; a second test checks them. The edit and bulk-edit windows' `bg-[#F3F5FA]` panel stayed light in dark mode (user-reported, 2026-09-26) because the first test only knew standard classes. It now maps to the card colour `#1e293b`, like every other window. Prefer standard classes.
   - The header, login page and language switch (now only on the login page) are dark in both themes and are exempt. The switch knob is `theme-fixed`, so it stays white.
   - Text colours were checked at ≥ 4.5:1 on the dark card.
   - **Chart:** `CHART_SERIES[*].darkColor` = `#3b82f6` / `#16a34a` / `#ec4899`, validated with the dataviz script against `#1e293b` (all checks pass). Every red light enough for the dark background failed colour-blind separation from the green, hence pink for cash out (still dashed). Axis and grid inks are in `CHART_INK`.
@@ -399,6 +400,9 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - Responsive grids: month 2/3/5 columns, year 2/4.
   - `Dashboard` computes `yearly*` figures.
   - Added `StatsCards.test.jsx` and Dashboard summary tests. Total now 104.
+### 2026-09-26
+- **Dark mode: edit windows fixed** (user-reported): the edit-transaction and bulk-edit windows kept their light grey panel (`bg-[#F3F5FA]`) in dark mode. It now gets the card colour like every other window. A new `theme.test.jsx` check requires a dark mapping for every hard-coded colour class; it failed with the old stylesheet. Checked in Edge (dark and light).
+
 ### 2026-09-25
 - **Store field always shown** (user's request): the dashboard's store field and the import screen's store field appear even with one store (greyed out; also for Managers and Users, showing their store). Requests are unchanged. Tests: the single-store and Manager/User cases in `stores.test.jsx` (24 there now).
 - **Stores** (user's request; decisions: scoped visibility, store picked by hand on import, per-store balances / closed days / rate, existing data moved to a first store):

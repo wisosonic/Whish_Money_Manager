@@ -185,6 +185,19 @@ describe("dark stylesheet", () => {
     expect(missing).toEqual([]);
   });
 
+  // Hard-coded colours (bg-[#F3F5FA] …) aren't caught above: each one needs its own dark mapping.
+  // The edit window's grey panel stayed light in dark mode before this check existed.
+  it("maps every hard-coded colour class (bg-[#…], text-[#…], border-[#…]) used by the screens", () => {
+    const ARBITRARY = /(?<![\w-])(?:hover:)?(?:bg|text|border)-\[#[0-9a-fA-F]{3,8}\](?![\w-])/g;
+    const used = new Set();
+    files.filter((f) => !alwaysDark.includes(path.basename(f)))
+      .forEach((f) => (fs.readFileSync(f, "utf8").match(ARBITRARY) || []).forEach((c) => used.add(c)));
+    const escapeArbitrary = (cls) => cls.replace(/[:[\]#]/g, (c) => `\\${c}`);
+    const missing = [...used].filter((cls) => !darkLayer.includes(`.dark .${escapeArbitrary(cls)}`));
+    expect(used).toContain("bg-[#F3F5FA]");
+    expect(missing).toEqual([]);
+  });
+
   it("keeps the language switch knob white (theme-fixed)", () => {
     expect(darkLayer).toContain(".dark .bg-white:not(.theme-fixed)");
     const toggle = fs.readFileSync(path.resolve(__dirname, "../../src/components/layout/LanguageToggle.jsx"), "utf8");
