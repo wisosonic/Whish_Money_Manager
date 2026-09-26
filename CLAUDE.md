@@ -106,6 +106,7 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
     - **Saves are queued, one request at a time.** That way each answer holds the server's full state, and an older answer never undoes a newer change on screen. The first version sent saves in parallel and failed this test.
     - A failed save reverts to the last confirmed values. `status` is idle / saving / saved / error.
     - The optimistic merge must merge `summaries` field by field, not replace it.
+    - **Switching account happens during render, not in an effect** (`preferencesOwner`). On a page reload the dashboard appears in the same render the account arrives, and several things read a setting only when they first appear: `StatsCards` (`defaultOpen`), the Dashboard's start-up day and search scope, and the table's default sort and page size. With an effect they saw the defaults first, so "expand the yearly summary" was lost on every reload (user-reported, 2026-09-26). `preferencesReload.test.jsx` reproduces the reload and failed before the fix. Only the saved language is still set in an effect (it lives in `LanguageProvider`).
   - **Language:**
     - When the account changes, a saved `preferences.language` is applied with `setLang`.
     - `null` (never chosen while signed in) keeps the cookie.
@@ -401,6 +402,7 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - `Dashboard` computes `yearly*` figures.
   - Added `StatsCards.test.jsx` and Dashboard summary tests. Total now 104.
 ### 2026-09-26
+- **Settings lost on reload fixed** (user-reported: "expand the yearly summary" worked, but a reload opened it closed again): the preferences provider now switches to the signed-in user's saved settings in the same render the account arrives, so nothing reads the defaults first. The same fix covers the other settings read once (start-up day, search scope, default sort, rows per page). Tests: `preferencesReload.test.jsx` (3; 2 failed before the fix).
 - **Dark mode: edit windows fixed** (user-reported): the edit-transaction and bulk-edit windows kept their light grey panel (`bg-[#F3F5FA]`) in dark mode. It now gets the card colour like every other window. A new `theme.test.jsx` check requires a dark mapping for every hard-coded colour class; it failed with the old stylesheet. Checked in Edge (dark and light).
 
 ### 2026-09-25

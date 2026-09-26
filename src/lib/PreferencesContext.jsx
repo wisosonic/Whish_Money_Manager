@@ -52,15 +52,26 @@ export function PreferencesProvider({ children }) {
   const latestSave = useRef(0);
   const queue = useRef(Promise.resolve());
 
-  // A different user signed in (or out): take their stored preferences, and their saved language
-  // if they ever chose one while signed in.
+  // A different user signed in (or out): take their stored preferences — during this same render,
+  // not in an effect. On a page reload the page appears in the same render the account arrives, and
+  // parts of it read a setting once, when they first appear (which summary starts open, the start-up
+  // day, the default sort, rows per page). Switching in an effect showed them the defaults first, so
+  // e.g. "expand the yearly summary" was lost on every reload. (React re-renders at once, before the
+  // page is shown, when state is set during render.)
   const userId = user?.id ?? null;
-  useEffect(() => {
+  const [preferencesOwner, setPreferencesOwner] = useState(userId);
+  if (preferencesOwner !== userId) {
     const stored = resolvePreferences(user?.preferences);
     confirmed.current = stored;
+    setPreferencesOwner(userId);
     setPreferences(stored);
     setStatus("idle");
     setError("");
+  }
+  // Their saved language, if they ever chose one while signed in (the language lives in another
+  // provider, so it's set after rendering).
+  useEffect(() => {
+    const stored = resolvePreferences(user?.preferences);
     if (stored.language) setLang(stored.language);
     // Only when the account changes — not on every user object refresh.
     // eslint-disable-next-line react-hooks/exhaustive-deps
