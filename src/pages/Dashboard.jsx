@@ -15,6 +15,7 @@ import { useI18n } from "@/lib/i18n";
 import { notify } from "@/lib/notify";
 import { usePreferences } from "@/lib/PreferencesContext";
 import { PERMISSIONS } from "@/lib/permissions";
+import { COOKIES, readRemembered, writeCookie } from "@/lib/cookies";
 
 export default function Dashboard() {
   const { can, user } = useAuth();
@@ -27,11 +28,11 @@ export default function Dashboard() {
   // ═══ Store ═══
   // Managers and Users see their own store (the server applies it). The Admin sees every store:
   // with several, they pick one — or "All stores" (every row, with a Store column; day actions
-  // then need a store). The choice is remembered in this browser.
+  // then need a store). The choice is remembered in this browser (a cookie).
   const seesAll = can(PERMISSIONS.STORES_ALL);
   const [stores, setStores] = useState([]);
   const [storesLoaded, setStoresLoaded] = useState(!seesAll);
-  const [storeChoice, setStoreChoice] = useState(() => localStorage.getItem("selectedStore") || "all");
+  const [storeChoice, setStoreChoice] = useState(() => readRemembered(COOKIES.selectedStore, "selectedStore") || "all");
   useEffect(() => {
     if (!seesAll) return undefined;
     let current = true;
@@ -54,7 +55,7 @@ export default function Dashboard() {
   const withStore = (...args) => (chosenStore ? [...args, chosenStore] : args);
   const storeKey = storesLoaded ? String(chosenStore ?? (allStoresView ? "all" : "own")) : null;
   const handleStoreChoice = (value) => {
-    localStorage.setItem("selectedStore", value);
+    writeCookie(COOKIES.selectedStore, value);
     setStoreChoice(value);
   };
   const [transactions, setTransactions] = useState([]);
@@ -70,14 +71,14 @@ export default function Dashboard() {
     return `${y}-${m}-${day}`;
   };
   const today = getToday();
-  // Settings → General → Start on: the last day viewed (remembered in this browser) or today.
+  // Settings → General → Start on: the last day viewed (remembered in this browser, a cookie) or today.
   const [selectedDate, setSelectedDate] = useState(() => {
     if (preferences.startOn === "today") return getToday();
-    return localStorage.getItem("selectedDate") || getToday();
+    return readRemembered(COOKIES.selectedDate, "selectedDate") || getToday();
   });
 
   const handleSetSelectedDate = (date) => {
-    localStorage.setItem("selectedDate", date);
+    writeCookie(COOKIES.selectedDate, date);
     setSelectedDate(date);
   };
   const [search, setSearch] = useState("");

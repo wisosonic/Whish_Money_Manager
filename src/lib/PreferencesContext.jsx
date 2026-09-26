@@ -1,6 +1,8 @@
 // The signed-in user's display preferences (Settings page): language, visible table columns,
 // row density and which summaries start open. Stored on the server per user, so they follow the
-// user to any device; the rules and defaults are shared with the API (src/lib/preferences.js).
+// user to any device, and mirrored to the `wmm_prefs` cookie so this browser applies them as soon as
+// the page loads (src/lib/cookies.js). The rules and defaults are shared with the API
+// (src/lib/preferences.js).
 //
 //   const { preferences, savePreferences, setLanguage, status } = usePreferences();
 //
@@ -17,9 +19,24 @@ import { useAuth } from "@/lib/AuthContext";
 import { useI18n } from "@/lib/i18n";
 import { configureNotify, notify } from "@/lib/notify";
 import { DEFAULT_PREFERENCES, resolvePreferences } from "@/lib/preferences";
+import { COOKIES, readCookie, writeCookie } from "@/lib/cookies";
 
-export const THEME_COOKIE = "wmm_theme";
-const ONE_YEAR_SECONDS = 365 * 24 * 60 * 60;
+export const THEME_COOKIE = COOKIES.theme;
+
+// The settings cookie (user's request): every personal setting of the account last signed in on
+// this browser, { u: user id, p: preferences }. It applies them as soon as the page loads, before
+// the server has answered; the account copy (users.preferences) is still the reference — it follows
+// the user to every device, and replaces the cookie's values when the account arrives.
+export const readPreferencesCookie = () => {
+  try {
+    const saved = JSON.parse(readCookie(COOKIES.preferences) || "null");
+    return saved && typeof saved === "object" ? { userId: saved.u ?? null, preferences: resolvePreferences(saved.p) } : null;
+  } catch {
+    return null; // a damaged cookie is ignored
+  }
+};
+export const writePreferencesCookie = (userId, preferences) =>
+  writeCookie(COOKIES.preferences, JSON.stringify({ u: userId, p: preferences }));
 
 const PreferencesContext = createContext({
   preferences: resolvePreferences(DEFAULT_PREFERENCES),
@@ -42,7 +59,9 @@ export function PreferencesProvider({ children }) {
   // itself a save, and its confirmation must appear in the new language.
   const i18nNow = useRef({ t, errorText });
   i18nNow.current = { t, errorText };
-  const [preferences, setPreferences] = useState(() => resolvePreferences(user?.preferences));
+  // Signed in: the account's settings. Not known yet (page loading) or signed out: the cookie's.
+  const [preferences, setPreferences] = useState(() =>
+    user ? resolvePreferences(user.preferences) : readPreferencesCookie()?.preferences ?? resolvePreferences(null));
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState("");
   // The last values the server confirmed (what we fall back to if a save fails). Saves are sent one
@@ -61,13 +80,19 @@ export function PreferencesProvider({ children }) {
   const userId = user?.id ?? null;
   const [preferencesOwner, setPreferencesOwner] = useState(userId);
   if (preferencesOwner !== userId) {
-    const stored = resolvePreferences(user?.preferences);
+    // Signed in: the account's copy, which wins over the cookie. Signed out: the cookie's.
+    const stored = user ? resolvePreferences(user.preferences) : readPreferencesCookie()?.preferences ?? resolvePreferences(null);
     confirmed.current = stored;
     setPreferencesOwner(userId);
     setPreferences(stored);
     setStatus("idle");
     setError("");
   }
+  // Every change (and the account's settings on sign-in) is mirrored to the settings cookie.
+  useEffect(() => {
+    if (userId) writePreferencesCookie(userId, preferences);
+  }, [userId, preferences]);
+
   // Their saved language, if they ever chose one while signed in (the language lives in another
   // provider, so it's set after rendering).
   useEffect(() => {
@@ -133,10 +158,7 @@ export function PreferencesProvider({ children }) {
       setIsDark(dark);
     };
     apply();
-    if (userId) {
-      const secure = location.protocol === "https:" ? "; Secure" : "";
-      document.cookie = `${THEME_COOKIE}=${theme}; Path=/; Max-Age=${ONE_YEAR_SECONDS}; SameSite=Lax${secure}`;
-    }
+    if (userId) writeCookie(THEME_COOKIE, theme);
     media?.addEventListener?.("change", apply);
     return () => media?.removeEventListener?.("change", apply);
   }, [theme, userId, isLoadingAuth]);

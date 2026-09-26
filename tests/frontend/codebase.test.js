@@ -58,6 +58,15 @@ describe("unused packages", () => {
   });
 });
 
+describe("browser storage", () => {
+  it("the app remembers things in cookies only: no localStorage / sessionStorage writes in src (user's request)", () => {
+    const writers = filesUnder("src", /\.jsx?$/)
+      .filter((f) => /(?:localStorage|sessionStorage)\.setItem/.test(fs.readFileSync(f, "utf8")))
+      .map((f) => path.relative(root, f).split(path.sep).join("/"));
+    expect(writers).toEqual([]);
+  });
+});
+
 describe("bundle split", () => {
   const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
   const relative = (f) => path.relative(root, f).split(path.sep).join("/");

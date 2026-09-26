@@ -254,7 +254,7 @@ Every transaction belongs to a **store** (a branch, physical or online). Each st
 - **Upgrading:** the first start after this update creates one store, named after the office account in the imported statements (editable), and moves every existing transaction, opening balance, closed day and rate into it. Existing staff keep their access: every User joins that store, and if there is exactly one Manager, they become its Manager (with several, the Admin chooses, since a store has one Manager). Make a copy of `server/hawalaflow.db` before the first start with this version, as with any upgrade.
 
 **Where the store shows up**
-- **Dashboard:** a **Store** field above the summaries is always shown. Managers and Users see their store there, greyed out (they can't switch). With one store, the Admin sees that store, greyed out. With several stores, the Admin can pick (remembered in this browser): one store, or **All stores**, which shows every store's rows with a **Store** column. Adding transactions, importing into a store, closing a day and setting the opening balance need one store, so in All stores Cash In / Cash Out, closing the day and the opening-balance pencil are off (the import asks which store). The opening balance and wallet figures add up the stores'.
+- **Dashboard:** a **Store** field above the summaries is always shown. Managers and Users see their store there, greyed out (they can't switch). With one store, the Admin sees that store, greyed out. With several stores, the Admin can pick (remembered in this browser, in a cookie): one store, or **All stores**, which shows every store's rows with a **Store** column. Adding transactions, importing into a store, closing a day and setting the opening balance need one store, so in All stores Cash In / Cash Out, closing the day and the opening-balance pencil are off (the import asks which store). The opening balance and wallet figures add up the stores'.
 - **Importing:** the import screen always shows a **store** field. With several stores (the Admin), the store is **picked by hand** before the file is read, because commissions use that store's rate; it starts on the store shown on the dashboard, if one is. With one store, and for Managers and Users (who always import into their own store), the field shows that store, greyed out. A statement line already imported into **another** store blocks the import, so the same money is never counted twice.
 - **Header:** your store's name next to your role.
 - **Admin panel:** the date range, backup, restore and delete work on the chosen store (the Admin can choose All stores; a Manager always gets their own). Reports can be filtered by store, and the Admin has a **Compare stores** report.
@@ -275,15 +275,31 @@ Every user has a **profile page** (`/profile`): click **your name** in the heade
   - **Other devices are signed out**, and the notification says how many; this device stays signed in.
 - **What stays with the Admin:** roles, deactivating accounts, and resetting a password someone has forgotten (on the Users page).
 
+### What's remembered in your browser
+
+Everything the app remembers in the browser is kept in **cookies**, for one year:
+
+| Cookie | What |
+|---|---|
+| `wmm_lang` | Interface language |
+| `wmm_theme` | Light / dark / match system |
+| `wmm_prefs` | Every personal setting of the account last signed in on this browser (a copy of the account's settings) |
+| `wmm_selected_date` | The last day viewed on the dashboard |
+| `wmm_selected_store` | The Admin's chosen store on the dashboard |
+
+- **Nothing secret:** your sign-in is a separate, server-only cookie that page scripts can't read.
+- **Upgrading:** the last day and store, which older versions kept in the browser's local storage, move into their cookies the first time the page loads.
+- **Clearing cookies** resets these for this browser. Your settings come back from your account when you sign in.
+
 ### Settings
 
 Every user has a **Settings** page: click the ⚙️ gear in the header (next to Log out). The options are grouped in **tabs**: a column beside the page on a computer, a row you can scroll on a phone. Use the arrow keys to move between tabs. The open tab is part of the address (e.g. `/settings#table`), so it can be bookmarked or shared.
 
-Personal settings apply **immediately** and are **saved to your account** on the server, so they follow you to any device or browser. A status line at the top says "Saving…", then "Saved", or explains what went wrong; if a save fails, the previous value comes back. Personal settings never change what other users see.
+Personal settings apply **immediately** and are **saved to your account** on the server, so they follow you to any device or browser. They're also kept in a **cookie** in this browser (`wmm_prefs`, one year), so they apply as soon as the page loads, before the server answers. If the two ever differ, your account's copy wins and replaces the cookie. A status line at the top says "Saving…", then "Saved", or explains what went wrong; if a save fails, the previous value comes back. Personal settings never change what other users see.
 
 **General**
 - **Language:** العربية or English. The whole interface switches at once.
-- **Start on:** *the last day viewed* (the default; remembered in this browser) or *today*.
+- **Start on:** *the last day viewed* (the default; remembered in this browser, in a cookie) or *today*.
 - **Clock:** *12-hour* (default), *24-hour*, or *hide the clock*. The "last login" time in the header follows the same choice.
 - **Number style:** *Western digits* (0123, the default) or *Arabic-Indic digits* (٠١٢٣).
   - It applies to the Arabic interface: amounts, counts, dates, the clock, the summaries, the chart and the admin panel.
@@ -583,6 +599,7 @@ src/assets/css/index.css      The app's only stylesheet: Tailwind directives + t
 src/assets/images/logo.png    App logo: header, login page, browser tab icon
 src/lib/branding.js           App name, short name, tagline and logo (single source for components)
 src/lib/i18n.jsx              Language provider, t() lookup, wmm_lang cookie, page direction
+src/lib/cookies.js            Every cookie the app writes (language, theme, settings, last day, chosen store)
 src/locales/ar.js, en.js      All interface text: Arabic (default) and English, same keys
 src/assets/js/                Standalone scripts / vendored JS (none yet — app source stays in src/)
 public/manifest.json          Web app manifest (must stay in public/: served as-is at /manifest.json)

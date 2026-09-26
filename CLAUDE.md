@@ -34,7 +34,7 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - **Tests:** open a tab with `renderSettings("table")` (`/settings#table`) or click `getByRole("tab", { name })`.
   - **Arabic label clash:** the Theme setting is "السمة", because the Appearance tab is "المظهر" and duplicate names broke role queries.
 - **Newer personal settings** (`server/preferences.js`; defaults reproduce the old behaviour):
-  - `startOn` (`last`, via localStorage `selectedDate` | `today`) and `searchScope` (`all` | `day`): Dashboard initial state.
+  - `startOn` (`last`, via the `wmm_selected_date` cookie | `today`) and `searchScope` (`all` | `day`): Dashboard initial state.
   - `defaultSort` `{ key|null, dir }`: TransactionsList initial sort. A partial change keeps the other half on the server (`"key" in value`, since null means journal order) **and** in the optimistic merge.
   - `clock` (`12h` | `24h` | `hidden`): Header, including the last login.
   - `numerals` (`western` | `arabic`) → `useI18n().num()` and automatic conversion of numeric `t()` params (plural choice still uses the number: `translate(lang, key, params, display)`). `PreferencesProvider` calls `setNumerals`.
@@ -333,6 +333,15 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - `js/` is for standalone or vendored scripts only. App source code stays in `src/components`, `src/lib` and so on.
   - `public/manifest.json` stays in `public/`, because it must be served at a fixed URL.
   - Most styling is Tailwind classes in the JSX, not CSS.
+- **Browser storage is cookies only** (user's request, 2026-09-26). Use `src/lib/cookies.js` (`readCookie`, `writeCookie`, `readRemembered`, the `COOKIES` names), not localStorage. `codebase.test.js` fails if `src/` writes to localStorage.
+  - **The cookies:**
+    - `wmm_lang` and `wmm_theme` (read by `index.html` before paint).
+    - `wmm_prefs`: `{ u, p }`, the signed-in account's settings, mirrored by `PreferencesProvider` on every change.
+    - `wmm_selected_date` and `wmm_selected_store` (dashboard).
+  - **Attributes:** one year, `Path=/`, `SameSite=Lax`, `Secure` over HTTPS. Page-readable by design, so never put anything secret there; the session stays HttpOnly and server-set.
+  - **Account vs cookie:** the account copy (`users.preferences`) is the reference. The provider starts from `wmm_prefs` while the session loads or when signed out, and switches to the account's copy the moment the account arrives, which overwrites the cookie. A different account on the same browser never gets the previous one's settings.
+  - **Upgrade:** `readRemembered(name, legacyKey)` moves the old localStorage `selectedDate` / `selectedStore` into their cookies once, then removes them. Old tests that seed localStorage therefore still work.
+  - **Tests:** `tests/setup.js` clears every cookie after each test (jsdom keeps them for the whole file). `cookies.test.jsx` covers the helper, the mirror, account-wins and the size (< 2 KB with every setting changed).
 - Import with the `@/` alias (`@/api/...`, `@/lib/...`). It's defined in `vite.config.js`, `vitest.config.js` and `jsconfig.json`; keep the three in sync.
 - Keep pure logic in `src/lib/` (or exported from `server/index.js`) so it can be unit-tested.
 - Match the surrounding style: small inline helpers, `// ═══ Section ═══` headers in long files, Tailwind classes inline.
@@ -402,6 +411,7 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - `Dashboard` computes `yearly*` figures.
   - Added `StatsCards.test.jsx` and Dashboard summary tests. Total now 104.
 ### 2026-09-26
+- **Everything remembered in cookies** (user's request; decisions: cookie *plus* account, and move the localStorage values too): `src/lib/cookies.js`, the `wmm_prefs` settings mirror, and the dashboard's last day and store in cookies (old localStorage values moved once). The language and theme cookies use the same helper. Tests: `cookies.test.jsx` (10), a dashboard cookie test, a guard against localStorage writes, and cookie cleanup between tests.
 - **Settings lost on reload fixed** (user-reported: "expand the yearly summary" worked, but a reload opened it closed again): the preferences provider now switches to the signed-in user's saved settings in the same render the account arrives, so nothing reads the defaults first. The same fix covers the other settings read once (start-up day, search scope, default sort, rows per page). Tests: `preferencesReload.test.jsx` (3; 2 failed before the fix).
 - **Dark mode: edit windows fixed** (user-reported): the edit-transaction and bulk-edit windows kept their light grey panel (`bg-[#F3F5FA]`) in dark mode. It now gets the card colour like every other window. A new `theme.test.jsx` check requires a dark mapping for every hard-coded colour class; it failed with the old stylesheet. Checked in Edge (dark and light).
 

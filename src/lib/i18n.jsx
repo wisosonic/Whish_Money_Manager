@@ -13,10 +13,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import ar from "@/locales/ar";
 import en from "@/locales/en";
+import { COOKIES, readCookie, writeCookie } from "@/lib/cookies";
 
-export const LANG_COOKIE = "wmm_lang";
+export const LANG_COOKIE = COOKIES.lang;
 export const DEFAULT_LANG = "ar";
-const ONE_YEAR_SECONDS = 365 * 24 * 60 * 60;
 
 export const LANGUAGES = {
   // `label` is each language's own name in its own script; `short` is what the switch shows.
@@ -25,16 +25,11 @@ export const LANGUAGES = {
 };
 
 export const readLangCookie = () => {
-  if (typeof document === "undefined") return null;
-  const match = document.cookie.match(new RegExp(`(?:^|;\\s*)${LANG_COOKIE}=(ar|en)(?:;|$)`));
-  return match ? match[1] : null;
+  const value = readCookie(LANG_COOKIE);
+  return value === "ar" || value === "en" ? value : null;
 };
 
-export const writeLangCookie = (lang) => {
-  if (typeof document === "undefined") return;
-  const secure = typeof location !== "undefined" && location.protocol === "https:" ? "; Secure" : "";
-  document.cookie = `${LANG_COOKIE}=${lang}; Path=/; Max-Age=${ONE_YEAR_SECONDS}; SameSite=Lax${secure}`;
-};
+export const writeLangCookie = (lang) => writeCookie(LANG_COOKIE, lang);
 
 // Looks up a key (falling back to Arabic, then to the key itself), picks a plural form when the
 // entry is { one, other } and `count` is given, and fills {placeholders}. `display` holds the text

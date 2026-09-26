@@ -209,7 +209,7 @@ describe("dashboard", () => {
     fireEvent.change(screen.getByTestId("dashboard-store"), { target: { value: "2" } });
     await waitFor(() => expect(api.entities.Transaction.filter).toHaveBeenLastCalledWith({ store_id: 2 }, "created_date", 10000));
     await waitFor(() => expect(rows(container)).toHaveLength(1));
-    expect(window.localStorage.getItem("selectedStore")).toBe("2");
+    expect(document.cookie).toContain("wmm_selected_store=2"); // remembered in a cookie
     expect(api.entities.DailyBalance.filter).toHaveBeenLastCalledWith({ store_id: 2 });
     expect(api.closedDays.list).toHaveBeenLastCalledWith(2);
     expect(screen.queryByTestId("store-column")).not.toBeInTheDocument();
@@ -217,6 +217,19 @@ describe("dashboard", () => {
     fireEvent.change(await screen.findByPlaceholderText("0.00"), { target: { value: "50" } });
     fireEvent.click(screen.getByRole("button", { name: /حفظ/ }));
     await waitFor(() => expect(api.entities.Transaction.create).toHaveBeenCalledWith(expect.objectContaining({ amount: 50, store_id: 2 })));
+  });
+
+  it("the chosen store and the last day viewed come back from their cookies on the next load", async () => {
+    window.localStorage.clear();
+    document.cookie = "wmm_selected_store=2; Path=/";
+    document.cookie = "wmm_selected_date=2026-09-22; Path=/";
+    const { container } = wrap(<Dashboard />);
+    await waitFor(() => expect(api.entities.Transaction.filter).toHaveBeenLastCalledWith({ store_id: 2 }, "created_date", 10000));
+    expect(screen.getByTestId("dashboard-store")).toHaveValue("2");
+    expect(container.querySelector('input[type="date"]')).toHaveValue("2026-09-22");
+    // Choosing another day remembers it.
+    fireEvent.change(container.querySelector('input[type="date"]'), { target: { value: "2026-09-23" } });
+    expect(document.cookie).toContain("wmm_selected_date=2026-09-23");
   });
 
   it("in All stores, a row is locked by its own store's closed day", async () => {

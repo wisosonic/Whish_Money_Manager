@@ -36,3 +36,13 @@ if (typeof Blob !== "undefined" && typeof Blob.prototype.text !== "function" && 
     });
   };
 }
+
+// The app remembers things in cookies (src/lib/cookies.js), and jsdom keeps them for the whole test
+// file: clear them after every test so one test's remembered day, store or settings can't leak into
+// the next. (Tests that need a cookie set it themselves.)
+import { afterEach } from "vitest";
+afterEach(() => {
+  if (typeof document === "undefined") return;
+  document.cookie.split(";").map((part) => part.split("=")[0].trim()).filter(Boolean)
+    .forEach((name) => { document.cookie = `${name}=; Path=/; Max-Age=0`; });
+});
