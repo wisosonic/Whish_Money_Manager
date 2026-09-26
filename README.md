@@ -43,16 +43,16 @@ It runs entirely on your machine: a React frontend and a small Node.js/Express A
 - **Reports**: daily commission report, and two per-party reports with count, deposits, withdrawals and commissions over an optional date range:
   - **تقرير مرسل** (sender report): all transactions whose sender name matches.
   - **تقرير مستلم** (receiver report): all transactions whose receiver matches, by name or, when the receiver was stored as a phone number, by that number in any format (`71389296`, `+961 71 389 296`, `071389296`). The receiver is shown the same way as in the transactions table.
-- **Monthly chart (الرسم البياني)**: one bar-and-line chart for a whole year, built with [Recharts](https://recharts.org):
+- **Monthly income chart** (Admin panel → Reports → **Income**; it used to be the dashboard's الرسم البياني button, removed on 2026-09-26): one bar-and-line chart for a whole year, built with [Recharts](https://recharts.org):
   - **X-axis**: the 12 months. Phones show month numbers (1–12) instead of names.
   - **Left y-axis**: profit, meaning the commissions earned each month, drawn as blue bars.
   - **Right y-axis**: total cash in (solid green line) and total cash out (dashed red line).
-  - **Year selector**: defaults to the selected date's year and lists every year that has transactions.
+  - **Year selector**: starts on the current year and lists every year that has transactions.
   - **Tooltip**: on hover, shows every series for that month. **Legend** below the chart.
   - **Year totals**: profit, cash in, cash out and number of transactions.
   - **Table view** ("عرض كجدول") with the same figures per month plus totals, for exact values and screen readers.
   - **Future months** of the current year are left blank instead of drawn as $0.
-  - **Live**: recalculates whenever transactions change (import, add, edit, delete).
+  - **Up to date**: the figures are added up by the server each time the report opens or the year changes.
   - **Responsive**: fills the width of its container and resizes with the screen.
   - **Accessibility**:
     - Colors were checked for color-blind readers, and cash out is also dashed, so no series relies on color alone.
@@ -101,7 +101,8 @@ It runs entirely on your machine: a React frontend and a small Node.js/Express A
   - **Only visible rows can be selected.** When you change the day or search, selected rows that are no longer shown are dropped from the selection, so an action never hits rows you can't see.
   - **Opening balances:** when a bulk delete or date change leaves a day with no transactions, that day's opening balance is removed, the same as a single delete.
 
-The transactions table's toolbar has: الرسم البياني, تقرير مرسل, تقرير مستلم, تقرير العمولات, delete all, استيراد PDF / CSV, Cash Out and Cash In. These buttons have been removed:
+The transactions table's toolbar has: تقرير مرسل, تقرير مستلم, تقرير العمولات, delete all, استيراد PDF / CSV, Cash Out and Cash In. These buttons have been removed:
+- the monthly chart ("الرسم البياني"): it's in the admin panel's reports (**Income**)
 - statement review ("مراجعة الكشف")
 - between-row insertion ("إدراج هنا")
 - undo ("تراجع")
@@ -356,7 +357,7 @@ Open **لوحة الإدارة** (Admin panel) in the header. Users don't see th
 **Layout:** on wide screens (1280px and up) the panel has two columns: **reports** on one side (the wider one) and **your office's data** (date range, backup, restore, delete) on the other. On smaller screens they stack, reports first.
 
 **Reports** (التقارير) have three tabs. They only read data; nothing here changes anything. Only the open tab is loaded.
-- **Income** (الدخل): the same monthly chart as the dashboard's الرسم البياني: commissions as bars (left axis), cash in and cash out as lines (right axis), the year's totals, the year selector (every year with data) and the table view. The figures are added up by the server, so the report covers every transaction without loading them all in the browser. The dashboard's chart is still there too.
+- **Income** (الدخل): the monthly chart (see [Features](#features)): commissions as bars (left axis), cash in and cash out as lines (right axis), the year's totals, the year selector (every year with data) and the table view. The figures are added up by the server, so the report covers every transaction without loading them all in the browser. It's the only place the chart appears: the dashboard's chart button was removed.
 - **Top senders** (أكبر المرسلين): who sent the most money **in** (Cash In) between two dates.
 - **Top recipients** (أكبر المستلمين): who received the most money (**Cash Out**) between two dates.
   - **Why only Cash In / Cash Out:** the other side of those rows is the office's own account (imported statements put the account name there), so it never appears in either list.
@@ -511,7 +512,7 @@ tests/
 │   │                         # delete by range (409 when counts changed), permission upgrade
 │   ├── stores.test.js        # stores: CRUD, one Manager per store, members, who sees what, per-store balances /
 │   │                         # closed days / rates, cross-store imports, admin panel, reports, restore, upgrade
-│   ├── reports.test.js       # reports API: permissions, income sums (= dashboard chart), top senders /
+│   ├── reports.test.js       # reports API: permissions, income sums (= the chart's own maths), top senders /
 │   │                         # recipients: Cash In / Out, dates, ranking, limit, grouping by number/name
 │   ├── users.test.js         # Admin user management, deactivation/reset revoke sessions, last-Admin rules
 │   ├── profile.test.js       # own profile: name, email (password, 409, records follow), password change
@@ -554,8 +555,8 @@ tests/
     │                                 # page direction, main screens in English
     ├── StatsCards.test.jsx           # monthly/yearly summaries: defaults, collapse, layout, animation
     ├── monthlyChartData.test.js      # per-month aggregation, future months, formatters
-    ├── MonthlyChartModal.test.jsx    # axes, bars/lines, legend, tooltip, table view, year switch,
-    │                                 # live updates, desktop vs phone layout, reduced motion
+    ├── IncomeChart.test.jsx          # the income chart: axes, bars/lines, legend, tooltip, table view, year switch,
+    │                                 # updates, desktop vs phone layout, reduced motion (via chartHarness.jsx)
     └── Dashboard.test.jsx            # search, monthly/yearly totals following the date picker,
                                       # table kept in place (scroll position) while refreshing after edit/delete
 ```

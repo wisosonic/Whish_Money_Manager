@@ -1,8 +1,7 @@
-import { useState, useRef, useEffect, lazy, Suspense } from "react";
-import { Search, FileText, Trash2, Pencil, X, Loader2, UserSearch, UserCheck, Percent, BarChart3, ArrowDown, ArrowUp, ArrowUpDown, ChevronUp, ChevronDown, Lock, LockOpen } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { Search, FileText, Trash2, Pencil, X, Loader2, UserSearch, UserCheck, Percent, ArrowDown, ArrowUp, ArrowUpDown, ChevronUp, ChevronDown, Lock, LockOpen } from "lucide-react";
 import BulkEditModal from "@/components/transactions/BulkEditModal";
 import SenderReportModal from "@/components/transactions/SenderReportModal";
-import ChartFallback from "@/components/reports/ChartFallback";
 import ReceiverReportModal from "@/components/transactions/ReceiverReportModal";
 import { format } from "date-fns";
 import { api } from "@/api/apiClient";
@@ -11,8 +10,6 @@ import DailyCommissionReport from "@/components/transactions/DailyCommissionRepo
 import { useAuth } from "@/lib/AuthContext";
 import { PERMISSIONS } from "@/lib/permissions";
 
-// The chart window pulls in Recharts (most of the bundle), so it's downloaded the first time it's opened.
-const MonthlyChartModal = lazy(() => import("@/components/dashboard/MonthlyChartModal"));
 import { useI18n } from "@/lib/i18n";
 import { notify } from "@/lib/notify";
 import { NO_SORT, nextSort, sortTransactions } from "@/lib/transactionSort";
@@ -106,7 +103,6 @@ export default function TransactionsList({
   const [showSenderReport, setShowSenderReport] = useState(false);
   const [showReceiverReport, setShowReceiverReport] = useState(false);
   const [showCommissionReport, setShowCommissionReport] = useState(false);
-  const [showChart, setShowChart] = useState(false);
 
   // Permissions (the API enforces the same rules; this only hides what the user can't do).
   const { can, canEditTransaction } = useAuth();
@@ -460,13 +456,6 @@ export default function TransactionsList({
       <div className="px-4 py-3 border-b flex flex-wrap items-center justify-between gap-3">
         <span className="text-[hsl(var(--foreground))] font-bold text-base text-start">{tr("list.count", { count: transactions.length })}</span>
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => setShowChart(true)}
-            className="flex items-center gap-1 border border-indigo-200 rounded-lg px-3 py-1.5 text-sm text-indigo-600 hover:bg-indigo-50 transition">
-
-            <BarChart3 className="w-4 h-4" />
-            {tr("list.chart")}
-          </button>
           <button
             onClick={() => setShowSenderReport(true)}
             className="flex items-center gap-1 border border-blue-200 rounded-lg px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50 transition">
@@ -859,14 +848,6 @@ export default function TransactionsList({
         onClose={() => setShowBulkEdit(false)}
         onSaved={handleBulkEditSaved} />
 
-      }
-      {showChart &&
-      <Suspense fallback={<ChartFallback overlay />}>
-          <MonthlyChartModal
-            allTransactions={allTransactions}
-            selectedDate={selectedDate}
-            onClose={() => setShowChart(false)} />
-        </Suspense>
       }
       {showReceiverReport &&
       <ReceiverReportModal

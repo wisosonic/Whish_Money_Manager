@@ -91,9 +91,9 @@ const prefersReducedMotion = () =>
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 // The monthly income chart: profit (commissions, bars, left axis) and cash in / cash out (lines,
-// right axis) per month, with the year's totals and a table view. Shown by the dashboard's chart
-// window (MonthlyChartModal, from the loaded transactions) and by Admin panel → Reports → Income
-// (IncomeReport, from the server's monthly sums). The caller owns the year and the data.
+// right axis) per month, with the year's totals and a table view. Shown by Admin panel → Reports →
+// Income (IncomeReport, from the server's monthly sums); the dashboard's chart window was removed
+// (user's request, 2026-09-26). The caller owns the year and the data.
 //   data: 12 rows from buildMonthlyChartData / finalizeMonthlyRows   years: options, newest first
 //   title: the heading node   actions: extra controls after the view toggle (e.g. a close button)
 export default function IncomeChart({ data, years, year, onYearChange, title, actions, loading = false }) {

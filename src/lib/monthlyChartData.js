@@ -53,16 +53,6 @@ export const sumChartData = (rows) =>
     { profit: 0, cashIn: 0, cashOut: 0, count: 0 }
   );
 
-// Years that have data, newest first, always including the fallback (the selected date's year).
-export const availableYears = (transactions, fallbackYear) => {
-  const years = new Set([String(fallbackYear)]);
-  (transactions || []).forEach((t) => {
-    const year = transactionDate(t).slice(0, 4);
-    if (/^\d{4}$/.test(year)) years.add(year);
-  });
-  return [...years].sort((a, b) => b.localeCompare(a));
-};
-
 // Compact axis labels: 950 → $950, 12,500 → $12.5k, 1,200,000 → $1.2M
 export const formatCompactMoney = (value) => {
   const n = Number(value) || 0;

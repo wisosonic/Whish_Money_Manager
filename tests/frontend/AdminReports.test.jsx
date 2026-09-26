@@ -20,7 +20,7 @@ vi.mock("@/api/apiClient", () => ({
     admin: { range: vi.fn(), summary: vi.fn(), exportCsv: vi.fn(), purge: vi.fn(), reports: { income: vi.fn(), parties: vi.fn() } },
   },
 }));
-// jsdom has no layout: give the chart a fixed size (as in MonthlyChartModal.test.jsx).
+// jsdom has no layout: give the chart a fixed size (as in IncomeChart.test.jsx).
 vi.mock("recharts", async (importOriginal) => {
   const actual = await importOriginal();
   const { cloneElement } = await import("react");
@@ -135,14 +135,10 @@ describe("reports section", () => {
 });
 
 describe("chart loading placeholder (the chart code downloads on first use)", () => {
-  it("inline in the report, and as a window-sized overlay on the dashboard (above the header)", async () => {
+  it("says it's loading, in place of the chart", async () => {
     const { default: ChartFallback } = await import("@/components/reports/ChartFallback");
-    const { unmount } = render(wrap(<ChartFallback />));
+    render(wrap(<ChartFallback />));
     expect(screen.getByRole("status")).toHaveTextContent("جاري التحميل");
-    expect(screen.getByTestId("chart-code-loading").closest(".fixed")).toBeNull();
-    unmount();
-    render(wrap(<ChartFallback overlay />));
-    expect(screen.getByTestId("chart-code-loading").closest(".fixed")).toHaveClass("inset-0", "z-50");
   });
 });
 

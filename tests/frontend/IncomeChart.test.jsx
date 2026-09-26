@@ -1,7 +1,9 @@
 /** @vitest-environment jsdom */
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import MonthlyChartModal, { CHART_SERIES, ChartLegend, ChartTooltip } from "@/components/dashboard/MonthlyChartModal";
+// The shared income chart (Admin panel → Reports → Income), fed with transactions by a test harness.
+import { CHART_SERIES, ChartLegend, ChartTooltip } from "@/components/reports/IncomeChart";
+import ChartHarness from "./chartHarness";
 
 // jsdom has no layout, so ResponsiveContainer would measure 0×0 and draw nothing. Replace it with a
 // fixed-size stand-in that records the sizing props the component asked for.
@@ -41,7 +43,7 @@ const setViewport = ({ width = 1024, reducedMotion = true } = {}) => {
 };
 
 const renderChart = (props = {}) =>
-  render(<MonthlyChartModal allTransactions={transactions} selectedDate="2026-09-23" onClose={vi.fn()} {...props} />);
+  render(<ChartHarness allTransactions={transactions} selectedDate="2026-09-23" {...props} />);
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
@@ -59,10 +61,9 @@ afterEach(() => {
 const chart = () => screen.getByTestId("monthly-chart");
 const xTicks = () => [...chart().querySelectorAll(".recharts-xAxis .recharts-cartesian-axis-tick-value")].map((t) => t.textContent);
 
-describe("MonthlyChartModal — content", () => {
+describe("income chart — content", () => {
   it("defaults to the selected date's year and shows the year totals", () => {
     renderChart();
-    expect(screen.getByText("الرسم البياني الشهري")).toBeInTheDocument();
     expect(screen.getByLabelText("السنة")).toHaveValue("2026");
     expect(screen.getByTestId("chart-total-profit")).toHaveTextContent("$15.00");
     expect(screen.getByTestId("chart-total-cashIn")).toHaveTextContent("$1,500.00");
@@ -141,22 +142,15 @@ describe("MonthlyChartModal — content", () => {
     fireEvent.click(screen.getByRole("button", { name: /عرض كرسم بياني/ }));
     expect(screen.getByTestId("monthly-chart")).toBeInTheDocument();
   });
-
-  it("closes", () => {
-    const onClose = vi.fn();
-    renderChart({ onClose });
-    fireEvent.click(screen.getByRole("button", { name: "إغلاق" }));
-    expect(onClose).toHaveBeenCalledTimes(1);
-  });
 });
 
-describe("MonthlyChartModal — dynamic updates", () => {
+describe("income chart — dynamic updates", () => {
   it("re-renders totals, table and chart when the transactions change", () => {
     const { rerender } = renderChart();
     expect(screen.getByTestId("chart-total-cashIn")).toHaveTextContent("$1,500.00");
 
     const updated = [...transactions, tx(6, "2026-07-10", "cash_in", 2000, 20)];
-    rerender(<MonthlyChartModal allTransactions={updated} selectedDate="2026-09-23" onClose={vi.fn()} />);
+    rerender(<ChartHarness allTransactions={updated} selectedDate="2026-09-23" />);
 
     expect(screen.getByTestId("chart-total-cashIn")).toHaveTextContent("$3,500.00");
     expect(screen.getByTestId("chart-total-profit")).toHaveTextContent("$35.00");
@@ -169,12 +163,12 @@ describe("MonthlyChartModal — dynamic updates", () => {
   it("adds a newly seen year to the year selector", () => {
     const { rerender } = renderChart();
     expect([...screen.getByLabelText("السنة").options].map((o) => o.value)).toEqual(["2026", "2025"]);
-    rerender(<MonthlyChartModal allTransactions={[...transactions, tx(7, "2024-03-01", "cash_in", 5)]} selectedDate="2026-09-23" onClose={vi.fn()} />);
+    rerender(<ChartHarness allTransactions={[...transactions, tx(7, "2024-03-01", "cash_in", 5)]} selectedDate="2026-09-23" />);
     expect([...screen.getByLabelText("السنة").options].map((o) => o.value)).toEqual(["2026", "2025", "2024"]);
   });
 });
 
-describe("MonthlyChartModal — responsiveness", () => {
+describe("income chart — responsiveness", () => {
   it("fills the container width on every screen", () => {
     renderChart();
     expect(screen.getByTestId("responsive-container")).toHaveAttribute("data-width", "100%");

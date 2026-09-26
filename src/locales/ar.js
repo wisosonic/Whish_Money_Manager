@@ -126,7 +126,6 @@ const ar = {
   "list.journal": "اليومية",
   "list.today": "اليوم",
   "list.count": "{count} عملية",
-  "list.chart": "الرسم البياني",
   "list.senderReport": "تقرير مرسل",
   "list.receiverReport": "تقرير مستلم",
   "list.commissionReport": "تقرير العمولات",
@@ -248,7 +247,6 @@ const ar = {
   "commissionReport.unknownSender": "غير معروف",
 
   // Monthly chart
-  "chart.title": "الرسم البياني الشهري",
   "chart.year": "السنة",
   "chart.showTable": "عرض كجدول",
   "chart.showChart": "عرض كرسم بياني",

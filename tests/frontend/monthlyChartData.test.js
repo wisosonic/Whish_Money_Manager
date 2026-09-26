@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  MONTH_LABELS, availableYears, buildMonthlyChartData, formatCompactMoney, formatMoney, sumChartData,
+  MONTH_LABELS, buildMonthlyChartData, formatCompactMoney, formatMoney, sumChartData,
 } from "@/lib/monthlyChartData";
 
 const tx = (date, type, amount, commission = 0) => ({ transaction_date: date, type, amount, commission });
@@ -55,14 +55,6 @@ describe("sumChartData", () => {
     expect(sumChartData(buildMonthlyChartData(transactions, "2026", TODAY))).toEqual({
       profit: 1.85, cashIn: 185.25, cashOut: 1540, count: 6,
     });
-  });
-});
-
-describe("availableYears", () => {
-  it("lists years with data, newest first, always including the selected year", () => {
-    expect(availableYears(transactions, "2026")).toEqual(["2026", "2025"]);
-    expect(availableYears([], "2024")).toEqual(["2024"]);
-    expect(availableYears(transactions, "2027")[0]).toBe("2027");
   });
 });
 

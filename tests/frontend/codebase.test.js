@@ -81,20 +81,19 @@ describe("bundle split", () => {
     expect(appSources.filter((f) => /components\/ui\/chart["']/.test(fs.readFileSync(f, "utf8")))).toEqual([]);
   });
 
-  it("the chart loads on demand: the dashboard window and the income report use lazy(() => import(…))", () => {
-    const list = read("src/components/dashboard/TransactionsList.jsx");
-    expect(importsStatically(list, "@/components/dashboard/MonthlyChartModal")).toBe(false);
-    expect(list).toContain('lazy(() => import("@/components/dashboard/MonthlyChartModal"))');
+  it("the chart loads on demand: the admin panel's income report uses lazy(() => import(…))", () => {
     const report = read("src/components/reports/IncomeReport.jsx");
     expect(importsStatically(report, "@/components/reports/IncomeChart")).toBe(false);
     expect(report).toContain('lazy(() => import("@/components/reports/IncomeChart"))');
-    // Nothing else pulls the chart in statically (the window itself is loaded lazily).
-    const staticUsers = appSources
-      .filter((f) => path.basename(f) !== "MonthlyChartModal.jsx")
-      .filter((f) => ["@/components/reports/IncomeChart", "@/components/dashboard/MonthlyChartModal"]
-        .some((target) => importsStatically(fs.readFileSync(f, "utf8"), target)))
-      .map(relative);
+    // Nothing else pulls the chart in statically.
+    const staticUsers = appSources.filter((f) => importsStatically(fs.readFileSync(f, "utf8"), "@/components/reports/IncomeChart")).map(relative);
     expect(staticUsers).toEqual([]);
+  });
+
+  it("the dashboard's chart window is gone (user's request): the chart lives in the admin panel", () => {
+    expect(fs.existsSync(path.join(root, "src/components/dashboard/MonthlyChartModal.jsx"))).toBe(false);
+    const users = sources.filter((f) => f !== __filename && fs.readFileSync(f, "utf8").includes("MonthlyChartModal")).map(relative);
+    expect(users).toEqual([]);
   });
 
   it("pages other than the dashboard load on demand, behind a Suspense spinner", () => {

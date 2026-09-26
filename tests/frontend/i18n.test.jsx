@@ -317,7 +317,7 @@ describe("screens in English", () => {
         onResetOpeningBalance={noop} onDeleteDailyBalanceForDate={noop} />
     );
     expect(screen.getByText("2 transactions")).toBeInTheDocument();
-    ["Chart", "Sender report", "Receiver report", "Commission report", "Delete all", "Import PDF / CSV", "Today"].forEach((name) => {
+    ["Sender report", "Receiver report", "Commission report", "Delete all", "Import PDF / CSV", "Today"].forEach((name) => {
       expect(screen.getByRole("button", { name: new RegExp(name.replace("/", "\\/")) })).toBeInTheDocument();
     });
     expect(screen.getByPlaceholderText("Search by name, amount, number or note...")).toBeInTheDocument();

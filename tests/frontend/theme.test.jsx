@@ -7,7 +7,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import SettingsPage from "@/pages/SettingsPage";
-import MonthlyChartModal, { CHART_INK, CHART_SERIES } from "@/components/dashboard/MonthlyChartModal";
+import { CHART_INK, CHART_SERIES } from "@/components/reports/IncomeChart";
+import ChartHarness from "./chartHarness";
 import { LanguageProvider } from "@/lib/i18n";
 import { PreferencesProvider, usePreferences } from "@/lib/PreferencesContext";
 import { applyPreferenceChanges, resolvePreferences } from "@/lib/preferences";
@@ -214,7 +215,7 @@ describe("chart in dark mode", () => {
     { id: 1, transaction_date: "2026-06-06", type: "cash_in", amount: 1000, commission: 10 },
     { id: 2, transaction_date: "2026-06-07", type: "cash_out", amount: 400, commission: 0 },
   ];
-  const renderChart = () => render(withProviders(<MonthlyChartModal allTransactions={transactions} selectedDate="2026-09-23" onClose={vi.fn()} />));
+  const renderChart = () => render(withProviders(<ChartHarness allTransactions={transactions} selectedDate="2026-09-23" />));
 
   it("uses the dark palette (validated against the dark card) and light inks for axes", () => {
     deviceTheme(false);

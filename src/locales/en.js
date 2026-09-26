@@ -131,7 +131,6 @@ const en = {
   "list.journal": "Day",
   "list.today": "Today",
   "list.count": { one: "{count} transaction", other: "{count} transactions" },
-  "list.chart": "Chart",
   "list.senderReport": "Sender report",
   "list.receiverReport": "Receiver report",
   "list.commissionReport": "Commission report",
@@ -253,7 +252,6 @@ const en = {
   "commissionReport.unknownSender": "Unknown",
 
   // Monthly chart
-  "chart.title": "Monthly chart",
   "chart.year": "Year",
   "chart.showTable": "Show as table",
   "chart.showChart": "Show as chart",

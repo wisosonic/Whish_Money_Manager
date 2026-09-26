@@ -81,7 +81,7 @@ describe("Header — sticky while scrolling", () => {
     const header = screen.getByTestId("app-header");
     expect(header).toHaveClass("z-40", "bg-gradient-to-l", "from-gray-900", "to-slate-800");
     // Every modal in the app is a fixed overlay at z-50.
-    const modalSources = ["transactions/ImportPDFModal.jsx", "transactions/BulkEditModal.jsx", "dashboard/MonthlyChartModal.jsx"]
+    const modalSources = ["transactions/ImportPDFModal.jsx", "transactions/BulkEditModal.jsx", "transactions/CashInModal.jsx"]
       .map((file) => readProjectFile(`src/components/${file}`));
     modalSources.forEach((source) => expect(source).toMatch(/fixed inset-0[^"]*z-50/));
   });
