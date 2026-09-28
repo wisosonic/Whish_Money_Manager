@@ -146,6 +146,23 @@ export const api = {
     list: async () => apiRequest('/roles', { method: 'GET' }),
   },
 
+  // The dashboard, one query at a time (the browser doesn't load every transaction). Lists hold at
+  // most 10,000 rows: { total, truncated, transactions }. storeId: the Admin's chosen store (others:
+  // the server uses theirs; the Admin without one: every store).
+  dashboard: {
+    day: async (date, storeId) => apiRequest(`/dashboard/day${query({ date, store_id: storeId })}`, { method: 'GET' }),
+    // { day, month, year: { count, deposits, withdrawals, commissions }, wallet: { opening_balance, net_balance } }
+    summary: async (date, storeId) => apiRequest(`/dashboard/summary${query({ date, store_id: storeId })}`, { method: 'GET' }),
+    // month: "YYYY-MM" to search only that month's days ("This month"); omitted for every day.
+    search: async (q, month, storeId) => apiRequest(`/dashboard/search${query({ q, month, store_id: storeId })}`, { method: 'GET' }),
+    // party: "sender" | "receiver" → also { totals }
+    party: async ({ party, q, from, to, storeId }) =>
+      apiRequest(`/dashboard/party${query({ party, q, from, to, store_id: storeId })}`, { method: 'GET' }),
+    // After deletes: remove that day's opening balance of every store left without transactions.
+    cleanupBalances: async (date, storeId) =>
+      apiRequest('/daily-balances/cleanup', { method: 'POST', body: JSON.stringify({ date, store_id: storeId }) }),
+  },
+
   // Stores. Everyone sees their own store; the Admin (stores:manage) manages all of them; a store's
   // Manager (stores:members) adds and removes its Users.
   stores: {

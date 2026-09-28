@@ -7,7 +7,7 @@
 //   summaries      { month, year }       whether each summary block starts expanded
 //   theme          "light" | "dark" | "system"   "system" follows the device's light/dark setting
 //   startOn        "last" | "today"      which day the dashboard opens on
-//   searchScope    "all" | "day"         where a search looks by default
+//   searchScope    "all" | "month" | "day"  where a search looks by default (month = the selected date's)
 //   defaultSort    { key, dir }          the table's sort when it opens (key null = journal order)
 //   clock          "12h" | "24h" | "hidden"
 //   numerals       "western" | "arabic"  digits in the Arabic interface (0123 or ٠١٢٣)
@@ -25,7 +25,7 @@ export const PREFERENCE_LANGUAGES = ["ar", "en"];
 export const DENSITIES = ["comfortable", "compact"];
 export const THEMES = ["light", "dark", "system"];
 export const START_ON = ["last", "today"];
-export const SEARCH_SCOPES = ["all", "day"];
+export const SEARCH_SCOPES = ["all", "month", "day"];
 export const SORT_DIRECTIONS = ["asc", "desc"];
 export const CLOCKS = ["12h", "24h", "hidden"];
 export const NUMERALS = ["western", "arabic"];

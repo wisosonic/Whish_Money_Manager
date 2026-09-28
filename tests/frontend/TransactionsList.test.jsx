@@ -4,12 +4,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import TransactionsList from "@/components/dashboard/TransactionsList";
 import { api } from "@/api/apiClient";
 import { setAuthRole } from "./authMock";
+import { installFakeDashboard } from "./fakeDashboardApi";
 
 vi.mock("@/lib/AuthContext", async () => (await import("./authMock")).authContextMock);
 beforeEach(() => setAuthRole("admin"));
 
 vi.mock("@/api/apiClient", () => ({
-  api: { entities: { Transaction: { delete: vi.fn(), bulkDelete: vi.fn(), bulkUpdate: vi.fn() } } },
+  api: {
+    entities: { Transaction: { delete: vi.fn(), bulkDelete: vi.fn(), bulkUpdate: vi.fn() } },
+    dashboard: { day: vi.fn(), summary: vi.fn(), search: vi.fn(), party: vi.fn(), cleanupBalances: vi.fn() },
+  },
 }));
 
 const transactions = [
@@ -29,7 +33,7 @@ const renderList = (props = {}) =>
   render(
     <TransactionsList
       transactions={transactions}
-      allTransactions={transactions}
+      dayTransactions={transactions}
       loading={false}
       search=""
       setSearch={vi.fn()}
@@ -105,13 +109,15 @@ describe("TransactionsList", () => {
     expect(screen.getByRole("button", { name: /تقرير مستلم/ })).toBeInTheDocument();
   });
 
-  it("opens the receiver report over all transactions and closes it", () => {
-    renderList();
+  it("opens the receiver report (asked of the server, for the dashboard's store) and closes it", async () => {
+    installFakeDashboard(api, () => transactions);
+    renderList({ storeId: 3 });
     fireEvent.click(screen.getByRole("button", { name: /تقرير مستلم/ }));
     expect(screen.getByText("تقرير المستلم")).toBeInTheDocument();
 
     fireEvent.change(screen.getByPlaceholderText("اكتب اسم أو رقم المستلم..."), { target: { value: "71389296" } });
-    expect(screen.getByTestId("receiver-count")).toHaveTextContent("1");
+    await waitFor(() => expect(screen.getByTestId("receiver-count")).toHaveTextContent("1"));
+    expect(api.dashboard.party).toHaveBeenLastCalledWith(expect.objectContaining({ party: "receiver", storeId: 3 }));
 
     fireEvent.click(screen.getByRole("button", { name: "إغلاق" }));
     expect(screen.queryByText("تقرير المستلم")).not.toBeInTheDocument();
@@ -138,7 +144,7 @@ describe("TransactionsList", () => {
   });
 
   it("shows the empty state when there are no transactions", () => {
-    renderList({ transactions: [], allTransactions: [] });
+    renderList({ transactions: [], dayTransactions: [] });
     expect(screen.getByText("لا توجد معاملات")).toBeInTheDocument();
   });
 
@@ -214,13 +220,13 @@ describe("TransactionsList — bulk actions", () => {
   });
 
   it("drops selected rows that are no longer visible (other day or search)", () => {
-    const { rerender } = renderList({ transactions: rows3, allTransactions: rows3 });
+    const { rerender } = renderList({ transactions: rows3, dayTransactions: rows3 });
     fireEvent.click(selectAll());
     expect(screen.getByTestId("bulk-selected-count")).toHaveTextContent("3 عملية محددة");
 
     rerender(
       <TransactionsList
-        transactions={[transactions[1]]} allTransactions={rows3} loading={false} search="mounir" setSearch={vi.fn()}
+        transactions={[transactions[1]]} dayTransactions={rows3} loading={false} search="mounir" setSearch={vi.fn()}
         selectedDate="2026-09-23" setSelectedDate={vi.fn()} onToday={vi.fn()} onCashIn={vi.fn()} onCashOut={vi.fn()}
         onImportPDF={vi.fn()} onRefresh={vi.fn()} onResetOpeningBalance={vi.fn()} onDeleteDailyBalanceForDate={vi.fn()}
       />
@@ -231,7 +237,7 @@ describe("TransactionsList — bulk actions", () => {
   it("asks for confirmation, then deletes all selected rows in one request", async () => {
     const onRefresh = vi.fn();
     const onDeleteDailyBalanceForDate = vi.fn();
-    renderList({ transactions: rows3, allTransactions: rows3, onRefresh, onDeleteDailyBalanceForDate });
+    renderList({ transactions: rows3, dayTransactions: rows3, onRefresh, onDeleteDailyBalanceForDate });
     fireEvent.click(rowBox(1));
     // The third row is from another day: its checkbox names that day (its own day's row 1).
     fireEvent.click(screen.getByLabelText("تحديد العملية 1 بتاريخ 2026-09-22"));
@@ -290,7 +296,7 @@ describe("TransactionsList — bulk actions", () => {
 
   it("moving rows to another date cleans up only the days they left", async () => {
     const onDeleteDailyBalanceForDate = vi.fn();
-    renderList({ transactions: rows3, allTransactions: rows3, onDeleteDailyBalanceForDate });
+    renderList({ transactions: rows3, dayTransactions: rows3, onDeleteDailyBalanceForDate });
     fireEvent.click(selectAll());
     fireEvent.click(screen.getByRole("button", { name: /تعديل المحدد/ }));
     fireEvent.click(screen.getByLabelText("تغيير التاريخ"));
@@ -312,7 +318,7 @@ describe("TransactionsList — role-based controls", () => {
 
   it("User: no delete controls anywhere, edit only on their own rows", () => {
     setAuthRole("user");
-    const { container } = renderList({ transactions: mixed, allTransactions: mixed });
+    const { container } = renderList({ transactions: mixed, dayTransactions: mixed });
     const [own, other] = bodyRows(container);
     expect(screen.queryByTitle("مسح")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /مسح الكل/ })).not.toBeInTheDocument();
@@ -322,7 +328,7 @@ describe("TransactionsList — role-based controls", () => {
 
   it("User: bulk edit only when every selected row is theirs, and never bulk delete", () => {
     setAuthRole("user");
-    renderList({ transactions: mixed, allTransactions: mixed });
+    renderList({ transactions: mixed, dayTransactions: mixed });
     fireEvent.click(rowBox(1));
     expect(screen.getByRole("button", { name: /تعديل المحدد/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /حذف المحدد/ })).not.toBeInTheDocument();
@@ -334,7 +340,7 @@ describe("TransactionsList — role-based controls", () => {
 
   it("User: can still add, import, view reports and the chart", () => {
     setAuthRole("user");
-    renderList({ transactions: mixed, allTransactions: mixed });
+    renderList({ transactions: mixed, dayTransactions: mixed });
     ["Cash In", "Cash Out", "استيراد PDF / CSV", "تقرير مرسل", "تقرير مستلم", "تقرير العمولات"].forEach((name) => {
       expect(screen.getByRole("button", { name: new RegExp(name.replace("/", "\/")) })).toBeInTheDocument();
     });
@@ -342,7 +348,7 @@ describe("TransactionsList — role-based controls", () => {
 
   it.each(["manager", "admin"])("%s: edit and delete on every row, bulk edit and delete, delete all", (role) => {
     setAuthRole(role);
-    const { container } = renderList({ transactions: mixed, allTransactions: mixed });
+    const { container } = renderList({ transactions: mixed, dayTransactions: mixed });
     bodyRows(container).forEach((row) => {
       expect(within(row).getByTitle("تعديل")).toBeInTheDocument();
       expect(within(row).getByTitle("مسح")).toBeInTheDocument();
@@ -380,7 +386,7 @@ describe("TransactionsList — type column (icons + sorting)", () => {
   });
 
   it("the Type header sorts: Cash In first → Cash Out first → original order", () => {
-    const { container } = renderList({ transactions: mixed, allTransactions: mixed });
+    const { container } = renderList({ transactions: mixed, dayTransactions: mixed });
     const header = screen.getByTestId("sort-type");
     const th = header.closest("th");
     expect(th).toHaveAttribute("aria-sort", "none");
@@ -405,7 +411,7 @@ describe("TransactionsList — type column (icons + sorting)", () => {
   });
 
   it("sorting only reorders: selection and bulk actions still use the same rows", () => {
-    const { container } = renderList({ transactions: mixed, allTransactions: mixed });
+    const { container } = renderList({ transactions: mixed, dayTransactions: mixed });
     fireEvent.click(screen.getByTestId("sort-type"));
     const firstRow = bodyRows(container)[0];
     fireEvent.click(within(firstRow).getByRole("checkbox"));
@@ -423,7 +429,7 @@ describe("TransactionsList — every column is sortable", () => {
     { id: 23, type: "cash_in", amount: 100, commission: 2, sender_name: "bravo", receiver_name: "Mia", customer_number: "", service: "QR", note: "", reference_number: "tr:100", transaction_date: "2026-09-23", created_date: "2026-09-23T10:30:00Z" },
   ];
   const ids = (container) => bodyRows(container).map((row) => row.querySelector("td:nth-child(2)").textContent);
-  const setup = () => renderList({ transactions: day, allTransactions: day });
+  const setup = () => renderList({ transactions: day, dayTransactions: day });
 
   it("every data column has a sort button with aria-sort; the checkbox and actions columns don't", () => {
     const { container } = setup();

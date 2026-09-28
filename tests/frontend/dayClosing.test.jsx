@@ -15,6 +15,7 @@ import { PreferencesProvider } from "@/lib/PreferencesContext";
 import { api } from "@/api/apiClient";
 import { setAuthRole } from "./authMock";
 import { clearToasts, findToast } from "./toastHelpers";
+import { installFakeDashboard } from "./fakeDashboardApi";
 
 vi.mock("@/lib/AuthContext", async () => (await import("./authMock")).authContextMock);
 vi.mock("@/components/layout/Header", () => ({ default: () => null }));
@@ -27,6 +28,7 @@ vi.mock("@/api/apiClient", () => ({
     },
     closedDays: { list: vi.fn(), close: vi.fn(), reopen: vi.fn() },
     commissionRates: { get: vi.fn() },
+    dashboard: { day: vi.fn(), summary: vi.fn(), search: vi.fn(), party: vi.fn(), cleanupBalances: vi.fn() },
   },
 }));
 
@@ -51,6 +53,7 @@ beforeEach(() => {
   api.closedDays.close.mockImplementation(async (date) => { closed = [{ date, closed_by: "admin@test.local", closed_at: "2026-09-24T18:00:00.000Z" }]; return closed[0]; });
   api.closedDays.reopen.mockImplementation(async (date) => { closed = closed.filter((d) => d.date !== date); return { ok: true }; });
   api.commissionRates.get.mockResolvedValue({ rate: 1 });
+  installFakeDashboard(api, () => stored);
 });
 afterEach(() => {
   cleanup();
@@ -165,6 +168,15 @@ describe("dashboard options", () => {
     fireEvent.change(screen.getByPlaceholderText(/ابحث عن اسم/), { target: { value: "vicario" } });
     await waitFor(() => expect(rowCount(container)).toBe(1)); // only the selected day's Vicario
   });
+
+  it("default search scope: 'this month' makes the switch start there", async () => {
+    setAuthRole("admin", { preferences: { searchScope: "month" } });
+    const { container } = await renderDashboard();
+    expect(screen.getByTestId("search-scope-month")).toHaveAttribute("aria-pressed", "true");
+    fireEvent.change(screen.getByPlaceholderText(/ابحث عن اسم/), { target: { value: "vicario" } });
+    await waitFor(() => expect(rowCount(container)).toBe(2)); // both September Vicario rows, over 2 days
+    expect(api.dashboard.search).toHaveBeenLastCalledWith("vicario", "2026-09");
+  });
 });
 
 describe("table options", () => {
@@ -173,7 +185,7 @@ describe("table options", () => {
     reference_number: `tr:${i + 1}`, transaction_date: DAY, created_date: `${DAY}T10:00:00Z`,
   }));
   const renderTable = (rows = many, props = {}) => render(withApp(
-    <TransactionsList transactions={rows} allTransactions={rows} loading={false} search="" setSearch={vi.fn()}
+    <TransactionsList transactions={rows} dayTransactions={rows} loading={false} search="" setSearch={vi.fn()}
       selectedDate={DAY} setSelectedDate={vi.fn()} onToday={vi.fn()} onCashIn={vi.fn()} onCashOut={vi.fn()}
       onImportPDF={vi.fn()} onRefresh={vi.fn()} onResetOpeningBalance={vi.fn()} onDeleteDailyBalanceForDate={vi.fn()} {...props} />
   ));
@@ -216,7 +228,7 @@ describe("table options", () => {
     fireEvent.click(screen.getByRole("button", { name: "التالي" }));
     const refreshed = many.map((t) => ({ ...t }));
     rerender(withApp(
-      <TransactionsList transactions={refreshed} allTransactions={refreshed} loading={false} search="" setSearch={vi.fn()}
+      <TransactionsList transactions={refreshed} dayTransactions={refreshed} loading={false} search="" setSearch={vi.fn()}
         selectedDate={DAY} setSelectedDate={vi.fn()} onToday={vi.fn()} onCashIn={vi.fn()} onCashOut={vi.fn()}
         onImportPDF={vi.fn()} onRefresh={vi.fn()} onResetOpeningBalance={vi.fn()} onDeleteDailyBalanceForDate={vi.fn()} />
     ));

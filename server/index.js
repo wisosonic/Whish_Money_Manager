@@ -8,6 +8,7 @@ import { parseCsvText } from "./csv.js";
 import { db, dbPath, ensureDefaultRoles, initializeDb, nowIso } from "./db.js";
 import { commissionRateOn, refuseClosedDays, refuseClosedRows, registerOfficeRoutes, transactionDay } from "./office.js";
 import { PERMISSIONS as P, canUpdateTransaction, hasPermission } from "./permissions.js";
+import { registerDashboardRoutes } from "./dashboard.js";
 import { registerReportRoutes } from "./reports.js";
 import { ensureInitialAdmin } from "./seed.js";
 import { inScope, registerStoreRoutes, scopeSql, seesAllStores, storeById, targetStore } from "./stores.js";
@@ -181,6 +182,9 @@ app.use("/local-api", authenticate);
 
 // Stores and who works in which (Admin: stores; a store's Manager: its Users).
 registerStoreRoutes(app);
+
+// The dashboard's day, totals, search and reports, one query at a time (capped at 10,000 rows).
+registerDashboardRoutes(app);
 
 // Admin panel: CSV backup and delete-by-date-range (Admin + Manager).
 registerAdminRoutes(app);

@@ -14,7 +14,7 @@ import { useI18n } from "@/lib/i18n";
 import { notify } from "@/lib/notify";
 import { NO_SORT, nextSort, sortTransactions } from "@/lib/transactionSort";
 import { usePreferences } from "@/lib/PreferencesContext";
-import { TABLE_COLUMNS } from "@/lib/preferences";
+import { SEARCH_SCOPES, TABLE_COLUMNS } from "@/lib/preferences";
 
 // ═══ Type column: icon + sorting ═══
 // Cash In = green down-arrow, Cash Out = red up-arrow (same arrows as the Cash In / Cash Out buttons).
@@ -61,8 +61,14 @@ function SortHeader({ column, label, sortName, sort, onSort, tooltips, className
 }
 
 export default function TransactionsList({
+  // The rows to show (the day, or all-days search results), in journal order from the server, each
+  // with its number in its day (day_position). dayTransactions: every loaded row of the selected
+  // day (delete all, the commission report). truncatedTotal: when the server left rows out (the
+  // 10,000 rule), how many there are in all.
   transactions,
-  allTransactions,
+  dayTransactions = transactions,
+  truncatedTotal = null,
+  storeId,
   loading,
   search,
   setSearch,
@@ -75,10 +81,11 @@ export default function TransactionsList({
   onRefresh,
   onResetOpeningBalance,
   onDeleteDailyBalanceForDate,
-  // Search scope (Dashboard): "all" days or the selected "day"; searchingAllDays = results span days.
+  // Search scope (Dashboard): "all" days, the selected date's "month", or the selected "day";
+  // searchingDays = the results come from the server and span days (all days or the month).
   searchScope = "day",
   setSearchScope,
-  searchingAllDays = false,
+  searchingDays = false,
   onOpenDay,
   // Closed days: closedDay = { date, closed_by, closed_at } when the selected day is closed;
   // closedDates = every closed date (rows from other days in all-days results).
@@ -119,22 +126,22 @@ export default function TransactionsList({
   // Starts from Settings → Transactions table → Default sort (journal order unless set).
   const [sort, setSort] = useState(() =>
     preferences.defaultSort.key ? { key: preferences.defaultSort.key, dir: preferences.defaultSort.dir } : NO_SORT);
-  // Each row's place in its own day's journal (shown in "#"), and in the whole journal (date, then
-  // import order — used to sort by "#", so results from several days sort by day first).
+  // Each row's place in its own day's journal (shown in "#": the server's day_position), and in the
+  // list (journal order — used to sort by "#", so results from several days sort by day first).
   const journal = new Map();
   const perDay = new Map();
-  allTransactions.forEach((tx, position) => {
-    const day = tx.transaction_date || new Date(tx.created_date).toISOString().split("T")[0];
-    const n = perDay.get(day) ?? 0;
-    perDay.set(day, n + 1);
-    journal.set(tx.id, { n, position });
+  transactions.forEach((tx, position) => {
+    const day = txDateOfRow(tx);
+    const counted = perDay.get(day) ?? 0;
+    perDay.set(day, counted + 1);
+    journal.set(tx.id, { n: tx.day_position ? tx.day_position - 1 : counted, position });
   });
   const activeSort = sort.key && !show[sort.key] ? NO_SORT : sort;
   const rows = sortTransactions(transactions, activeSort, {
     locale,
     indexOf: (t) => journal.get(t.id)?.position ?? transactions.indexOf(t),
   });
-  const resultDays = searchingAllDays ? new Set(transactions.map(txDateOfRow)).size : 0;
+  const resultDays = searchingDays ? new Set(transactions.map(txDateOfRow)).size : 0;
 
   // ═══ Pages (Settings → Transactions table → Rows per page; 0 = all on one page) ═══
   // Back to the first page when the day, search, sort or page size changes — not after an edit or
@@ -145,7 +152,7 @@ export default function TransactionsList({
   const currentPage = Math.min(page, pageCount - 1);
   const pageStart = pageSize ? currentPage * pageSize : 0;
   const pageRows = pageSize ? rows.slice(pageStart, pageStart + pageSize) : rows;
-  useEffect(() => { setPage(0); }, [selectedDate, search, searchingAllDays, sort.key, sort.dir, pageSize]);
+  useEffect(() => { setPage(0); }, [selectedDate, search, searchingDays, sort.key, sort.dir, pageSize]);
 
   // ═══ Closed days ═══
   const isOnClosedDay = (t) => (isRowClosed ? isRowClosed(t) : closedDates.has(txDateOfRow(t)));
@@ -279,10 +286,7 @@ export default function TransactionsList({
     deleteTimerRef.current = setInterval(() => setDeleteElapsed((prev) => prev + 1), 1000);
     try {
       const dateToDelete = selectedDate;
-      const toDelete = allTransactions.filter((t) => {
-        const tDate = t.transaction_date || new Date(t.created_date).toISOString().split("T")[0];
-        return tDate === dateToDelete;
-      });
+      const toDelete = dayTransactions.filter((t) => txDateOfRow(t) === dateToDelete);
       let failed = 0;
       for (const t of toDelete) {
         try {await api.entities.Transaction.delete(t.id);} catch {failed += 1;}
@@ -308,7 +312,7 @@ export default function TransactionsList({
         {/* Search scope first in the row (user's request), then the search box. */}
         {setSearchScope &&
         <div className="flex items-center rounded-lg border bg-gray-50 p-0.5 text-sm" role="group" aria-label={tr("list.scope.label")} data-testid="search-scope">
-            {["all", "day"].map((scope) =>
+            {SEARCH_SCOPES.map((scope) =>
           <button
             key={scope}
             type="button"
@@ -445,11 +449,18 @@ export default function TransactionsList({
         </div>
       }
 
-      {searchingAllDays &&
+      {searchingDays &&
       <div className="px-4 py-2 border-b bg-blue-50 text-sm text-blue-800 flex flex-wrap items-center gap-x-2" role="status" data-testid="all-days-results">
           <span className="font-bold">{tr("list.allDaysResults", { count: transactions.length, days: resultDays })}</span>
           {transactions.length > 0 && <span className="text-blue-700">{tr("list.allDaysHint")}</span>}
         </div>
+      }
+
+      {/* The 10,000 rule: the server sent the first 10,000 rows of more. */}
+      {truncatedTotal != null &&
+      <p role="status" data-testid="list-truncated" className="px-4 py-2 border-b bg-amber-50 text-amber-800 text-sm">
+          {tr("list.truncated", { shown: num(transactions.length), total: num(truncatedTotal) })}
+        </p>
       }
 
       {/* Actions row */}
@@ -477,7 +488,7 @@ export default function TransactionsList({
             <Percent className="w-4 h-4" />
             {tr("list.commissionReport")}
           </button>
-          {canDelete && transactions.length > 0 && !searchingAllDays && !closedDay && !allStores &&
+          {canDelete && transactions.length > 0 && !searchingDays && !closedDay && !allStores &&
           <button
             onClick={() => setShowConfirm(true)}
             disabled={deleting}
@@ -598,8 +609,8 @@ export default function TransactionsList({
       <div className="p-12 text-center text-gray-400">{tr("common.loading")}</div> :
       transactions.length === 0 ?
       <div className="p-12 text-center">
-          <p className="text-gray-500 text-lg font-medium">{searchingAllDays ? tr("list.emptyAllDays") : tr("list.empty")}</p>
-          <p className="text-gray-400 text-sm mt-1">{searchingAllDays ? tr("list.emptyAllDaysHint") : tr("list.emptyHint")}</p>
+          <p className="text-gray-500 text-lg font-medium">{searchingDays ? tr(searchScope === "month" ? "list.emptyMonth" : "list.emptyAllDays") : tr("list.empty")}</p>
+          <p className="text-gray-400 text-sm mt-1">{searchingDays ? tr("list.emptyAllDaysHint") : tr("list.emptyHint")}</p>
         </div> :
 
       <>
@@ -633,7 +644,7 @@ export default function TransactionsList({
             </thead>
             <tbody className="divide-y divide-gray-100">
               {pageRows.map((t, i) => {
-                // الرقم الحقيقي للعملية في اليوم (ترتيب allTransactions نفسه، مهما كان ترتيب العرض)
+                // The row's real number in its day's journal, whatever order the table is sorted in.
                 const realIndex = journal.get(t.id)?.n ?? -1;
                 const displayIndex = realIndex >= 0 ? realIndex + 1 : pageStart + i + 1;
                 const rowClosed = isOnClosedDay(t);
@@ -718,7 +729,7 @@ export default function TransactionsList({
                   }
                   {show.date &&
                     <td className="px-4 py-3 text-xs opacity-100 text-black-400 whitespace-nowrap">
-                      {searchingAllDays && onOpenDay ?
+                      {searchingDays && onOpenDay ?
                           <button
                             type="button"
                             onClick={() => onOpenDay(txDateOfRow(t))}
@@ -838,7 +849,7 @@ export default function TransactionsList({
       }
       {showSenderReport &&
       <SenderReportModal
-        allTransactions={allTransactions}
+        storeId={storeId}
         onClose={() => setShowSenderReport(false)} />
 
       }
@@ -851,13 +862,13 @@ export default function TransactionsList({
       }
       {showReceiverReport &&
       <ReceiverReportModal
-        allTransactions={allTransactions}
+        storeId={storeId}
         onClose={() => setShowReceiverReport(false)} />
 
       }
       {showCommissionReport &&
       <DailyCommissionReport
-        transactions={allTransactions}
+        transactions={dayTransactions}
         selectedDate={selectedDate}
         onClose={() => setShowCommissionReport(false)} />
 

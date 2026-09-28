@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { api } from "@/api/apiClient";
 import Header from "@/components/layout/Header";
 import StatsCards from "@/components/dashboard/StatsCards";
@@ -9,7 +9,6 @@ import CashOutModal from "@/components/transactions/CashOutModal";
 import ImportPDFModal from "@/components/transactions/ImportPDFModal";
 import { Store } from "lucide-react";
 import { matchesSearch } from "@/lib/transactionSearch";
-import { dayOf, normalizeDate, walletFigures, walletFiguresByStore } from "@/lib/walletMath";
 import { useAuth } from "@/lib/AuthContext";
 import { useI18n } from "@/lib/i18n";
 import { notify } from "@/lib/notify";
@@ -58,7 +57,6 @@ export default function Dashboard() {
     writeCookie(COOKIES.selectedStore, value);
     setStoreChoice(value);
   };
-  const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCashIn, setShowCashIn] = useState(false);
   const [showCashOut, setShowCashOut] = useState(false);
@@ -99,6 +97,7 @@ export default function Dashboard() {
   const closedInfo = allStoresView ? null : closedDays.find((d) => d.date === selectedDate) || null;
   const closedDates = new Set(allStoresView ? [] : closedDays.map((d) => d.date));
   const closedKeys = new Set(closedDays.map((d) => `${d.store_id}|${d.date}`));
+  const dayOf = (row) => row.transaction_date || String(row.created_date || "").slice(0, 10);
   const isRowClosed = allStoresView ? (row) => closedKeys.has(`${row.store_id}|${dayOf(row)}`) : undefined;
 
   const handleCloseDay = async (date) => {
@@ -119,18 +118,48 @@ export default function Dashboard() {
     }
     await loadClosedDays();
   };
-  const [dailyBalances, setDailyBalances] = useState([]);
+  // ═══ The selected day, its totals and the wallet: each asked of the server (user's request) ═══
+  // The browser no longer loads every transaction: choosing a day asks for that day's rows (at most
+  // 10,000, the 10,000 rule) and its totals, which the server counts over every row, as it does the
+  // month, the year and the wallet figures.
+  const ZERO = { count: 0, deposits: 0, withdrawals: 0, commissions: 0 };
+  const [dayRows, setDayRows] = useState([]);
+  const [dayInfo, setDayInfo] = useState({ total: 0, truncated: false });
+  const [summary, setSummary] = useState(null);
+  const [dayBalance, setDayBalance] = useState(null); // the day's opening-balance record (to edit it)
+  const latestDay = useRef("");
 
-  const fetchDailyBalances = async () => {
-    const records = await api.entities.DailyBalance.filter(storeFilter);
-    setDailyBalances(records);
+  // `loading` starts true and is only cleared here — it is NOT set back to true on later refreshes
+  // (after an edit, delete, bulk action, cash in/out or import). Swapping the table for the short
+  // "loading" line made the page shrink below the viewport, so the browser jumped to the top and
+  // the user lost their place. Refreshes keep the current rows on screen until the new data
+  // arrives and replaces them in place, so the scroll position is preserved.
+  const fetchDay = async () => {
+    const key = `${storeKey}|${selectedDate}`;
+    latestDay.current = key;
+    try {
+      const [day, totals, balances] = await Promise.all([
+        api.dashboard.day(...withStore(selectedDate)),
+        api.dashboard.summary(...withStore(selectedDate)),
+        api.entities.DailyBalance.filter({ ...storeFilter, date: selectedDate }),
+      ]);
+      if (latestDay.current !== key) return; // another day (or store) was chosen meanwhile
+      setDayRows(day.transactions);
+      setDayInfo({ total: day.total, truncated: day.truncated });
+      setSummary(totals);
+      setDayBalance(allStoresView ? null : balances[0] ?? null);
+    } catch (err) {
+      if (latestDay.current === key) notify.error(errorText(err?.message || ""));
+    } finally {
+      if (latestDay.current === key) setLoading(false);
+    }
   };
 
   // storeId: the store the balance is for (after an import into a store the Admin picked there).
   const handleSetOpeningBalance = async (val, date = null, storeId = chosenStore) => {
     if (!date || !canWriteBalances) return;
-    const existing = dailyBalances.find((d) => d.date === date && (storeId == null || d.store_id === storeId));
     try {
+      const [existing] = await api.entities.DailyBalance.filter({ date, ...(storeId ? { store_id: storeId } : {}) });
       if (existing) {
         await api.entities.DailyBalance.update(existing.id, { opening_balance: val });
       } else {
@@ -140,30 +169,7 @@ export default function Dashboard() {
     } catch (err) {
       notify.error(err?.message ? errorText(err.message) : t("toast.balance.failed"));
     }
-    await fetchDailyBalances();
-  };
-
-  // `loading` starts true and is only cleared here — it is NOT set back to true on later refreshes
-  // (after an edit, delete, bulk action, cash in/out or import). Swapping the table for the short
-  // "loading" line made the page shrink below the viewport, so the browser jumped to the top and
-  // the user lost their place. Refreshes now keep the current rows on screen until the new data
-  // arrives and replaces them in place, so the scroll position is preserved.
-  const fetchTransactions = async () => {
-    const data = await api.entities.Transaction.filter(storeFilter, "created_date", 10000);
-    // رتّب: أولاً بـ transaction_date ثم بـ sort_order (ترتيب الاستيراد) ثم بـ reference_number رقمياً
-    const sorted = [...data].sort((a, b) => {
-      const dateA = a.transaction_date || new Date(a.created_date).toISOString().split("T")[0];
-      const dateB = b.transaction_date || new Date(b.created_date).toISOString().split("T")[0];
-      if (dateA !== dateB) return dateA.localeCompare(dateB);
-      // sort_order = ترتيب الاستيراد من الكشف — الأولوية
-      const soA = a.sort_order ?? 999999;
-      const soB = b.sort_order ?? 999999;
-      if (soA !== soB) return soA - soB;
-      // بدون رقم عملية: رتّب حسب created_date
-      return new Date(a.created_date) - new Date(b.created_date);
-    });
-    setTransactions(sorted);
-    setLoading(false);
+    await fetchDay();
   };
 
   // Load (again) whenever the store shown changes. Someone with no store has nothing to load.
@@ -173,90 +179,97 @@ export default function Dashboard() {
       return;
     }
     if (storeKey === null) return;
-    fetchTransactions();
-    fetchDailyBalances();
     loadClosedDays();
     if (!allStoresView) api.commissionRates.get(...withStore(getToday())).then((r) => setCommissionRate(r?.rate ?? 1)).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storeKey, noStore]);
 
+  // A new query for every day (and store) shown.
+  useEffect(() => {
+    if (noStore || storeKey === null) return;
+    fetchDay();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storeKey, selectedDate, noStore]);
 
+  // ═══ Search ═══
+  // "This day": the day's rows, here. "All days" and "This month" (the selected date's month): asked
+  // of the server (at most 10,000 results), after a short pause in typing; an answer to an older
+  // search (or another month) is ignored.
+  const searchingDays = (searchScope === "all" || searchScope === "month") && search.trim() !== "";
+  const searchMonth = searchScope === "month" ? selectedDate.slice(0, 7) : undefined;
+  const [daysResult, setDaysResult] = useState({ transactions: [], total: 0, truncated: false });
+  const latestSearch = useRef("");
+  const fetchSearch = async () => {
+    const key = `${storeKey}|${searchMonth}|${search}`;
+    latestSearch.current = key;
+    try {
+      const result = await api.dashboard.search(...withStore(search.trim(), searchMonth));
+      if (latestSearch.current === key) setDaysResult(result);
+    } catch (err) {
+      if (latestSearch.current === key) notify.error(errorText(err?.message || ""));
+    }
+  };
+  useEffect(() => {
+    if (!searchingDays || noStore || storeKey === null) return undefined;
+    const timer = setTimeout(fetchSearch, 250);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, searchingDays, searchMonth, storeKey, noStore]);
 
-  // The selected day's transactions matching the search. The day's totals below always come from
-  // these, whatever the search scope, so an all-days search never mixes other days into them.
-  const filtered = transactions.filter((t) => {
-    const tDate = t.transaction_date || new Date(t.created_date).toISOString().split("T")[0];
-    const matchDate = tDate === selectedDate;
-    return matchDate && matchesSearch(t, search);
-  });
+  // After a change (edit, delete, bulk, cash in / out, import): the day, its totals, and the results.
+  const refresh = () => {
+    fetchDay();
+    if (searchingDays) fetchSearch();
+  };
 
-  // What the table shows: with a search in "all days" scope, every matching transaction on any day
-  // (in journal order: date, then import order); otherwise the selected day.
-  const searchingAllDays = searchScope === "all" && search.trim() !== "";
-  const tableRows = searchingAllDays ? transactions.filter((t) => matchesSearch(t, search)) : filtered;
+  // The selected day's rows matching the search. The day's totals come from these while searching
+  // (so an all-days search never mixes other days into them), and from the server otherwise.
+  const searching = search.trim() !== "";
+  const filtered = searching ? dayRows.filter((row) => matchesSearch(row, search)) : dayRows;
+  const sum = (rows, type) => rows.filter((row) => !type || row.type === type).reduce((s, row) => s + (Number(type ? row.amount : row.commission) || 0), 0);
+  const dayTotals = searching
+    ? { deposits: sum(filtered, "cash_in"), withdrawals: sum(filtered, "cash_out"), commissions: sum(filtered) }
+    : summary?.day ?? ZERO;
+  const totalDeposits = dayTotals.deposits;
+  const totalWithdrawals = dayTotals.withdrawals;
+  const totalCommissions = dayTotals.commissions;
 
-  const totalDeposits = filtered.
-  filter((t) => t.type === "cash_in").
-  reduce((s, t) => s + (t.amount || 0), 0);
+  // What the table shows: with a search in "all days" or "this month" scope, the server's results (journal order);
+  // otherwise the selected day. When rows were left out (the 10,000 rule), the table says so.
+  const tableRows = searchingDays ? daysResult.transactions : filtered;
+  const truncatedTotal = searchingDays
+    ? (daysResult.truncated ? daysResult.total : null)
+    : (dayInfo.truncated ? dayInfo.total : null);
 
-  const totalWithdrawals = filtered.
-  filter((t) => t.type === "cash_out").
-  reduce((s, t) => s + (t.amount || 0), 0);
+  // The month and year of the selected date, counted by the server over every row.
+  const month = summary?.month ?? ZERO;
+  const year = summary?.year ?? ZERO;
 
-  const totalCommissions = filtered.reduce((s, t) => s + (t.commission || 0), 0);
-
-  // عمولات وعمليات الشهر كاملاً
-  const selectedMonth = selectedDate.slice(0, 7); // YYYY-MM
-  const monthlyTransactions = transactions.filter((t) => {
-    const tDate = t.transaction_date || new Date(t.created_date).toISOString().split("T")[0];
-    return tDate.startsWith(selectedMonth);
-  });
-  const monthlyCommissions = monthlyTransactions.reduce((s, t) => s + (t.commission || 0), 0);
-  const monthlyCount = monthlyTransactions.length;
-  const monthlyDeposits = monthlyTransactions.filter((t) => t.type === "cash_in").reduce((s, t) => s + (t.amount || 0), 0);
-  const monthlyWithdrawals = monthlyTransactions.filter((t) => t.type === "cash_out").reduce((s, t) => s + (t.amount || 0), 0);
-
-  // عمولات وعمليات السنة كاملة (سنة التاريخ المختار)
-  const selectedYear = selectedDate.slice(0, 4); // YYYY
-  const yearlyTransactions = transactions.filter((t) => {
-    const tDate = t.transaction_date || new Date(t.created_date).toISOString().split("T")[0];
-    return tDate.startsWith(selectedYear);
-  });
-  const yearlyCommissions = yearlyTransactions.reduce((s, t) => s + (t.commission || 0), 0);
-  const yearlyCount = yearlyTransactions.length;
-  const yearlyDeposits = yearlyTransactions.filter((t) => t.type === "cash_in").reduce((s, t) => s + (t.amount || 0), 0);
-  const yearlyWithdrawals = yearlyTransactions.filter((t) => t.type === "cash_out").reduce((s, t) => s + (t.amount || 0), 0);
-
-  // Opening balance of the selected day and the wallet's net balance (src/lib/walletMath.js); in
-  // "All stores", each store's figures added up.
-  const { openingBalance: effectiveOpeningBalance, netBalance: globalNetBalance, dailyRecord } =
-    (allStoresView ? walletFiguresByStore : walletFigures)(transactions, dailyBalances, selectedDate);
-  // الصافي = رصيد البداية + الإيداعات - السحوبات (لليوم المختار)
+  // The wallet (per store, added up in "All stores"): the day's opening balance and the wallet's
+  // net balance, from the server; the day's net = opening + deposits − withdrawals.
+  const effectiveOpeningBalance = summary?.wallet?.opening_balance ?? 0;
+  const globalNetBalance = summary?.wallet?.net_balance ?? 0;
   const dailyNetBalance = effectiveOpeningBalance + totalDeposits - totalWithdrawals;
 
   const handleToday = () => handleSetSelectedDate(getToday());
 
   const handleResetOpeningBalance = async () => {
-    if (dailyRecord) {
-      await api.entities.DailyBalance.update(dailyRecord.id, { opening_balance: 0 });
-      await fetchDailyBalances();
+    if (dayBalance) {
+      await api.entities.DailyBalance.update(dayBalance.id, { opening_balance: 0 });
+      await fetchDay();
     }
   };
 
-  // After deletes: a store's opening balance goes when that store has no transactions left that day.
+  // After deletes: a store's opening balance for the day goes when that store has no transactions
+  // left on it. The server checks (it counts every row, the page only has one day).
   const handleDeleteDailyBalanceForDate = async (dateToCheck) => {
     if (!dateToCheck || !user || !canWriteBalances) return;
-
-    const normalizedTargetDate = normalizeDate(dateToCheck);
-    const remainingTransactions = await api.entities.Transaction.filter(storeFilter, "created_date", 10000);
-    const storesWithRows = new Set(
-      remainingTransactions.filter((t) => normalizeDate(dayOf(t)) === normalizedTargetDate).map((t) => t.store_id)
-    );
-    const emptied = dailyBalances.filter((d) => normalizeDate(d.date) === normalizedTargetDate && !storesWithRows.has(d.store_id));
-    if (!emptied.length) return;
-
-    for (const row of emptied) await api.entities.DailyBalance.delete(row.id);
-    await fetchDailyBalances();
+    try {
+      const { deleted } = await api.dashboard.cleanupBalances(...withStore(dateToCheck));
+      if (deleted) await fetchDay();
+    } catch (err) {
+      notify.error(errorText(err?.message || ""));
+    }
   };
 
   if (noStore) {
@@ -302,14 +315,14 @@ export default function Dashboard() {
           totalCommissions={totalCommissions}
           netBalance={globalNetBalance}
           openingBalance={effectiveOpeningBalance}
-          monthlyCommissions={monthlyCommissions}
-          monthlyCount={monthlyCount}
-          monthlyDeposits={monthlyDeposits}
-          monthlyWithdrawals={monthlyWithdrawals}
-          yearlyCommissions={yearlyCommissions}
-          yearlyCount={yearlyCount}
-          yearlyDeposits={yearlyDeposits}
-          yearlyWithdrawals={yearlyWithdrawals}
+          monthlyCommissions={month.commissions}
+          monthlyCount={month.count}
+          monthlyDeposits={month.deposits}
+          monthlyWithdrawals={month.withdrawals}
+          yearlyCommissions={year.commissions}
+          yearlyCount={year.count}
+          yearlyDeposits={year.deposits}
+          yearlyWithdrawals={year.withdrawals}
           selectedDate={selectedDate} />
         
         <WalletSummary
@@ -323,13 +336,15 @@ export default function Dashboard() {
         
         <TransactionsList
           transactions={tableRows}
-          allTransactions={transactions}
+          dayTransactions={dayRows}
+          truncatedTotal={truncatedTotal}
+          storeId={chosenStore ?? undefined}
           loading={loading}
           search={search}
           setSearch={setSearch}
           searchScope={searchScope}
           setSearchScope={setSearchScope}
-          searchingAllDays={searchingAllDays}
+          searchingDays={searchingDays}
           onOpenDay={(date) => {setSearch("");handleSetSelectedDate(date);}}
           closedDay={closedInfo}
           closedDates={closedDates}
@@ -342,7 +357,7 @@ export default function Dashboard() {
           onCashIn={() => setShowCashIn(true)}
           onCashOut={() => setShowCashOut(true)}
           onImportPDF={() => setShowImportPDF(true)}
-          onRefresh={() => fetchTransactions()}
+          onRefresh={refresh}
           onResetOpeningBalance={handleResetOpeningBalance}
           onDeleteDailyBalanceForDate={handleDeleteDailyBalanceForDate}
           storeNames={storeNames}
@@ -355,7 +370,7 @@ export default function Dashboard() {
         commissionRate={commissionRate}
         storeId={chosenStore ?? undefined}
         onClose={() => setShowCashIn(false)}
-        onSaved={() => {setShowCashIn(false);fetchTransactions();}} />
+        onSaved={() => {setShowCashIn(false);refresh();}} />
 
       }
       {showImportPDF &&
@@ -365,14 +380,14 @@ export default function Dashboard() {
         onClose={() => setShowImportPDF(false)}
         onSaved={(ob, obDate, importStore) => {
           setShowImportPDF(false);
-          setSearch(""); // مسح البحث
+          setSearch(""); // clear the search
           const targetDate = obDate || selectedDate;
           if (ob !== null && ob !== undefined && targetDate) {
             handleSetOpeningBalance(ob, targetDate, importStore ?? chosenStore);
           }
-          if (obDate) handleSetSelectedDate(obDate);
-          fetchTransactions();
-          fetchDailyBalances();
+          // Showing the statement's day loads it; otherwise refresh the day shown.
+          if (obDate && obDate !== selectedDate) handleSetSelectedDate(obDate);
+          else refresh();
         }} />
 
       }
@@ -380,7 +395,7 @@ export default function Dashboard() {
       <CashOutModal
         storeId={chosenStore ?? undefined}
         onClose={() => setShowCashOut(false)}
-        onSaved={() => {setShowCashOut(false);fetchTransactions();}} />
+        onSaved={() => {setShowCashOut(false);refresh();}} />
 
       }
     </div>);

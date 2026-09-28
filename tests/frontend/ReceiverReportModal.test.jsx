@@ -1,7 +1,15 @@
 /** @vitest-environment jsdom */
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ReceiverReportModal from "@/components/transactions/ReceiverReportModal";
+import { api } from "@/api/apiClient";
+import { installFakeDashboard } from "./fakeDashboardApi";
+
+// The report asks the server (every day, not just what the page loaded); the fake answers the way
+// server/dashboard.js does, with the shared matching rules.
+vi.mock("@/api/apiClient", () => ({
+  api: { dashboard: { day: vi.fn(), summary: vi.fn(), search: vi.fn(), party: vi.fn(), cleanupBalances: vi.fn() } },
+}));
 
 const transactions = [
   {
@@ -25,9 +33,11 @@ const transactions = [
   },
 ];
 
-const renderModal = () => {
+beforeEach(() => installFakeDashboard(api, () => transactions));
+
+const renderModal = (props = {}) => {
   const onClose = vi.fn();
-  const utils = render(<ReceiverReportModal allTransactions={transactions} onClose={onClose} />);
+  const utils = render(<ReceiverReportModal onClose={onClose} {...props} />);
   return { ...utils, onClose };
 };
 
@@ -45,10 +55,11 @@ describe("ReceiverReportModal", () => {
     expect(resultRows(container)).toHaveLength(0);
   });
 
-  it("finds a receiver stored as a phone by the number shown in the table, with totals", () => {
+  it("finds a receiver stored as a phone by the number shown in the table, with totals", async () => {
     const { container } = renderModal();
     searchReceiver("71389296");
-    expect(resultRows(container)).toHaveLength(2);
+    await waitFor(() => expect(resultRows(container)).toHaveLength(2));
+    expect(api.dashboard.party).toHaveBeenLastCalledWith(expect.objectContaining({ party: "receiver", q: "71389296" }));
     expect(screen.getByTestId("receiver-count")).toHaveTextContent("2");
     expect(screen.getByTestId("receiver-withdrawals")).toHaveTextContent("$1,700.00");
     expect(screen.getByTestId("receiver-deposits")).toHaveTextContent("$0.00");
@@ -56,37 +67,54 @@ describe("ReceiverReportModal", () => {
     expect(resultRows(container)[0]).toHaveTextContent("71389296");
   });
 
-  it("finds a receiver by name and not by sender", () => {
+  it("finds a receiver by name and not by sender", async () => {
     const { container } = renderModal();
     searchReceiver("salam");
-    expect(resultRows(container)).toHaveLength(1);
+    await waitFor(() => expect(resultRows(container)).toHaveLength(1));
     expect(resultRows(container)[0]).toHaveTextContent("SALAM ISSA");
 
     searchReceiver("mounir");
+    expect(await screen.findByText('لا توجد نتائج للبحث عن "mounir"')).toBeInTheDocument();
     expect(resultRows(container)).toHaveLength(0);
-    expect(screen.getByText('لا توجد نتائج للبحث عن "mounir"')).toBeInTheDocument();
   });
 
-  it("totals deposits and commissions for the account-holder receiver", () => {
+  it("totals deposits and commissions for the account-holder receiver", async () => {
     renderModal();
     searchReceiver("vicario");
-    expect(screen.getByTestId("receiver-count")).toHaveTextContent("1");
+    await waitFor(() => expect(screen.getByTestId("receiver-count")).toHaveTextContent("1"));
     expect(screen.getByTestId("receiver-deposits")).toHaveTextContent("$50.00");
     expect(screen.getByTestId("receiver-commissions")).toHaveTextContent("$0.50");
   });
 
-  it("filters by date range and clears the filter", () => {
+  it("filters by date range and clears the filter", async () => {
     const { container } = renderModal();
     searchReceiver("+961 71 389 296");
+    await waitFor(() => expect(resultRows(container)).toHaveLength(2));
     fireEvent.change(screen.getByLabelText("من تاريخ"), { target: { value: "2026-09-21" } });
-    expect(resultRows(container)).toHaveLength(1);
+    await waitFor(() => expect(resultRows(container)).toHaveLength(1));
     expect(resultRows(container)[0]).toHaveTextContent("tr:2");
 
     fireEvent.change(screen.getByLabelText("إلى تاريخ"), { target: { value: "2026-09-22" } });
-    expect(resultRows(container)).toHaveLength(0);
+    await waitFor(() => expect(resultRows(container)).toHaveLength(0));
 
     fireEvent.click(screen.getByText("مسح الفلتر"));
-    expect(resultRows(container)).toHaveLength(2);
+    await waitFor(() => expect(resultRows(container)).toHaveLength(2));
+  });
+
+  it("asks for the dashboard's store", async () => {
+    renderModal({ storeId: 2 });
+    searchReceiver("salam");
+    await waitFor(() => expect(api.dashboard.party).toHaveBeenLastCalledWith(expect.objectContaining({ party: "receiver", q: "salam", storeId: 2 })));
+  });
+
+  it("the totals cover every match; the list says when it's capped (the 10,000 rule)", async () => {
+    installFakeDashboard(api, () => transactions, () => [], { maxRows: 1 });
+    const { container } = renderModal();
+    searchReceiver("71389296");
+    await waitFor(() => expect(screen.getByTestId("report-truncated")).toBeInTheDocument());
+    expect(resultRows(container)).toHaveLength(1);
+    expect(screen.getByTestId("receiver-count")).toHaveTextContent("2");
+    expect(screen.getByTestId("receiver-withdrawals")).toHaveTextContent("$1,700.00");
   });
 
   it("closes", () => {

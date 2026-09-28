@@ -15,11 +15,11 @@ import CommissionRates from "@/components/settings/CommissionRates";
 import AppToaster from "@/components/layout/AppToaster";
 import { LanguageProvider } from "@/lib/i18n";
 import { PreferencesProvider } from "@/lib/PreferencesContext";
-import { walletFigures, walletFiguresByStore } from "@/lib/walletMath";
 import { DEFAULT_ROLES } from "@/lib/permissions";
 import { api } from "@/api/apiClient";
 import { setAuthRole } from "./authMock";
 import { clearToasts, findToast } from "./toastHelpers";
+import { installFakeDashboard } from "./fakeDashboardApi";
 
 vi.mock("@/lib/AuthContext", async () => (await import("./authMock")).authContextMock);
 vi.mock("@/api/apiClient", () => ({
@@ -37,6 +37,7 @@ vi.mock("@/api/apiClient", () => ({
     commissionRates: { get: vi.fn(), set: vi.fn(), remove: vi.fn() },
     admin: { range: vi.fn(), summary: vi.fn(), exportCsv: vi.fn(), purge: vi.fn(), restorePreview: vi.fn(), restore: vi.fn(),
       reports: { income: vi.fn(), parties: vi.fn(), stores: vi.fn() } },
+    dashboard: { day: vi.fn(), summary: vi.fn(), search: vi.fn(), party: vi.fn(), cleanupBalances: vi.fn() },
   },
 }));
 vi.mock("recharts", async (importOriginal) => {
@@ -50,11 +51,13 @@ beforeAll(async () => { await import("@/components/reports/IncomeChart"); }, 600
 const BEIRUT = { id: 1, name: "Beirut Main", location: "Hamra", phone: "+961 1 111 111", email: "beirut@office.test",
   manager: { id: 2, full_name: "Maya Manager", email: "manager@test.local" }, member_count: 2, transaction_count: 3 };
 const TRIPOLI = { id: 2, name: "Tripoli Branch", location: "Tripoli", phone: "", email: "", manager: null, member_count: 0, transaction_count: 1 };
+let wallets = [];
 const tx = (id, storeId, over = {}) => ({ id, store_id: storeId, type: "cash_in", amount: 10, commission: 0.1, sender_name: `Sender ${id}`, receiver_name: "", reference_number: `tr:${id}`,
   transaction_date: "2026-09-23", sort_order: id, created_date: "2026-09-23T10:00:00Z", created_by: "admin@test.local", ...over });
 
 beforeEach(() => {
   vi.clearAllMocks();
+  wallets = [];
   window.localStorage.clear();
   window.localStorage.setItem("selectedDate", "2026-09-23");
   document.cookie = "wmm_lang=; Max-Age=0; Path=/";
@@ -74,7 +77,7 @@ beforeEach(() => {
     { id: 3, email: "user@test.local", full_name: "Rami", role: "user", is_active: true, store_id: 1, store_name: "Beirut Main" },
   ]);
   api.roles.list.mockResolvedValue(DEFAULT_ROLES.map((r, i) => ({ id: i + 1, ...r })));
-  api.entities.Transaction.filter.mockImplementation(async (filter) => [tx(1, 1), tx(2, 2, { sender_name: "Tripoli sender" })].filter((row) => !filter?.store_id || row.store_id === filter.store_id));
+  installFakeDashboard(api, () => [tx(1, 1), tx(2, 2, { sender_name: "Tripoli sender" })], () => wallets);
   api.entities.DailyBalance.filter.mockResolvedValue([]);
   api.closedDays.list.mockResolvedValue([]);
   api.commissionRates.get.mockResolvedValue({ rate: 1, current: 1, history: [{ rate: 1, effective_from: "2000-01-01", created_by: "system" }] });
@@ -192,7 +195,7 @@ describe("dashboard", () => {
   it("the Admin with several stores starts on All stores: every row, a Store column, no day actions", async () => {
     const { container } = wrap(<Dashboard />);
     await waitFor(() => expect(rows(container)).toHaveLength(2));
-    expect(api.entities.Transaction.filter).toHaveBeenLastCalledWith({}, "created_date", 10000);
+    expect(api.dashboard.day).toHaveBeenLastCalledWith("2026-09-23");
     expect(screen.getByTestId("dashboard-store")).toHaveValue("all");
     expect(screen.getByTestId("store-column")).toHaveTextContent("المتجر");
     expect(screen.getAllByTestId("row-store").map((c) => c.textContent).sort()).toEqual(["Beirut Main", "Tripoli Branch"]);
@@ -207,10 +210,11 @@ describe("dashboard", () => {
     const { container } = wrap(<Dashboard />);
     await waitFor(() => expect(rows(container)).toHaveLength(2));
     fireEvent.change(screen.getByTestId("dashboard-store"), { target: { value: "2" } });
-    await waitFor(() => expect(api.entities.Transaction.filter).toHaveBeenLastCalledWith({ store_id: 2 }, "created_date", 10000));
+    await waitFor(() => expect(api.dashboard.day).toHaveBeenLastCalledWith("2026-09-23", 2));
     await waitFor(() => expect(rows(container)).toHaveLength(1));
     expect(document.cookie).toContain("wmm_selected_store=2"); // remembered in a cookie
-    expect(api.entities.DailyBalance.filter).toHaveBeenLastCalledWith({ store_id: 2 });
+    expect(api.dashboard.summary).toHaveBeenLastCalledWith("2026-09-23", 2);
+    expect(api.entities.DailyBalance.filter).toHaveBeenLastCalledWith({ store_id: 2, date: "2026-09-23" });
     expect(api.closedDays.list).toHaveBeenLastCalledWith(2);
     expect(screen.queryByTestId("store-column")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Cash In/ }));
@@ -224,7 +228,7 @@ describe("dashboard", () => {
     document.cookie = "wmm_selected_store=2; Path=/";
     document.cookie = "wmm_selected_date=2026-09-22; Path=/";
     const { container } = wrap(<Dashboard />);
-    await waitFor(() => expect(api.entities.Transaction.filter).toHaveBeenLastCalledWith({ store_id: 2 }, "created_date", 10000));
+    await waitFor(() => expect(api.dashboard.day).toHaveBeenLastCalledWith("2026-09-22", 2));
     expect(screen.getByTestId("dashboard-store")).toHaveValue("2");
     expect(container.querySelector('input[type="date"]')).toHaveValue("2026-09-22");
     // Choosing another day remembers it.
@@ -247,7 +251,8 @@ describe("dashboard", () => {
     setAuthRole("user", { store_id: null, store_name: null });
     wrap(<Dashboard />);
     expect(await screen.findByTestId("no-store")).toHaveTextContent("اطلب من المسؤول أو من مدير متجرك إضافتك إلى متجر.");
-    expect(api.entities.Transaction.filter).not.toHaveBeenCalled();
+    expect(api.dashboard.day).not.toHaveBeenCalled();
+    expect(api.dashboard.summary).not.toHaveBeenCalled();
   });
 
   it("with a single store the store field is still shown: that store, greyed out; nothing else changes", async () => {
@@ -260,7 +265,7 @@ describe("dashboard", () => {
     expect([...select.options].map((o) => o.textContent)).toEqual(["Beirut Main"]); // no "All stores" with one store
     expect(screen.getByTestId("store-picker-hint")).toHaveTextContent("أضف متاجر من صفحة المتاجر");
     // Same requests as before stores: the server knows the only store.
-    expect(api.entities.Transaction.filter).toHaveBeenLastCalledWith({}, "created_date", 10000);
+    expect(api.dashboard.day).toHaveBeenLastCalledWith("2026-09-23");
     expect(screen.getByRole("button", { name: /Cash In/ })).toBeEnabled();
     expect(screen.queryByTestId("store-column")).not.toBeInTheDocument();
   });
@@ -281,11 +286,15 @@ describe("dashboard", () => {
 });
 
 describe("wallet figures per store", () => {
-  it("All stores adds up each store's opening balance and wallet balance", () => {
-    const transactions = [tx(1, 1, { amount: 50 }), tx(2, 2, { amount: 20, type: "cash_out" })];
-    const balances = [{ id: 1, store_id: 1, date: "2026-09-23", opening_balance: 100 }, { id: 2, store_id: 2, date: "2026-09-23", opening_balance: 200 }];
-    expect(walletFiguresByStore(transactions, balances, "2026-09-23")).toMatchObject({ openingBalance: 300, netBalance: 150 + 180 });
-    expect(walletFigures(transactions.slice(0, 1), balances.slice(0, 1), "2026-09-23")).toMatchObject({ openingBalance: 100, netBalance: 150 });
+  // The rule itself is tested on the server (tests/backend/dashboard.test.js); here, that the page shows its answer.
+  it("All stores shows the server's sum of each store's wallet; one store shows its own", async () => {
+    wallets = [{ id: 1, store_id: 1, date: "2026-09-23", opening_balance: 100 }, { id: 2, store_id: 2, date: "2026-09-23", opening_balance: 200 }];
+    const { container } = wrap(<Dashboard />);
+    await waitFor(() => expect(container.querySelectorAll("tbody tr")).toHaveLength(2));
+    // 100 + 10 in Beirut, 200 + 10 in Tripoli.
+    await waitFor(() => expect(screen.getByTestId("monthly-summary")).toHaveTextContent("$320.00"));
+    fireEvent.change(screen.getByTestId("dashboard-store"), { target: { value: "2" } });
+    await waitFor(() => expect(screen.getByTestId("monthly-summary")).toHaveTextContent("$210.00"));
   });
 });
 

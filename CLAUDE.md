@@ -34,7 +34,7 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - **Tests:** open a tab with `renderSettings("table")` (`/settings#table`) or click `getByRole("tab", { name })`.
   - **Arabic label clash:** the Theme setting is "السمة", because the Appearance tab is "المظهر" and duplicate names broke role queries.
 - **Newer personal settings** (`server/preferences.js`; defaults reproduce the old behaviour):
-  - `startOn` (`last`, via the `wmm_selected_date` cookie | `today`) and `searchScope` (`all` | `day`): Dashboard initial state.
+  - `startOn` (`last`, via the `wmm_selected_date` cookie | `today`) and `searchScope` (`all` | `month` | `day`): Dashboard initial state.
   - `defaultSort` `{ key|null, dir }`: TransactionsList initial sort. A partial change keeps the other half on the server (`"key" in value`, since null means journal order) **and** in the optimistic merge.
   - `clock` (`12h` | `24h` | `hidden`): Header, including the last login.
   - `numerals` (`western` | `arabic`) → `useI18n().num()` and automatic conversion of numeric `t()` params (plural choice still uses the number: `translate(lang, key, params, display)`). `PreferencesProvider` calls `setNumerals`.
@@ -72,7 +72,7 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
     - **When the store is sent:** only when the Admin picked one of *several* stores (`withStoreArg`). With one store, or for Managers / Users, calls look exactly as before, and the server applies the store. This is why the old tests didn't change.
     - **Store fields always shown** (user's request, 2026-09-25): the dashboard's `dashboard-store` and the import screen's `import-store` are visible whenever a store is known: the Admin's list (`pickerStores`), or the Manager's / User's own store from the session (`user.store_id` / `store_name`). They're **disabled** when there's nothing to choose (one store, or not the Admin), with a hint, and "All stores" is offered only with several. What's *sent* doesn't change: a store only when the Admin picked one of several.
     - **Dashboard:** "All stores" (`storeNames` → Store column, `isRowClosed` per row's store). Cash In / Out, close day, delete-all and the opening balance are off there; the import modal asks for the store.
-    - **Wallet figures:** `src/lib/walletMath.js` (moved unchanged from Dashboard); `walletFiguresByStore` sums per store.
+    - **Wallet figures:** computed by the server (`server/wallet.js` `walletFigures`, per store, summed for "All stores" in `/dashboard/summary`). `src/lib/walletMath.js` is gone.
     - **Pages:** `StoresPage` (`/stores`, header "المتاجر" / "متجري"); the Users page has a Store column; the rate editor, admin panel data column and Reports have a store picker (Admin, several stores); Reports has a "Compare stores" tab (`/admin/reports/stores`, `stores:all`).
   - **Backups:** `store_id` is the last CSV column. Backups without it are still recognised (`withoutStore`) and go to the store chosen for the restore; a Manager restoring another store's rows → invalid `store_id`.
   - **Mutation checks:**
@@ -172,8 +172,16 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - **Tests:** a lazy chart's first load takes several seconds under Vitest (transforming Recharts), longer than `findBy`'s 1s. Test files that open it preload the module in `beforeAll` (`AdminReports.test.jsx`, `AdminPage.test.jsx`, `officeBackup.test.jsx`, `stores.test.jsx`).
 - `src/lib/permissions.js` **re-exports `server/permissions.js`**, so the UI and the API share one definition. Never duplicate the rules.
 - `src/components/transactions/ImportPDFModal.jsx`: the single import screen for both engines. Steps: upload → (duplicates) → preview → saving → done.
-- `src/pages/Dashboard.jsx`: all totals and balances are calculated in the browser. Search logic is in `src/lib/transactionSearch.js`.
-  - **Refreshes must not blank the table.** `loading` starts `true` and `fetchTransactions` only ever clears it. Don't add `setLoading(true)` back: swapping the table for the "loading" line shrank the page below the window, and the browser jumped to the top after every edit or delete.
+- **Dashboard data: one server query per day** (user's report, 2026-09-28: with day 1 = 100 rows and day 2 = 1,000, day 1 came up empty once the office passed 10,000 rows, because the page downloaded the newest 10,000 and picked the day out of them). `server/dashboard.js` (`registerDashboardRoutes`, `MAX_ROWS = 10000`), client `api.dashboard.*`:
+  - `GET /dashboard/day?date=` → `{ date, total, truncated, transactions }`: the day in journal order, each row with `day` and `day_position` (numbered per store and day in SQL).
+  - `GET /dashboard/summary?date=` → `day` / `month` / `year` `{ count, deposits, withdrawals, commissions }` counted in SQL over **every** row, and `wallet { opening_balance, net_balance }` (`server/wallet.js`, the old browser rule unchanged; `null` without `balances:read`).
+  - `GET /dashboard/search?q=[&month=YYYY-MM]` (all-days search, or one month's days for "This month"; a bad month → 400) and `GET /dashboard/party?party=sender|receiver&q=&from=&to=` (the two reports; `totals` cover every match): matched in JS with the shared rules in `server/search.js` (`src/lib/transactionSearch.js` re-exports it).
+  - `POST /daily-balances/cleanup { date }` (`balances:write`, 423 on a closed day): removes that date's opening balances for stores left with no transactions. It replaced the browser's check, which only saw the loaded rows and could delete a balance for a day that still had transactions.
+  - **The 10,000 rule:** every list (day, search, report) returns at most `MAX_ROWS` rows, with `total` and `truncated`; the table and the reports then show `list.truncated` ("Showing the first N of M…", test ids `list-truncated` / `report-truncated`). Totals are never capped. `server/index.js`'s generic `safeLimit` cap stays for the entity routes.
+  - **Dashboard.jsx:** `fetchDay()` (day + summary + that day's balance record, stale answers ignored by key) runs on every day or store change. The all-days search waits 250 ms after typing. While searching, the day card is computed from the day's matching rows; otherwise it's `summary.day`. `TransactionsList` gets `dayTransactions` (for delete-all and the commission report) and `truncatedTotal`; the report modals take `storeId` and use `usePartyReport`. The page never calls `Transaction.filter`.
+  - **Tests:** `tests/backend/dashboard.test.js` (18, including the reported case and an old day behind 10,000 newer rows). Frontend tests answer `api.dashboard.*` with `installFakeDashboard(api, () => rows, () => balances, { maxRows })` from `tests/frontend/fakeDashboardApi.js`, which uses the server's own matching and wallet code.
+- `src/pages/Dashboard.jsx`:
+  - **Refreshes must not blank the table.** `loading` starts `true` and `fetchDay` only ever clears it. Don't add `setLoading(true)` back: swapping the table for the "loading" line shrank the page below the window, and the browser jumped to the top after every edit or delete.
   - After a save, the current rows stay mounted (stable `key={t.id}`) and are updated in place when the new data arrives. `Dashboard.test.jsx` checks this, and fails if the old behaviour returns.
   - **Browser check:** headless Edge only lays out when asked, so to see a transient state, sample `scrollHeight` / `scrollY` every 10ms while the action runs.
 
@@ -209,15 +217,16 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
 - Duplicates are matched by `reference_number` **within the store** the statement is imported into (everyone in a store shares its transactions). On re-import the user chooses **overwrite** (delete the store's same-reference rows, then insert, in one database transaction) or **cancel**. Rows without a reference are never matched or deleted. A reference already stored in **another** store refuses the import (409).
 - Manual insertion between table rows ("+ إدراج هنا") was removed at the user's request. Cash In / Cash Out buttons stay. `InsertTransactionModal.jsx` was deleted (2026-09-24).
 - **Search scope** (changed at the user's request on 2026-09-24; it used to cover only the selected day):
-  - A switch at the **start** of the search row (before the search box; user's request, 2026-09-25), **كل الأيام** (default) / **هذا اليوم**. `searchScope` state lives in `Dashboard.jsx`.
-  - With a search in "all" scope, the table gets every matching transaction (`tableRows`). Otherwise it gets the selected day's matches (`filtered`).
+  - A switch at the **start** of the search row (before the search box; user's request, 2026-09-25), widest first: **كل الأيام** (default) / **هذا الشهر** (added 2026-09-28, user's request) / **هذا اليوم**. `SEARCH_SCOPES` (`server/preferences.js`) is the order, for the switch and the Settings option. `searchScope` state lives in `Dashboard.jsx`.
+  - With a search in "all" scope, the table gets the server's matches from every day (`/dashboard/search`, at most 10,000). In "month" scope, the same with `month` = the **selected date's** month (`selectedDate.slice(0, 7)`), so it follows the date picker. Otherwise it gets the selected day's matches (`filtered`).
+  - `searchingDays` (Dashboard → TransactionsList, formerly `searchingAllDays`) is true for both multi-day scopes; everything below applies to both. The empty state says "this month" (`list.emptyMonth`) in month scope.
   - **The day's totals always come from `filtered`** (the selected day plus the search), so other days never leak into them.
-  - In all-days results:
+  - In all-days and this-month results:
     - "#" is the row's number within its own day (`journal` map in `TransactionsList`); sorting by "#" uses the global journal position.
     - Dates are buttons that call `onOpenDay` (set the day, clear the search).
     - Rows from another day get `list.selectRowOnDay` checkbox labels, so labels stay unique.
     - "Delete all for this day" is hidden.
-- **Receiver report** ("تقرير مستلم", `ReceiverReportModal.jsx`) searches all days. It matches `receiver_name`, and matches `phone` / `customer_number` only when `receiver_name` is empty or a phone number (`matchesReceiver` in `src/lib/transactionSearch.js`). This is because `phone` / `customer_number` belong to the other party: on a cash-in from "NAME - 961…" they're the sender's. The receiver is displayed with `receiverDisplay`, following the same rule as the table's receiver column.
+- **Receiver report** ("تقرير مستلم", `ReceiverReportModal.jsx`) searches all days, on the server (`/dashboard/party`). It matches `receiver_name`, and matches `phone` / `customer_number` only when `receiver_name` is empty or a phone number (`matchesReceiver` in `server/search.js`). This is because `phone` / `customer_number` belong to the other party: on a cash-in from "NAME - 961…" they're the sender's. The receiver is displayed with `receiverDisplay`, following the same rule as the table's receiver column.
 - **Summaries** (`StatsCards.jsx`):
   - "ملخص الشهر" is expanded by default and "ملخص السنة" is collapsed by default. The user specified these defaults.
   - Open/closed state is deliberately not saved across page loads. Each load starts from the user's Settings choice, whose default is the user's original one: month open, year closed.
@@ -377,6 +386,8 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - Sessions are never pruned; rows are deleted only by logout, deactivation or password reset.
   - Fixed on 2026-09-24: SQL injection through filter keys, the trusted `x-user-email` header, and PUT/DELETE without permission checks.
 - **Import preview**: editing amount or commission rate doesn't recalculate commission, and the phone column is hidden (it was already commented out).
+- **Search and reports scan in JS:** `/dashboard/search` and `/dashboard/party` load the store's rows and match them with the shared rules (phone and amount normalisation don't map to SQL `LIKE`). Fine at tens of thousands of rows; at millions, an FTS index or normalised columns would be needed.
+- **Sorting a capped list** sorts only the rows returned (the first 10,000), not every match.
 
 ## Change log
 
@@ -410,6 +421,10 @@ npx vitest run tests/backend/csvEngine.test.js   # a single file
   - Responsive grids: month 2/3/5 columns, year 2/4.
   - `Dashboard` computes `yearly*` figures.
   - Added `StatsCards.test.jsx` and Dashboard summary tests. Total now 104.
+### 2026-09-28
+- **"This month" search scope** (user's request): a third option in the dashboard's search switch (all days / this month / this day) and in Settings → Transactions table → Search in. It searches every day of the selected date's month on the server (`month=YYYY-MM`), with the same results line, per-day "#", day links and 10,000 rule as all days; the day's totals are unchanged. Tests: 7 backend (the month filter, created_date fallback, other stores, bad months), 6 Dashboard (order, results, follows the date picker, empty state, totals, English), a start-up scope test, and the setting's save.
+- **Dashboard asks the server per day; the 10,000 rule per list** (user's report: day 1 with 100 rows, day 2 with 1,000; day 1 showed nothing once the office had more than 10,000 rows): new `server/dashboard.js`, `server/wallet.js`, `server/search.js`; the Dashboard, the table and the sender / receiver reports use `api.dashboard.*`; totals, month, year and wallet are counted by the server over every row; lists over 10,000 say so; the opening-balance cleanup after deletes moved to the server (it could delete a balance on a day it hadn't loaded). `src/lib/walletMath.js` removed. Tests: `dashboard.test.js` (18), 5 new Dashboard tests (the reported case, stale answers, the notice, server totals, capped search), 2 new receiver-report tests; the dashboard, closing-day, store and report tests moved to the fake server. Total 802.
+
 ### 2026-09-26
 - **Chart button removed from the dashboard** (user's request: the chart is in the admin panel's reports): the "الرسم البياني" button, `MonthlyChartModal.jsx`, `availableYears` and the overlay loading placeholder are gone. The chart's tests moved to `IncomeChart.test.jsx` (through `chartHarness.jsx`); guards fail if the window comes back. The chart is still a separate download, now only for the admin panel.
 - **Everything remembered in cookies** (user's request; decisions: cookie *plus* account, and move the localStorage values too): `src/lib/cookies.js`, the `wmm_prefs` settings mirror, and the dashboard's last day and store in cookies (old localStorage values moved once). The language and theme cookies use the same helper. Tests: `cookies.test.jsx` (10), a dashboard cookie test, a guard against localStorage writes, and cookie cleanup between tests.

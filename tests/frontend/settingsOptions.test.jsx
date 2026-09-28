@@ -130,6 +130,8 @@ describe("new options are saved", () => {
     expect(screen.getByTestId("rowsPerPage-0")).not.toBeChecked();
     fireEvent.click(screen.getByTestId("searchScope-day"));
     await saved({ searchScope: "day" });
+    fireEvent.click(screen.getByTestId("searchScope-month"));
+    await saved({ searchScope: "month" });
   });
 
   it("Notifications: duration and confirmations", async () => {

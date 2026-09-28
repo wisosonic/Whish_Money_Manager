@@ -35,9 +35,9 @@ It runs entirely on your machine: a React frontend and a small Node.js/Express A
   - Rows can be reviewed and edited before saving.
 - **Duplicate protection**: re-importing a statement is detected by transaction reference number (e.g. `tr:626186571`). You choose to replace the existing entries or cancel. Manual entries are never touched.
 - **Search**: names, reference numbers, notes, service, phone and customer numbers (in any format, e.g. `+961 71 389 296` or `071389296`) and amounts (`50`, `50.00`, `$1,500`).
-  - **All days or this day:** a switch at the start of the search row, just before the search box, chooses where to look. **كل الأيام** (all days, the default) searches every day. **هذا اليوم** (this day) searches only the date in the date picker.
-  - **All-days results:** they show every match in journal order (oldest day first), with a blue line such as "6 نتيجة في 3 يوم" (6 results across 3 days).
-  - **In the results:** each date is a link. Click it to open that day, which also clears the search. "#" is each row's number within its own day, and rows from another day name their date for screen readers (e.g. "تحديد العملية 1 بتاريخ 2026-09-22").
+  - **All days, this month or this day:** a switch at the start of the search row, just before the search box, chooses where to look. **كل الأيام** (all days, the default) searches every day. **هذا الشهر** (this month) searches every day of the month of the date in the date picker; pick a date in another month to search that month. **هذا اليوم** (this day) searches only the date in the date picker.
+  - **All-days and this-month results:** they show every match in journal order (oldest day first), with a blue line such as "6 نتيجة في 3 يوم" (6 results across 3 days).
+  - **In the results** (all days or this month): each date is a link. Click it to open that day, which also clears the search. "#" is each row's number within its own day, and rows from another day name their date for screen readers (e.g. "تحديد العملية 1 بتاريخ 2026-09-22").
   - **What doesn't change:** the day's totals above the table (deposits, withdrawals, commissions) always count the selected day only, whatever the search scope. "Delete all for this day" is hidden while all-days results are shown, so it can't be confused with them.
   - With an empty search box, the table shows the selected day as usual.
 - **Reports**: daily commission report, and two per-party reports with count, deposits, withdrawals and commissions over an optional date range:
@@ -117,7 +117,8 @@ src/api/apiClient.js                                          server/index.js
 
 - `src/api/apiClient.js` is the app's API client (`api.auth`, `api.entities.*`, `api.integrations.Core.*`, `api.users`, `api.admin`); it talks only to the local Express API.
 - PDF and CSV parsing happen on the server. Both engines return the same result shape, so the import screen, the save step and the dashboard don't care which one was used.
-- Dashboard totals are calculated in the browser from the stored transactions and the opening balance for each day.
+- The dashboard asks the server for one day at a time: its transactions, its totals, the month's and year's totals and the wallet figures (`/local-api/dashboard/*`). Totals are always counted over every transaction.
+- **The 10,000 rule:** a list (a day, an all-days search, a sender or receiver report) shows at most 10,000 transactions. When there are more, a notice above the table says how many were left out; narrow the search, or use the admin panel's backup to get everything. The database itself keeps every transaction.
 
 ---
 
@@ -322,7 +323,7 @@ Personal settings apply **immediately** and are **saved to your account** on the
 - **Rows per page:** *All on one page* (the default), or *25*, *50* or *100* rows with **Previous / Next** under the table and "1–25 of 230".
   - Changing the day, the search, the sort or the page size goes back to page 1; editing or deleting a row doesn't.
   - Selecting "all" selects the rows on the current page, since only visible rows can be selected.
-- **Search in:** whether a search starts on *All days* (default) or *This day*. The switch next to the search box still changes it at any time.
+- **Search in:** whether a search starts on *All days* (default), *This month* or *This day*. The switch next to the search box still changes it at any time.
 
 **Notifications**
 - **How long they stay:** *Short* (half), *Normal* (4 seconds; warnings 7, errors 8) or *Long* (twice as long).
@@ -498,6 +499,8 @@ tests/
 ├── fixtures/statement.csv    # real CSV statement export (127 rows)
 ├── backend/
 │   ├── helpers.js            # test server, one account per role, cookie-keeping client
+│   ├── dashboard.test.js     # per-day queries (100 vs 1,000 rows), the 10,000 cap, server totals and wallet,
+│   │                         # all-days search, sender / receiver reports, opening-balance cleanup
 │   ├── api.test.js           # HTTP API (as Admin): CRUD, shared store data, created_by, filter safety,
 │   │                         # balances, import, duplicates/overwrite, bulk update/delete
 │   ├── auth.test.js          # login, cookie flags, JWT (no expiry), tampered/forged tokens, 401 on
@@ -574,6 +577,10 @@ server/permissions.js         Permission names and the three default roles (shar
 server/db.js                  SQLite connection and schema (transactions, daily_balances, roles, users, sessions)
 server/stores.js              Stores API (manage, Manager, members) and the store-scope helpers every route uses
 server/reports.js             Admin panel reports API: income by month, top senders / recipients (grouping and ranking)
+server/dashboard.js           Dashboard API: one day at a time, its totals, month / year / wallet, all-days search,
+                              sender / receiver reports (lists capped at 10,000), opening-balance cleanup
+server/wallet.js              The wallet rule (opening balance of a day, net balance)
+server/search.js              Search and sender / receiver matching (shared with the frontend)
 server/parties.js             Who a transaction's sender / receiver is (display, phone normalization), shared with the table
 server/admin.js               Admin panel API: range preview, CSV export, delete by date range, backup restore
 server/office.js              Closed days (and their enforcement helpers), office commission rate and history
@@ -593,7 +600,7 @@ src/components/settings/      Settings building blocks and the commission-rate e
 src/components/admin/         Admin panel cards: backup restore, date range fields
 src/components/reports/       Reports section (tabs), income report, top senders / recipients, the shared monthly chart
 src/lib/PreferencesContext.jsx  The signed-in user's settings: applied at once, saved in order to the account
-src/components/dashboard/     Stats cards, wallet summary, transactions table, monthly chart
+src/components/dashboard/     Stats cards, wallet summary, transactions table
 src/components/transactions/  Import, cash in/out, edit, sender/receiver/commission reports
 src/lib/                      Auth context (session, can()), permissions, search matching, file-type detection, chart data
 src/assets/css/index.css      The app's only stylesheet: Tailwind directives + theme colour variables

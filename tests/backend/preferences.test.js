@@ -87,6 +87,7 @@ describe("preferences API", () => {
   it.each([
     ["startOn", "today"],
     ["searchScope", "day"],
+    ["searchScope", "month"],
     ["defaultSort", { key: "amount", dir: "desc" }],
     ["clock", "24h"],
     ["clock", "hidden"],

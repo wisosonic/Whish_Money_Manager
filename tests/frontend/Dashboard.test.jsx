@@ -6,6 +6,7 @@ import { api } from "@/api/apiClient";
 import { setAuthRole } from "./authMock";
 import AppToaster from "@/components/layout/AppToaster";
 import { clearToasts, findToast } from "./toastHelpers";
+import { installFakeDashboard } from "./fakeDashboardApi";
 
 vi.mock("@/lib/AuthContext", async () => (await import("./authMock")).authContextMock);
 beforeEach(() => setAuthRole("admin"));
@@ -20,6 +21,7 @@ vi.mock("@/api/apiClient", () => ({
     },
     closedDays: { list: vi.fn(), close: vi.fn(), reopen: vi.fn() },
     commissionRates: { get: vi.fn() },
+    dashboard: { day: vi.fn(), summary: vi.fn(), search: vi.fn(), party: vi.fn(), cleanupBalances: vi.fn() },
   },
 }));
 
@@ -56,7 +58,14 @@ beforeEach(() => {
   api.entities.DailyBalance.filter.mockResolvedValue([]);
   api.closedDays.list.mockResolvedValue([]);
   api.commissionRates.get.mockResolvedValue({ rate: 1 });
+  installFakeDashboard(api, () => stored);
 });
+
+// The server's answer for 2026-09-23 (what api.dashboard.day returns), for held-open refreshes.
+const dayAnswer = (rows) => {
+  const transactions = rows.filter((t) => t.transaction_date === "2026-09-23").map((t, i) => ({ ...t, day_position: i + 1 }));
+  return { date: "2026-09-23", total: transactions.length, truncated: false, transactions };
+};
 
 afterEach(cleanup);
 
@@ -65,6 +74,7 @@ const search = (value) => fireEvent.change(screen.getByPlaceholderText(/ابحث
 
 const thisDayOnly = () => fireEvent.click(screen.getByTestId("search-scope-day"));
 const allDays = () => fireEvent.click(screen.getByTestId("search-scope-all"));
+const thisMonth = () => fireEvent.click(screen.getByTestId("search-scope-month"));
 const senders = (container) => [...container.querySelectorAll("tbody tr")].map((tr) => tr.children[3].textContent);
 
 describe("Dashboard search — this day", () => {
@@ -211,6 +221,82 @@ describe("Dashboard search — all days", () => {
   });
 });
 
+describe("Dashboard search — this month", () => {
+  it("offers three scopes, widest first: all days, this month, this day", async () => {
+    const { container } = render(<Dashboard />);
+    await waitFor(() => expect(rowCount(container)).toBe(2));
+    const buttons = within(screen.getByTestId("search-scope")).getAllByRole("button");
+    expect(buttons.map((b) => b.textContent)).toEqual(["كل الأيام", "هذا الشهر", "هذا اليوم"]);
+    thisMonth();
+    expect(screen.getByTestId("search-scope-month")).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByTestId("search-scope-all")).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByTestId("search-scope-day")).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("finds matches on every day of the selected date's month, and nowhere else", async () => {
+    const { container } = render(<Dashboard />);
+    await waitFor(() => expect(rowCount(container)).toBe(2));
+    thisMonth();
+    search("vicario");
+    // September 2026: ids 3 (the 22nd), 1 and 2 (the 23rd); not June's or last December's.
+    await waitFor(() => expect(rowCount(container)).toBe(3));
+    expect(senders(container)).toEqual(["OTHER DAY", "Vicario", "MOUNIR TOSKA"]);
+    expect(screen.getByTestId("all-days-results")).toHaveTextContent("3 نتيجة في 2 يوم");
+    expect(api.dashboard.search).toHaveBeenLastCalledWith("vicario", "2026-09");
+    // Like all days: per-day "#", and a date that opens its day.
+    const numbers = [...container.querySelectorAll("tbody tr")].map((tr) => tr.children[1].textContent);
+    expect(numbers).toEqual(["1", "1", "2"]);
+    expect(screen.getByRole("button", { name: "2026-09-22" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /مسح الكل/ })).not.toBeInTheDocument();
+  });
+
+  it("follows the date picker to another month", async () => {
+    const { container } = render(<Dashboard />);
+    await waitFor(() => expect(rowCount(container)).toBe(2));
+    thisMonth();
+    search("vicario");
+    await waitFor(() => expect(rowCount(container)).toBe(3));
+    fireEvent.change(screen.getByDisplayValue("2026-09-23"), { target: { value: "2026-06-01" } });
+    await waitFor(() => expect(senders(container)).toEqual(["EARLIER MONTH"]));
+    expect(api.dashboard.search).toHaveBeenLastCalledWith("vicario", "2026-06");
+  });
+
+  it("a match outside the month isn't shown; the empty state says 'this month'", async () => {
+    const { container } = render(<Dashboard />);
+    await waitFor(() => expect(rowCount(container)).toBe(2));
+    thisMonth();
+    search("EARLIER"); // June only
+    expect(await screen.findByText("لا توجد معاملات مطابقة في هذا الشهر")).toBeInTheDocument();
+    expect(rowCount(container)).toBe(0);
+    allDays();
+    await waitFor(() => expect(rowCount(container)).toBe(1)); // all days finds it
+  });
+
+  it("the day's totals still count the selected day only", async () => {
+    const { container } = render(<Dashboard />);
+    await waitFor(() => expect(rowCount(container)).toBe(2));
+    const card = () => screen.getByText("إيداعات اليوم").parentElement.textContent;
+    thisDayOnly();
+    search("vicario");
+    await waitFor(() => expect(rowCount(container)).toBe(2));
+    const dayScope = card();
+    thisMonth();
+    await waitFor(() => expect(rowCount(container)).toBe(3));
+    expect(card()).toBe(dayScope); // the 22nd's $20 isn't added
+    expect(card()).not.toContain("70");
+  });
+
+  it("in English", async () => {
+    const { LanguageProvider } = await import("@/lib/i18n");
+    const { container } = render(<LanguageProvider initialLang="en"><Dashboard /></LanguageProvider>);
+    await waitFor(() => expect(rowCount(container)).toBe(2));
+    expect(screen.getByTestId("search-scope-month")).toHaveTextContent("This month");
+    thisMonth();
+    fireEvent.change(screen.getByPlaceholderText(/search/i), { target: { value: "EARLIER" } });
+    expect(await screen.findByText("No matching transactions this month")).toBeInTheDocument();
+  });
+});
+
 describe("Dashboard summaries", () => {
   const renderLoaded = async () => {
     const utils = render(<Dashboard />);
@@ -254,11 +340,14 @@ describe("Dashboard summaries", () => {
 });
 
 describe("Dashboard — roles", () => {
-  it("loads all office transactions and balances (no per-user filter)", async () => {
+  it("asks the server for the selected day and its figures (no per-user filter)", async () => {
     const { container } = render(<Dashboard />);
     await waitFor(() => expect(rowCount(container)).toBe(2));
-    expect(api.entities.Transaction.filter).toHaveBeenCalledWith({}, "created_date", 10000);
-    expect(api.entities.DailyBalance.filter).toHaveBeenCalledWith({});
+    expect(api.dashboard.day).toHaveBeenCalledWith("2026-09-23");
+    expect(api.dashboard.summary).toHaveBeenCalledWith("2026-09-23");
+    expect(api.entities.DailyBalance.filter).toHaveBeenCalledWith({ date: "2026-09-23" });
+    // The browser no longer downloads every transaction.
+    expect(api.entities.Transaction.filter).not.toHaveBeenCalled();
   });
 
   it("Admin/Manager can edit the opening balance; a User can't", async () => {
@@ -313,10 +402,10 @@ describe("Dashboard — keeps the user's place after saving", () => {
 
   it("shows the loading line only on the very first load", async () => {
     const first = deferred();
-    api.entities.Transaction.filter.mockReturnValueOnce(first.promise);
+    api.dashboard.day.mockReturnValueOnce(first.promise);
     const { container } = render(<Dashboard />);
     expect(await screen.findByText("جاري التحميل...")).toBeInTheDocument();
-    first.resolve(stored);
+    first.resolve(dayAnswer(stored));
     await waitFor(() => expect(rowCount(container)).toBe(2));
     expect(screen.queryByText("جاري التحميل...")).not.toBeInTheDocument();
   });
@@ -328,7 +417,7 @@ describe("Dashboard — keeps the user's place after saving", () => {
 
     // The refresh after saving is slow: hold it open to inspect the in-between state.
     const refresh = deferred();
-    api.entities.Transaction.filter.mockReturnValueOnce(refresh.promise);
+    api.dashboard.day.mockReturnValueOnce(refresh.promise);
 
     fireEvent.click(within(rowBefore).getByTitle("تعديل"));
     fireEvent.change(screen.getByDisplayValue("50"), { target: { value: "75" } });
@@ -341,7 +430,7 @@ describe("Dashboard — keeps the user's place after saving", () => {
     expect(rowCount(container)).toBe(2);
     expect(rowFor(container, "MOUNIR TOSKA")).toBe(rowBefore);
 
-    refresh.resolve(stored.map((t) => (t.id === 2 ? { ...t, amount: 75 } : t)));
+    refresh.resolve(dayAnswer(stored.map((t) => (t.id === 2 ? { ...t, amount: 75 } : t))));
     await waitFor(() => expect(within(rowBefore).getByText("$75.00")).toBeInTheDocument());
     // Updated in place — React reused the same row element rather than rebuilding the table.
     expect(rowFor(container, "MOUNIR TOSKA")).toBe(rowBefore);
@@ -352,9 +441,9 @@ describe("Dashboard — keeps the user's place after saving", () => {
     await waitFor(() => expect(rowCount(container)).toBe(2));
     const survivor = rowFor(container, "Vicario");
 
-    // Both the empty-day check after a delete and the refresh read transactions: hold them all open.
+    // Hold every day query open (the refresh after the delete).
     const refresh = deferred();
-    api.entities.Transaction.filter.mockImplementation(() => refresh.promise);
+    api.dashboard.day.mockImplementation(() => refresh.promise);
     const target = rowFor(container, "MOUNIR TOSKA");
     fireEvent.click(within(target).getByTitle("مسح"));
     fireEvent.click(within(target).getByText("تأكيد"));
@@ -363,10 +452,9 @@ describe("Dashboard — keeps the user's place after saving", () => {
     expect(screen.queryByText("جاري التحميل...")).not.toBeInTheDocument();
     expect(rowCount(container)).toBe(2);
 
-    refresh.resolve(stored.filter((t) => t.id !== 2));
+    refresh.resolve(dayAnswer(stored.filter((t) => t.id !== 2)));
     await waitFor(() => expect(rowCount(container)).toBe(1));
     expect(rowFor(container, "Vicario")).toBe(survivor);
-    api.entities.Transaction.filter.mockReset();
   });
 
   it("never scrolls the page itself during a refresh", async () => {
@@ -374,13 +462,80 @@ describe("Dashboard — keeps the user's place after saving", () => {
     try {
       const { container } = render(<Dashboard />);
       await waitFor(() => expect(rowCount(container)).toBe(2));
-      const callsBefore = api.entities.Transaction.filter.mock.calls.length;
+      const callsBefore = api.dashboard.day.mock.calls.length;
       fireEvent.click(within(rowFor(container, "MOUNIR TOSKA")).getByTitle("تعديل"));
       fireEvent.click(screen.getByRole("button", { name: "حفظ التعديل" }));
-      await waitFor(() => expect(api.entities.Transaction.filter.mock.calls.length).toBe(callsBefore + 1));
+      await waitFor(() => expect(api.dashboard.day.mock.calls.length).toBe(callsBefore + 1));
       expect(scrollSpy).not.toHaveBeenCalled();
     } finally {
       scrollSpy.mockRestore();
     }
+  });
+});
+
+describe("Dashboard — one server query per day (user's report)", () => {
+  // Day 1 has 100 transactions, day 2 has 1,000 newer ones. The page used to download the newest
+  // 10,000 rows and pick the day out of them, so an older day could come up empty.
+  const bulk = (day, count, from) => Array.from({ length: count }, (_, i) => ({
+    id: from + i, type: "cash_in", amount: 1, commission: 0.01, sender_name: `S${day}-${i}`, receiver_name: "",
+    reference_number: `tr:${from + i}`, transaction_date: day, sort_order: i, created_date: `${day}T10:00:00Z`,
+  }));
+  const days = [...bulk("2026-09-01", 100, 1), ...bulk("2026-09-02", 1000, 1000)];
+
+  it("choosing a day asks the server for that day, and shows all of its rows", async () => {
+    installFakeDashboard(api, () => days);
+    window.localStorage.setItem("selectedDate", "2026-09-02");
+    render(<Dashboard />);
+    // Rendering 1,000 rows is slow in jsdom when the whole suite runs at once.
+    await waitFor(() => expect(screen.getByText("S2026-09-02-999")).toBeInTheDocument(), { timeout: 15000 });
+    expect(api.dashboard.day).toHaveBeenLastCalledWith("2026-09-02");
+
+    fireEvent.change(screen.getByDisplayValue("2026-09-02"), { target: { value: "2026-09-01" } });
+    await waitFor(() => expect(api.dashboard.day).toHaveBeenLastCalledWith("2026-09-01"));
+    await waitFor(() => expect(screen.getByText("S2026-09-01-99")).toBeInTheDocument(), { timeout: 15000 });
+    expect(screen.queryByText("S2026-09-02-0")).not.toBeInTheDocument();
+    expect(api.dashboard.summary).toHaveBeenLastCalledWith("2026-09-01");
+  }, 40000);
+
+  it("an answer for a day no longer shown is ignored", async () => {
+    const slow = { promise: null, resolve: null };
+    slow.promise = new Promise((r) => { slow.resolve = r; });
+    installFakeDashboard(api, () => stored);
+    const answer = api.dashboard.day.getMockImplementation();
+    api.dashboard.day.mockImplementationOnce(() => slow.promise); // 2026-09-23, still loading
+    const { container } = render(<Dashboard />);
+    await waitFor(() => expect(api.dashboard.day).toHaveBeenCalledWith("2026-09-23"));
+    fireEvent.change(screen.getByDisplayValue("2026-09-23"), { target: { value: "2026-09-22" } });
+    await waitFor(() => expect(screen.getByText("OTHER DAY")).toBeInTheDocument());
+    slow.resolve(await answer("2026-09-23"));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(rowCount(container)).toBe(1);
+    expect(screen.queryByText("MOUNIR TOSKA")).not.toBeInTheDocument();
+  });
+
+  it("says so when a day has more rows than the page shows (the 10,000 rule)", async () => {
+    installFakeDashboard(api, () => stored, () => [], { maxRows: 1 });
+    const { container } = render(<Dashboard />);
+    await waitFor(() => expect(rowCount(container)).toBe(1));
+    expect(screen.getByTestId("list-truncated")).toHaveTextContent("عرض أول 1 من أصل 2 عملية");
+  });
+
+  it("the day's and month's figures come from the server, over every row", async () => {
+    installFakeDashboard(api, () => stored, () => [], { maxRows: 1 });
+    const { container } = render(<Dashboard />);
+    await waitFor(() => expect(rowCount(container)).toBe(1));
+    // Only one row is listed, but the day card counts both deposits and withdrawals.
+    expect(screen.getByText("سحوبات اليوم").parentElement).toHaveTextContent("1,500");
+    expect(screen.getByText("إيداعات اليوم").parentElement).toHaveTextContent("50");
+    expect(within(screen.getByTestId("monthly-summary")).getByText("عمليات الشهر").nextSibling).toHaveTextContent("3");
+  });
+
+  it("all-days search results are capped too, with the same notice", async () => {
+    installFakeDashboard(api, () => stored, () => [], { maxRows: 2 });
+    const { container } = render(<Dashboard />);
+    await waitFor(() => expect(rowCount(container)).toBe(2));
+    search("vicario");
+    await waitFor(() => expect(screen.getByTestId("list-truncated")).toHaveTextContent("عرض أول 2 من أصل 5 عملية"));
+    expect(api.dashboard.search).toHaveBeenLastCalledWith("vicario", undefined);
   });
 });

@@ -1,8 +1,10 @@
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { X, Search, User, ArrowDownCircle, ArrowUpCircle, Percent, Hash } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
+import { usePartyReport } from "@/lib/usePartyReport";
 
-export default function SenderReportModal({ allTransactions, onClose }) {
+// storeId: the Admin's chosen store on the dashboard (others: their own store, on the server).
+export default function SenderReportModal({ storeId, onClose }) {
   const { t: tr, dir } = useI18n();
   const [senderQuery, setSenderQuery] = useState("");
   const [dateFrom, setDateFrom] = useState("");
@@ -11,26 +13,9 @@ export default function SenderReportModal({ allTransactions, onClose }) {
 
   const fmt = (n) => (n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-  const results = useMemo(() => {
-    if (!senderQuery.trim()) return [];
-    return allTransactions.filter((t) => {
-      const name = (t.sender_name || "").toLowerCase();
-      const query = senderQuery.trim().toLowerCase();
-      if (!name.includes(query)) return false;
-
-      const tDate = t.transaction_date || new Date(t.created_date).toISOString().split("T")[0];
-      if (dateFrom && tDate < dateFrom) return false;
-      if (dateTo && tDate > dateTo) return false;
-      return true;
-    });
-  }, [senderQuery, dateFrom, dateTo, allTransactions]);
-
-  const stats = useMemo(() => {
-    const deposits = results.filter((t) => t.type === "cash_in").reduce((s, t) => s + (t.amount || 0), 0);
-    const withdrawals = results.filter((t) => t.type === "cash_out").reduce((s, t) => s + (t.amount || 0), 0);
-    const commissions = results.reduce((s, t) => s + (t.commission || 0), 0);
-    return { deposits, withdrawals, commissions, count: results.length };
-  }, [results]);
+  // Asked of the server: every day, not just what the dashboard loaded (at most 10,000 rows;
+  // the totals count every match).
+  const { rows: results, totals: stats, total, truncated } = usePartyReport({ party: "sender", query: senderQuery, from: dateFrom, to: dateTo, storeId });
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" dir={dir}>
@@ -124,6 +109,7 @@ export default function SenderReportModal({ allTransactions, onClose }) {
           </div>
         )}
 
+        {truncated && <p className="px-4 py-2 text-xs text-amber-800 bg-amber-50 border-b" data-testid="report-truncated">{tr("list.truncated", { shown: results.length, total })}</p>}
         {/* Table */}
         <div className="flex-1 overflow-auto">
           {!searched || !senderQuery.trim() ? (
