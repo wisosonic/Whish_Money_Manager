@@ -55,10 +55,11 @@ describe("layout", () => {
 });
 
 describe("every page is always listed, the current one marked", () => {
-  const pages = ["dashboard-link", "users-link", "stores-link", "admin-link"];
+  const pages = ["dashboard-link", "imports-link", "users-link", "stores-link", "admin-link"];
 
   it.each([
     ["/", "dashboard-link"],
+    ["/imports", "imports-link"],
     ["/users", "users-link"],
     ["/stores", "stores-link"],
     ["/stores/2", "stores-link"],
@@ -67,7 +68,7 @@ describe("every page is always listed, the current one marked", () => {
     ["/profile", null],
   ])("on %s", (path, current) => {
     renderHeader(path);
-    // The Admin sees all four pages, whatever page is open.
+    // The Admin sees all five pages, whatever page is open.
     expect(within(nav()).getAllByRole("link").map((a) => a.dataset.testid)).toEqual(pages);
     const marked = within(nav()).getAllByRole("link").filter((a) => a.getAttribute("aria-current") === "page");
     expect(marked.map((a) => a.dataset.testid)).toEqual(current ? [current] : []);
@@ -82,14 +83,14 @@ describe("every page is always listed, the current one marked", () => {
   it("a User sees only the pages they may open", () => {
     setAuthRole("user");
     renderHeader("/");
-    expect(within(nav()).getAllByRole("link").map((a) => a.dataset.testid)).toEqual(["dashboard-link", "stores-link"]);
+    expect(within(nav()).getAllByRole("link").map((a) => a.dataset.testid)).toEqual(["dashboard-link", "imports-link", "stores-link"]);
     expect(screen.getByTestId("stores-link")).toHaveTextContent("متجري");
   });
 
-  it("a Manager: dashboard, their store and the admin panel (no Users)", () => {
+  it("a Manager: dashboard, import history, their store and the admin panel (no Users)", () => {
     setAuthRole("manager");
     renderHeader("/admin");
-    expect(within(nav()).getAllByRole("link").map((a) => a.dataset.testid)).toEqual(["dashboard-link", "stores-link", "admin-link"]);
+    expect(within(nav()).getAllByRole("link").map((a) => a.dataset.testid)).toEqual(["dashboard-link", "imports-link", "stores-link", "admin-link"]);
     expect(screen.getByTestId("admin-link")).toHaveAttribute("aria-current", "page");
   });
 });

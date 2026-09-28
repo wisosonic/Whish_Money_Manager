@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Search, FileText, Trash2, Pencil, X, Loader2, UserSearch, UserCheck, Percent, ArrowDown, ArrowUp, ArrowUpDown, ChevronUp, ChevronDown, Lock, LockOpen } from "lucide-react";
+import { Search, FileText, Trash2, Pencil, X, Loader2, UserSearch, UserCheck, Percent, ArrowDown, ArrowUp, ArrowUpDown, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Lock, LockOpen } from "lucide-react";
 import BulkEditModal from "@/components/transactions/BulkEditModal";
 import SenderReportModal from "@/components/transactions/SenderReportModal";
 import ReceiverReportModal from "@/components/transactions/ReceiverReportModal";
@@ -15,6 +15,7 @@ import { notify } from "@/lib/notify";
 import { NO_SORT, nextSort, sortTransactions } from "@/lib/transactionSort";
 import { usePreferences } from "@/lib/PreferencesContext";
 import JournalDatePicker from "./JournalDatePicker";
+import { shiftDay } from "@/lib/calendarDays";
 import { SEARCH_SCOPES, TABLE_COLUMNS } from "@/lib/preferences";
 
 // ═══ Type column: icon + sorting ═══
@@ -340,7 +341,21 @@ export default function TransactionsList({
 
         <div className="flex items-center gap-2 text-sm text-gray-600">
           <span className="font-medium text-[hsl(var(--foreground))]">{tr("list.journal")}:</span>
-          <JournalDatePicker value={selectedDate} onChange={setSelectedDate} storeId={storeId} closedDates={closedDates} />
+          {/* One day back / forward without opening the calendar (user's request). The arrows point
+              the way the page reads: "previous" is at the start, so it points right in Arabic. */}
+          <div className="flex items-center gap-1" role="group" aria-label={tr("list.journal")} data-testid="day-stepper">
+            <button type="button" onClick={() => setSelectedDate(shiftDay(selectedDate, -1))}
+              title={tr("day.previous")} aria-label={tr("day.previous")} data-testid="previous-day"
+              className="flex items-center justify-center w-8 h-8 rounded-lg border hover:bg-gray-50 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 text-[hsl(var(--foreground))]">
+              <ChevronLeft className="w-4 h-4 rtl:rotate-180" aria-hidden="true" />
+            </button>
+            <JournalDatePicker value={selectedDate} onChange={setSelectedDate} storeId={storeId} closedDates={closedDates} />
+            <button type="button" onClick={() => setSelectedDate(shiftDay(selectedDate, 1))}
+              title={tr("day.next")} aria-label={tr("day.next")} data-testid="next-day"
+              className="flex items-center justify-center w-8 h-8 rounded-lg border hover:bg-gray-50 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 text-[hsl(var(--foreground))]">
+              <ChevronRight className="w-4 h-4 rtl:rotate-180" aria-hidden="true" />
+            </button>
+          </div>
 
           <button
             onClick={onToday}
@@ -611,11 +626,15 @@ export default function TransactionsList({
         </div> :
 
       <>
-        <div className="overflow-x-auto">
+        {/* Sticky header (user's request): the table scrolls inside this box, at most one screen tall
+            below the app header, and the column names stay at its top. The box has to be the scroller:
+            it already scrolls sideways on phones, and a sticky element can't stick to the page from
+            inside a scrolling box. */}
+        <div className="overflow-auto max-h-[calc(100vh_-_var(--app-header-height,0px)_-_1rem)]" data-testid="table-scroll">
           <table
             className={`w-full text-sm text-start ${compact ? "[&_td]:!py-1.5 [&_th]:!py-1.5" : ""}`}
             data-density={preferences.density}>
-            <thead className="bg-gray-50 text-gray-600">
+            <thead className="bg-gray-50 text-gray-600 sticky top-0 z-10 shadow-sm" data-testid="table-head">
               <tr>
                 <th className="ps-4 pe-1 py-3 w-8">
                   <input

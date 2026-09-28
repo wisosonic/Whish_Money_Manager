@@ -149,6 +149,10 @@ export const api = {
   // The dashboard, one query at a time (the browser doesn't load every transaction). Lists hold at
   // most 10,000 rows: { total, truncated, transactions }. storeId: the Admin's chosen store (others:
   // the server uses theirs; the Admin without one: every store).
+  // The import history: { total, truncated, imports } (the Admin can ask for one store).
+  importHistory: {
+    list: async (storeId) => apiRequest(`/import-history${query({ store_id: storeId })}`, { method: 'GET' }),
+  },
   dashboard: {
     day: async (date, storeId) => apiRequest(`/dashboard/day${query({ date, store_id: storeId })}`, { method: 'GET' }),
     // { day, month, year: { count, deposits, withdrawals, commissions }, wallet: { opening_balance, net_balance } }
@@ -260,10 +264,11 @@ export const api = {
 
       // Like bulkCreate, but with overwrite=true it first deletes the store's entries with the same
       // references. storeId: the store the statement is imported into.
-      importRecords: async (records, { overwrite = false, storeId } = {}) =>
+      // statement: { file_name, source } for the import history (the server adds the rest).
+      importRecords: async (records, { overwrite = false, storeId, statement } = {}) =>
         apiRequest('/transactions/import', {
           method: 'POST',
-          body: JSON.stringify({ records, overwrite, store_id: storeId }),
+          body: JSON.stringify({ records, overwrite, store_id: storeId, statement }),
         }),
     },
     DailyBalance: makeEntityClient('daily-balances'),

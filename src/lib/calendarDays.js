@@ -19,6 +19,12 @@ export const busyLevels = (days = []) => {
 const pad = (n) => String(n).padStart(2, "0");
 export const isoDay = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 export const isoMonth = (date) => isoDay(date).slice(0, 7);
+// The day n days after (or before, n < 0) "YYYY-MM-DD", in the calendar (no time-zone or DST drift).
+export const shiftDay = (value, n) => {
+  const date = fromIsoDay(value);
+  date.setDate(date.getDate() + n);
+  return isoDay(date);
+};
 export const fromIsoDay = (value) => {
   const [y, m, d] = String(value).split("-").map(Number);
   return y && m && d ? new Date(y, m - 1, d) : new Date();

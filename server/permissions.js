@@ -33,6 +33,7 @@ export const PERMISSIONS = {
   STORES_MANAGE: "stores:manage", // create / edit / delete stores, assign a store's Manager, move any User
   STORES_ALL: "stores:all", // see and work in every store (without it: only your own store)
   STORES_MEMBERS: "stores:members", // add / remove Users in the store you manage
+  IMPORTS_READ_ANY: "imports:read:any", // import history: everyone's imports (in your stores); without it, your own
 };
 
 const P = PERMISSIONS;
@@ -78,6 +79,7 @@ export const PERMISSIONS_ADDED_LATER = {
   [P.STORES_MANAGE]: ["admin"],
   [P.STORES_ALL]: ["admin"],
   [P.STORES_MEMBERS]: ["admin", "manager"],
+  [P.IMPORTS_READ_ANY]: ["admin", "manager"],
 };
 
 export const hasPermission = (user, permission) => Boolean(user?.permissions?.includes(permission));

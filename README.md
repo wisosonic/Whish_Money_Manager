@@ -20,6 +20,9 @@ It runs entirely on your machine: a React frontend and a small Node.js/Express A
 ## Features
 
 - **Daily journal**: every transaction for the selected day, with deposits (Cash In), withdrawals (Cash Out), commissions and the running wallet balance.
+- **Previous / next day**: the ‹ and › arrows on either side of the date step one day back or forward, without opening the calendar. They follow the reading direction: in Arabic "previous" is on the right.
+- **Sticky table header**: the column names stay visible while you scroll through a long day. The table scrolls inside its own box, one screen tall, so on a phone it still scrolls sideways too.
+- **Import history** (**سجل الاستيراد** in the header): every statement saved from the import screen, newest first: when, the file name and type, the days it covers, the store, how many transactions were added (and replaced), and who imported it. The Admin sees every store's imports (and can pick one store), a Manager their store's, and a User only their own. The history is a log: deleting the imported transactions later doesn't remove its entries.
 - **Date picker with busy days**: click the day shown next to "اليومية" to open a calendar. Days with transactions are shaded blue, darker the busier they are compared with the month's busiest day, and closed days show a 🔒. The month and year lists (or the arrows) move to another month; each day's tooltip and screen-reader name give its count ("2026-09-22 · 3 عملية"). The counts are fetched each time the calendar opens or changes month, so they're current after an import or a delete. In "All stores" the shades count every store and closed days aren't marked (days are closed per store).
 - **Monthly and yearly summaries**: two collapsible blocks at the top of the dashboard. Both follow the month and year of the date selected in the date picker.
   - **ملخص الشهر** (open by default): wallet net balance, number of transactions, commissions, withdrawals and deposits for the month.
@@ -201,6 +204,7 @@ Everyone signs in with their own email and password. There are three roles:
 | See transactions, balances, reports and the chart | all stores | their store | their store |
 | Add transactions by hand (Cash In / Cash Out, for rows the import missed) | ✓ | ✓ | ✓ |
 | Import PDF / CSV statements | ✓ | ✓ | ✓ |
+| Import history (سجل الاستيراد) | all stores | their store | their own imports |
 | Edit transactions **they entered** (single and bulk) | ✓ | ✓ | ✓ |
 | Edit **anyone's** transactions | ✓ | ✓ | — |
 | Delete transactions (single, bulk, "delete all for this day") | ✓ | ✓ | — |
@@ -239,7 +243,7 @@ Everyone signs in with their own email and password. There are three roles:
   - **The choice is saved in a cookie** (`wmm_lang`, kept for a year), so it survives reloads and applies from the first screen.
   - **When you're signed in, it's also saved to your account** (see [Settings](#settings)), so it follows you to other devices and is applied when you sign in there.
 - **Back to top:** click the logo or the app name in the header to scroll smoothly back to the top of the page (instantly if "reduce motion" is on). It also works from the keyboard: Tab to it, then press Enter.
-- **Header layout:** from the start of the line: the **logo and name**, then the **clock**; in the middle, **every page you can open** (لوحة التحكم, المستخدمون, المتاجر / متجري, لوحة الإدارة), always shown, with the page you're on outlined and highlighted; at the end, **⚙️ Settings** and your **account icon**. On a phone the pages take a row of their own under the logo, and the clock goes under the logo.
+- **Header layout:** from the start of the line: the **logo and name**, then the **clock**; in the middle, **every page you can open** (لوحة التحكم, سجل الاستيراد, المستخدمون, المتاجر / متجري, لوحة الإدارة), always shown, with the page you're on outlined and highlighted; at the end, **⚙️ Settings** and your **account icon**. On a phone the pages take a row of their own under the logo, and the clock goes under the logo.
 - **Account menu:** click your account icon (or Tab to it and press Enter or ↓). It shows your name, email, role, store and **last login**, then **ملفي الشخصي** (My profile) and **خروج** (Log out); there's no separate Log out button any more. Arrow keys move between the two, Escape closes it (focus goes back to the icon), and clicking anywhere else closes it too.
 - **Header position:** the header stays **fixed at the top of the screen** while you scroll, on every page and screen size. Pop-up windows still appear above it. When the keyboard moves focus to a field lower down, the page scrolls so the field lands just below the header, not behind it.
 - **Last login** (in the account menu): the date and time of the sign-in *before* the current one (e.g. `آخر دخول: 2026/09/23 08:05 PM`), in your local time. It shows "أول تسجيل دخول" on your first ever sign-in. Because sessions don't expire, it changes only when you sign in again. Signing in on another device counts as a new sign-in.
@@ -419,7 +423,7 @@ Safety rules: there must always be at least one active Admin, and an Admin can't
 
 ### Daily workflow
 
-1. Pick the day with the date picker ("اليومية"; shaded days have transactions) or press "اليوم" for today.
+1. Pick the day with the date picker ("اليومية"; shaded days have transactions), step with the ‹ › arrows beside it, or press "اليوم" for today.
 2. Import the CSV statement from Whish Money ("استيراد PDF / CSV"). Check the reconciliation banner before saving.
 3. Only if a real transaction from the statement is missing from the table, add it with **Cash In** / **Cash Out** (and ideally report the line, so the parser can learn it).
 4. Check the wallet summary: opening balance + deposits − withdrawals = net balance.
@@ -433,7 +437,7 @@ Safety rules: there must always be at least one active Admin, and an Admin can't
    - **استبدال العمليات الموجودة** (replace): the existing entries are deleted and replaced when you save.
    - **إلغاء الرفع** (cancel): nothing is saved.
 3. Review the rows. For CSV files, a banner shows whether the file reconciles: debit total, credit total, closing balance, and each row's balance. Fix or remove rows if needed.
-4. Click **حفظ الكل**. The statement's opening balance is stored for that day, and the dashboard jumps to it.
+4. Click **حفظ الكل**. The statement's opening balance is stored for that day, and the dashboard jumps to it. The import is added to **سجل الاستيراد** (Import history), with the file's name.
 
 ### Import rules
 
@@ -505,6 +509,8 @@ tests/
 ├── fixtures/statement.csv    # real CSV statement export (127 rows)
 ├── backend/
 │   ├── helpers.js            # test server, one account per role, cookie-keeping client
+│   ├── imports.test.js       # import history: recorded with the import (server-side period / count / user),
+│   │                         # file-name cleaning, nothing on a refused import, who sees what, email change
 │   ├── dashboard.test.js     # per-day queries (100 vs 1,000 rows), the 10,000 cap, server totals and wallet,
 │   │                         # all-days / this-month search, sender / receiver reports, opening-balance
 │   │                         # cleanup, the date picker's days per month
@@ -539,7 +545,8 @@ tests/
     ├── ProfilePage.test.jsx  # profile page: details, name/email (current password), password checks, header link
     ├── fileType.test.js      # PDF/CSV detection
     ├── transactionSearch.test.js
-    ├── ImportPDFModal.test.jsx   # PDF/CSV routing, preview, duplicate prompt, save payload
+    ├── ImportPDFModal.test.jsx   # PDF/CSV routing, preview, duplicate prompt, save payload (with the file's name)
+    ├── ImportHistoryPage.test.jsx # the history table, the Admin's store filter, each role's scope, empty / capped
     ├── TransactionsList.test.jsx     # table, report/chart buttons, removed buttons, immediate delete,
     │                                 # multi-select, select-all, bulk edit/delete flows,
     │                                 # type icons, sorting by every column
@@ -572,7 +579,8 @@ tests/
     ├── monthlyChartData.test.js      # per-month aggregation, future months, formatters
     ├── IncomeChart.test.jsx          # the income chart: axes, bars/lines, legend, tooltip, table view, year switch,
     │                                 # updates, desktop vs phone layout, reduced motion (via chartHarness.jsx)
-    └── Dashboard.test.jsx            # search, monthly/yearly totals following the date picker,
+    └── Dashboard.test.jsx            # search, monthly/yearly totals following the date picker, previous / next day
+                                      # arrows, sticky table header,
                                       # table kept in place (scroll position) while refreshing after edit/delete
 ```
 
@@ -589,6 +597,7 @@ server/permissions.js         Permission names and the three default roles (shar
 server/db.js                  SQLite connection and schema (transactions, daily_balances, roles, users, sessions)
 server/stores.js              Stores API (manage, Manager, members) and the store-scope helpers every route uses
 server/reports.js             Admin panel reports API: income by month, top senders / recipients (grouping and ranking)
+server/imports.js             Import history: recorded with each import; GET /import-history (Admin / Manager / own)
 server/dashboard.js           Dashboard API: one day at a time, its totals, month / year / wallet, all-days search,
                               sender / receiver reports (lists capped at 10,000), opening-balance cleanup
 server/wallet.js              The wallet rule (opening balance of a day, net balance)
@@ -604,6 +613,7 @@ src/lib/notify.js             Toast notifications (success / info / warning / er
 src/components/layout/AppToaster.jsx  Where notifications appear (direction- and theme-aware)
 src/pages/Dashboard.jsx       Main screen: totals, balances, day filter, search
 src/pages/UsersPage.jsx       Admin: users and roles
+src/pages/ImportHistoryPage.jsx  Import history (سجل الاستيراد): every saved statement, as each role may see it
 src/pages/StoresPage.jsx      Admin: stores, their Manager and Users; others: their store (members for its Manager)
 src/pages/ProfilePage.jsx     Every user: own account details, name, email and password
 src/pages/SettingsPage.jsx    Every user: language, theme, visible table columns, row spacing, summaries
@@ -669,7 +679,8 @@ All routes are under `/local-api`.
 | PUT | `/users/:id` | `users:manage` | `{ full_name?, role?, is_active?, password? }`. Deactivation and password reset end the user's sessions |
 | POST | `/pdf/extract` · `/csv/extract` | `transactions:import` | Extract a statement |
 | POST | `/transactions/find-duplicates` | `transactions:import` | `{ references, store_id }` → the store's transactions with those references |
-| POST | `/transactions/import` | `transactions:import` (+ `transactions:delete` when `overwrite`) | `{ records, overwrite, store_id }`. 409 if a reference is already in another store |
+| POST | `/transactions/import` | `transactions:import` (+ `transactions:delete` when `overwrite`) | `{ records, overwrite, store_id, statement: { file_name, source } }`. 409 if a reference is already in another store. Records an import-history entry (period, count, store, user and time worked out by the server) in the same database transaction; returns `import_id` |
+| GET | `/import-history` | `transactions:read` | `?store_id=` (Admin). The Admin: every store; a Manager: their store (`imports:read:any`); a User: their own imports. Newest first, at most 10,000: `{ total, truncated, imports }`, each with `store_name` and `imported_by_name` |
 | POST | `/transactions/bulk-update` | `transactions:update:any`, or `:own` if every selected row is theirs | `{ ids, changes }` |
 | POST | `/transactions/bulk-delete` | `transactions:delete` | `{ ids }` |
 | POST | `/transactions/filter` · `/daily-balances/filter` | `transactions:read` / `balances:read` | List. Filter keys must be real columns |

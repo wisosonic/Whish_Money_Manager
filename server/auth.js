@@ -274,6 +274,7 @@ export const registerAuthRoutes = (app) => {
     ["daily_balances", "created_by"],
     ["closed_days", "closed_by"],
     ["commission_rates", "created_by"],
+    ["import_history", "imported_by"],
   ];
   const emailInUse = (email) =>
     Boolean(db.prepare("SELECT 1 FROM users WHERE email = ?").get(email)) ||

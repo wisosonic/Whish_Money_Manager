@@ -37,6 +37,8 @@ export default function ImportPDFModal({ onClose, onSaved, stores = [], defaultS
   const [editRows, setEditRows] = useState([]);
   const [detectedDate, setDetectedDate] = useState("");
   const [openingBalance, setOpeningBalance] = useState(null);
+  // The statement's file name and type, recorded in the import history when saved.
+  const [statement, setStatement] = useState(null);
   const fileRef = useRef(null);
 
   const handleFile = async (file) => {
@@ -50,6 +52,7 @@ export default function ImportPDFModal({ onClose, onSaved, stores = [], defaultS
       return;
     }
     setError("");
+    setStatement({ file_name: file.name || "", source: fileType });
     setLoading(true);
     setStep("upload");
     setDuplicates([]);
@@ -168,7 +171,7 @@ export default function ImportPDFModal({ onClose, onSaved, stores = [], defaultS
         };
       });
 
-      await api.entities.Transaction.importRecords(records, { overwrite, storeId: target });
+      await api.entities.Transaction.importRecords(records, { overwrite, storeId: target, statement });
 
       notify.success(overwrite && duplicates.length > 0
         ? t("toast.import.savedReplaced", { count: records.length, replaced: duplicates.length })

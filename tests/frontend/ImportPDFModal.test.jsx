@@ -153,7 +153,8 @@ describe("ImportPDFModal", () => {
 
     await waitFor(() => expect(api.entities.Transaction.importRecords).toHaveBeenCalledTimes(1));
     const [records, options] = api.entities.Transaction.importRecords.mock.calls[0];
-    expect(options).toEqual({ overwrite: false });
+    // The file's name and type go with the rows, for the import history.
+    expect(options).toEqual({ overwrite: false, statement: { file_name: "statement.csv", source: "csv" } });
     expect(records[0]).toMatchObject({
       type: "cash_in", amount: 75, commission: 0.75, sender_name: "MOUNIR TOSKA",
       phone: "96171588017", customer_number: "71588017", reference_number: "tr:1",
@@ -196,8 +197,17 @@ describe("ImportPDFModal", () => {
 
       fireEvent.click(screen.getByText("حفظ الكل (2)"));
       await waitFor(() => expect(api.entities.Transaction.importRecords).toHaveBeenCalledTimes(1));
-      expect(api.entities.Transaction.importRecords.mock.calls[0][1]).toEqual({ overwrite: true });
+      expect(api.entities.Transaction.importRecords.mock.calls[0][1]).toEqual({ overwrite: true, statement: { file_name: "statement.csv", source: "csv" } });
     });
+  });
+
+  it("a PDF is recorded as a PDF, under its own file name", async () => {
+    api.integrations.Core.ExtractPdf.mockResolvedValue(extraction());
+    const { container } = renderModal();
+    upload(container, new File(["%PDF-1.7 fake"], "September 23.pdf", { type: "application/pdf" }));
+    fireEvent.click(await screen.findByText("حفظ الكل (2)"));
+    await waitFor(() => expect(api.entities.Transaction.importRecords).toHaveBeenCalledTimes(1));
+    expect(api.entities.Transaction.importRecords.mock.calls[0][1].statement).toEqual({ file_name: "September 23.pdf", source: "pdf" });
   });
 
   it("shows the server error when extraction fails", async () => {
@@ -228,6 +238,6 @@ describe("ImportPDFModal — re-import as a User", () => {
     const { container } = renderModal();
     upload(container, csvFile());
     fireEvent.click(await screen.findByText("حفظ الكل (2)"));
-    await waitFor(() => expect(api.entities.Transaction.importRecords).toHaveBeenCalledWith(expect.any(Array), { overwrite: false }));
+    await waitFor(() => expect(api.entities.Transaction.importRecords).toHaveBeenCalledWith(expect.any(Array), { overwrite: false, statement: { file_name: "statement.csv", source: "csv" } }));
   });
 });

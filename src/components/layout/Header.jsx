@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Users, LayoutDashboard, Settings, ShieldCheck, Store } from "lucide-react";
+import { History, Users, LayoutDashboard, Settings, ShieldCheck, Store } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 import { APP_NAME } from "@/lib/branding";
 import { useI18n } from "@/lib/i18n";
@@ -50,6 +50,7 @@ export default function Header() {
   // Every page the user may open, whatever page is showing (the current one is marked).
   const pages = [
     { to: "/", icon: LayoutDashboard, label: t("header.dashboard"), testId: "dashboard-link" },
+    can(PERMISSIONS.TRANSACTIONS_IMPORT) && { to: "/imports", icon: History, label: t("header.imports"), testId: "imports-link" },
     can(PERMISSIONS.USERS_MANAGE) && { to: "/users", icon: Users, label: t("header.users"), testId: "users-link" },
     (canManageStores || user?.store_id != null) && { to: "/stores", icon: Store, label: canManageStores ? t("header.stores") : t("header.myStore"), testId: "stores-link" },
     can(PERMISSIONS.DATA_EXPORT) && { to: "/admin", icon: ShieldCheck, label: t("header.admin"), testId: "admin-link" },

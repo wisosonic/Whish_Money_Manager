@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BUSY_LEVELS, busyLevels, fromIsoDay, isoDay, isoMonth } from "@/lib/calendarDays";
+import { BUSY_LEVELS, busyLevels, fromIsoDay, isoDay, isoMonth, shiftDay } from "@/lib/calendarDays";
 
 describe("busyLevels", () => {
   it("shades relative to the month's busiest day: the busiest is the darkest, any activity at least 1", () => {
@@ -21,6 +21,23 @@ describe("busyLevels", () => {
     expect(busyLevels([]).size).toBe(0);
     expect(busyLevels(undefined).size).toBe(0);
     expect(busyLevels([{ date: "a", count: 0 }]).size).toBe(0);
+  });
+});
+
+describe("shiftDay (the dashboard's previous / next day arrows)", () => {
+  it("moves by whole calendar days, across months, years and leap days", () => {
+    expect(shiftDay("2026-09-23", -1)).toBe("2026-09-22");
+    expect(shiftDay("2026-09-30", 1)).toBe("2026-10-01");
+    expect(shiftDay("2026-01-01", -1)).toBe("2025-12-31");
+    expect(shiftDay("2028-02-28", 1)).toBe("2028-02-29");
+    expect(shiftDay("2027-02-28", 1)).toBe("2027-03-01");
+  });
+
+  it("isn't thrown off by daylight-saving changes (local dates, no hour arithmetic)", () => {
+    // Lebanon and Europe change clocks on the last Sunday of March and October.
+    expect(shiftDay("2026-03-28", 1)).toBe("2026-03-29");
+    expect(shiftDay("2026-03-29", 1)).toBe("2026-03-30");
+    expect(shiftDay("2026-10-25", -1)).toBe("2026-10-24");
   });
 });
 

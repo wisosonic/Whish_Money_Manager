@@ -557,3 +557,81 @@ describe("Dashboard — one server query per day (user's report)", () => {
     expect(api.dashboard.search).toHaveBeenLastCalledWith("vicario", undefined);
   });
 });
+
+describe("Dashboard — previous / next day arrows (user's request)", () => {
+  it("sit on either side of the date button, and move one day back or forward (a new server query each)", async () => {
+    const { container } = render(<Dashboard />);
+    await waitFor(() => expect(rowCount(container)).toBe(2));
+    const stepper = screen.getByTestId("day-stepper");
+    expect([...stepper.children].map((el) => el.dataset.testid)).toEqual(["previous-day", "journal-date", "next-day"]);
+    expect(screen.getByTestId("previous-day")).toHaveAccessibleName("اليوم السابق");
+    expect(screen.getByTestId("next-day")).toHaveAccessibleName("اليوم التالي");
+
+    fireEvent.click(screen.getByTestId("previous-day"));
+    await waitFor(() => expect(api.dashboard.day).toHaveBeenLastCalledWith("2026-09-22"));
+    expect(shownDay()).toHaveTextContent("2026-09-22");
+    await waitFor(() => expect(senders(container)).toEqual(["OTHER DAY"]));
+    expect(api.dashboard.summary).toHaveBeenLastCalledWith("2026-09-22");
+
+    fireEvent.click(screen.getByTestId("next-day"));
+    fireEvent.click(screen.getByTestId("next-day"));
+    await waitFor(() => expect(api.dashboard.day).toHaveBeenLastCalledWith("2026-09-24"));
+    expect(shownDay()).toHaveTextContent("2026-09-24");
+    expect(await screen.findByText("لا توجد معاملات")).toBeInTheDocument();
+    // The day shown is remembered, as with the calendar.
+    expect(document.cookie).toContain("wmm_selected_date=2026-09-24");
+  });
+
+  it("cross months and years", async () => {
+    window.localStorage.setItem("selectedDate", "2026-01-01");
+    render(<Dashboard />);
+    await waitFor(() => expect(shownDay()).toHaveTextContent("2026-01-01"));
+    fireEvent.click(screen.getByTestId("previous-day"));
+    await waitFor(() => expect(shownDay()).toHaveTextContent("2025-12-31"));
+    fireEvent.click(screen.getByTestId("next-day"));
+    fireEvent.click(screen.getByTestId("next-day"));
+    await waitFor(() => expect(shownDay()).toHaveTextContent("2026-01-02"));
+  });
+
+  it("point the way the page reads: flipped in Arabic (previous is at the start, on the right)", async () => {
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getByTestId("previous-day")).toBeInTheDocument());
+    ["previous-day", "next-day"].forEach((id) => expect(screen.getByTestId(id).querySelector("svg")).toHaveClass("rtl:rotate-180"));
+  });
+
+  it("in English", async () => {
+    const { LanguageProvider } = await import("@/lib/i18n");
+    render(<LanguageProvider initialLang="en"><Dashboard /></LanguageProvider>);
+    await waitFor(() => expect(screen.getByTestId("previous-day")).toHaveAccessibleName("Previous day"));
+    expect(screen.getByTestId("next-day")).toHaveAccessibleName("Next day");
+  });
+});
+
+describe("Dashboard — sticky table header (user's request)", () => {
+  // jsdom has no layout: these pin what makes it stick (checked in Edge).
+  it("the column names stick to the top of the table's own scroll box, one screen tall below the app header", async () => {
+    const { container } = render(<Dashboard />);
+    await waitFor(() => expect(rowCount(container)).toBe(2));
+    const head = screen.getByTestId("table-head");
+    expect(head.tagName).toBe("THEAD");
+    expect(head).toHaveClass("sticky", "top-0", "z-10", "bg-gray-50"); // opaque, above the rows
+    const box = screen.getByTestId("table-scroll");
+    expect(box).toContainElement(head);
+    expect(box).toHaveClass("overflow-auto"); // the box scrolls both ways (sideways on phones)
+    expect(box.className).toMatch(/max-h-\[calc\(100vh_-_var\(--app-header-height,0px\)_-_1rem\)\]/);
+  });
+
+  it("the scroll box isn't rebuilt when the table reloads, so its scroll position is kept", async () => {
+    const { container } = render(<Dashboard />);
+    await waitFor(() => expect(rowCount(container)).toBe(2));
+    const box = screen.getByTestId("table-scroll");
+    box.scrollTop = 300; // scrolled down inside the box
+    // Between two days that both have rows (an empty day shows its message instead of the table).
+    fireEvent.click(screen.getByTestId("previous-day"));
+    await waitFor(() => expect(rowCount(container)).toBe(1));
+    fireEvent.click(screen.getByTestId("next-day"));
+    await waitFor(() => expect(rowCount(container)).toBe(2));
+    expect(screen.getByTestId("table-scroll")).toBe(box); // the same element, never swapped for "loading"
+    expect(box.scrollTop).toBe(300);
+  });
+});

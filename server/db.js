@@ -52,6 +52,25 @@ const COMMISSION_RATES_SQL = `CREATE TABLE IF NOT EXISTS commission_rates (
       UNIQUE(store_id, effective_from)
     );`;
 
+// One row per saved statement import (user's request, 2026-09-28): the file, the days it covered,
+// the store, how many rows were added (and replaced), who imported it and when. A log: nothing
+// else reads it, and deleting transactions later doesn't change it. A deleted store leaves its
+// entries with store_id NULL.
+const IMPORT_HISTORY_SQL = `CREATE TABLE IF NOT EXISTS import_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      store_id INTEGER REFERENCES stores(id) ON DELETE SET NULL,
+      file_name TEXT NOT NULL DEFAULT '',
+      source TEXT,                 -- "csv" | "pdf" (NULL when the client didn't say)
+      period_from TEXT,            -- the first and last day of the imported rows
+      period_to TEXT,
+      row_count INTEGER NOT NULL,
+      replaced_count INTEGER NOT NULL DEFAULT 0,
+      imported_by TEXT NOT NULL,   -- the user's email (moved with them on an email change)
+      imported_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_import_history_store ON import_history(store_id, imported_at);
+    CREATE INDEX IF NOT EXISTS idx_import_history_by ON import_history(imported_by, imported_at);`;
+
 export const initializeDb = () => {
   db.exec(`
     CREATE TABLE IF NOT EXISTS transactions (
@@ -131,6 +150,8 @@ export const initializeDb = () => {
     ${CLOSED_DAYS_SQL}
 
     ${COMMISSION_RATES_SQL}
+
+    ${IMPORT_HISTORY_SQL}
 
     -- One-time upgrade steps already applied (e.g. "granted:data:export").
     CREATE TABLE IF NOT EXISTS app_meta (
