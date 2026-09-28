@@ -16,6 +16,7 @@ import { api } from "@/api/apiClient";
 import { setAuthRole } from "./authMock";
 import { clearToasts, findToast } from "./toastHelpers";
 import { installFakeDashboard } from "./fakeDashboardApi";
+import { dayButton, openCalendar, shownDay } from "./datePickerHelpers";
 
 vi.mock("@/lib/AuthContext", async () => (await import("./authMock")).authContextMock);
 vi.mock("@/components/layout/Header", () => ({ default: () => null }));
@@ -28,7 +29,7 @@ vi.mock("@/api/apiClient", () => ({
     },
     closedDays: { list: vi.fn(), close: vi.fn(), reopen: vi.fn() },
     commissionRates: { get: vi.fn() },
-    dashboard: { day: vi.fn(), summary: vi.fn(), search: vi.fn(), party: vi.fn(), cleanupBalances: vi.fn() },
+    dashboard: { day: vi.fn(), days: vi.fn(), summary: vi.fn(), search: vi.fn(), party: vi.fn(), cleanupBalances: vi.fn() },
   },
 }));
 
@@ -84,6 +85,20 @@ describe("closing a day", () => {
     expect(await screen.findByTestId("closed-day-banner")).toHaveTextContent(`${DAY} مغلق: لا يمكن إجراء أي تغيير.`);
     expect(screen.getByTestId("closed-day-banner")).toHaveTextContent("أغلقه admin@test.local");
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("the date picker marks a day as closed once it is (and unmarks it when reopened)", async () => {
+    await renderDashboard();
+    let calendar = await openCalendar();
+    expect(dayButton(calendar, DAY)).not.toHaveTextContent("🔒");
+    fireEvent.keyDown(calendar, { key: "Escape" });
+    fireEvent.click(screen.getByTestId("close-day"));
+    fireEvent.click(within(screen.getByRole("alertdialog")).getByTestId("confirm-day-change"));
+    await screen.findByTestId("closed-day-banner");
+    calendar = await openCalendar();
+    expect(dayButton(calendar, DAY)).toHaveTextContent("🔒");
+    expect(dayButton(calendar, DAY)).toHaveAccessibleName(/مغلق$/);
+    expect(dayButton(calendar, "2026-09-22")).not.toHaveTextContent("🔒");
   });
 
   it("cancel closes nothing", async () => {
@@ -154,11 +169,11 @@ describe("closing a day", () => {
 describe("dashboard options", () => {
   it("start on: the last day viewed by default, or always today", async () => {
     const { unmount } = render(withApp(<Dashboard />));
-    expect(await screen.findByDisplayValue(DAY)).toBeInTheDocument();
+    await waitFor(() => expect(shownDay()).toHaveTextContent(DAY));
     unmount();
     setAuthRole("admin", { preferences: { startOn: "today" } });
     render(withApp(<Dashboard />));
-    expect(await screen.findByDisplayValue(format(new Date(), "yyyy-MM-dd"))).toBeInTheDocument();
+    await waitFor(() => expect(shownDay()).toHaveTextContent(format(new Date(), "yyyy-MM-dd")));
   });
 
   it("default search scope: 'this day' makes the switch start there", async () => {

@@ -8,7 +8,7 @@ import { installFakeDashboard } from "./fakeDashboardApi";
 // The report asks the server (every day, not just what the page loaded); the fake answers the way
 // server/dashboard.js does, with the shared matching rules.
 vi.mock("@/api/apiClient", () => ({
-  api: { dashboard: { day: vi.fn(), summary: vi.fn(), search: vi.fn(), party: vi.fn(), cleanupBalances: vi.fn() } },
+  api: { dashboard: { day: vi.fn(), days: vi.fn(), summary: vi.fn(), search: vi.fn(), party: vi.fn(), cleanupBalances: vi.fn() } },
 }));
 
 const transactions = [

@@ -61,5 +61,12 @@ export const installFakeDashboard = (api, getRows, getBalances = () => [], { max
     const rows = q ? numbered(storeId).filter((t) => match(t, q) && (!from || dayOf(t) >= from) && (!to || dayOf(t) <= to)) : [];
     return { party, q, totals: totals(rows), ...capped(rows) };
   });
+  api.dashboard.days?.mockImplementation(async (month, storeId) => {
+    const counts = new Map();
+    for (const row of getRows().filter(inStore(storeId))) {
+      if (dayOf(row).startsWith(month)) counts.set(dayOf(row), (counts.get(dayOf(row)) ?? 0) + 1);
+    }
+    return { month, days: [...counts].sort(([a], [b]) => a.localeCompare(b)).map(([date, count]) => ({ date, count })) };
+  });
   api.dashboard.cleanupBalances.mockImplementation(async () => ({ deleted: 0 }));
 };

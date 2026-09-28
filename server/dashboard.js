@@ -7,6 +7,8 @@
 //                                                       wallet figures (exact: counted over every row)
 //   GET  /local-api/dashboard/search?q=[&month=YYYY-MM] matching transactions on any day, or on
 //                                                       that month's days ("This month")
+//   GET  /local-api/dashboard/days?month=YYYY-MM        the month's days that have transactions, with
+//                                                       how many each has (the date picker's highlights)
 //   GET  /local-api/dashboard/party?party=sender|receiver&q=[&from=&to=]
 //                                                       the sender / receiver report: rows and totals
 //   POST /local-api/daily-balances/cleanup { date }     after deletes: remove that day's opening
@@ -120,6 +122,23 @@ export const registerDashboardRoutes = (app) => {
       year: totalsOf(store, "substr(day, 1, 4) = ?", [date.slice(0, 4)]),
       wallet: hasPermission(req.user, P.BALANCES_READ) ? walletOf(store)(date) : null,
     });
+  });
+
+  // The date picker: one grouped query per month shown. "All stores" counts every store's rows.
+  app.get("/local-api/dashboard/days", canRead, (req, res) => {
+    const month = req.query.month || "";
+    if (!isMonth(month)) { res.status(400).json({ error: "A valid month is required (YYYY-MM)" }); return; }
+    const store = storeFor(req, res);
+    if (!store) return;
+    if (store.none) { res.json({ month, days: [] }); return; }
+    const scope = inStore(store);
+    const days = db.prepare(
+      `SELECT day AS date, COUNT(*) AS count
+       FROM (SELECT ${TX_DAY} AS day FROM transactions WHERE ${scope.sql})
+       WHERE substr(day, 1, 7) = ?
+       GROUP BY day ORDER BY day`
+    ).all(...scope.params, month);
+    res.json({ month, days });
   });
 
   app.get("/local-api/dashboard/search", canRead, (req, res) => {

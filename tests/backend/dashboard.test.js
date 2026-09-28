@@ -227,3 +227,50 @@ describe("opening balance cleanup after deletes", () => {
     expect(balances()).toHaveLength(1);
   });
 });
+
+describe("the date picker's days (GET /dashboard/days)", () => {
+  const days = async (query, as = "admin") => get(`/dashboard/days?${new URLSearchParams(query)}`, as);
+
+  it("lists the month's days that have transactions, with how many each has, in date order", async () => {
+    addDay("2026-09-23", 3);
+    addDay("2026-09-01", 1);
+    addDay("2026-08-31", 7); // another month
+    addDay("2025-09-10", 2); // same month, another year
+    // A row without transaction_date counts on its created_date's day, like everywhere else.
+    addDay("", 1, { created_date: "2026-09-12T08:00:00Z" });
+    const res = await days({ month: "2026-09" }, "manager");
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ month: "2026-09", days: [
+      { date: "2026-09-01", count: 1 }, { date: "2026-09-12", count: 1 }, { date: "2026-09-23", count: 3 },
+    ] });
+    expect((await days({ month: "2026-10" })).body.days).toEqual([]);
+  });
+
+  it("counts only the stores the user can see; the Admin's All stores counts every store", async () => {
+    addDay("2026-09-05", 2);
+    addDay("2026-09-05", 4, { store_id: store2 });
+    addDay("2026-09-06", 1, { store_id: store2 });
+    expect((await days({ month: "2026-09" }, "user")).body.days).toEqual([{ date: "2026-09-05", count: 2 }]);
+    expect((await days({ month: "2026-09" }, "other")).body.days).toEqual([{ date: "2026-09-05", count: 4 }, { date: "2026-09-06", count: 1 }]);
+    expect((await days({ month: "2026-09" })).body.days).toEqual([{ date: "2026-09-05", count: 6 }, { date: "2026-09-06", count: 1 }]);
+    expect((await days({ month: "2026-09", store_id: store2 })).body.days).toEqual([{ date: "2026-09-05", count: 4 }, { date: "2026-09-06", count: 1 }]);
+    // A User can't ask for another store's days.
+    expect((await days({ month: "2026-09", store_id: store2 }, "user")).status).toBe(403);
+  });
+
+  it("someone with no store gets no days", async () => {
+    addDay("2026-09-05", 2);
+    expect((await days({ month: "2026-09" }, "loose")).body).toEqual({ month: "2026-09", days: [] });
+  });
+
+  it.each(["", "2026-9", "2026-00", "2026-09-01", "abc"])("refuses the month %j", async (month) => {
+    const res = await days({ month });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("A valid month is required (YYYY-MM)");
+  });
+
+  it("needs a session", async () => {
+    const res = await fetch(`${srv.baseUrl}/local-api/dashboard/days?month=2026-09`);
+    expect(res.status).toBe(401);
+  });
+});

@@ -153,6 +153,8 @@ export const api = {
     day: async (date, storeId) => apiRequest(`/dashboard/day${query({ date, store_id: storeId })}`, { method: 'GET' }),
     // { day, month, year: { count, deposits, withdrawals, commissions }, wallet: { opening_balance, net_balance } }
     summary: async (date, storeId) => apiRequest(`/dashboard/summary${query({ date, store_id: storeId })}`, { method: 'GET' }),
+    // The date picker: { month, days: [{ date, count }] }, the month's days that have transactions.
+    days: async (month, storeId) => apiRequest(`/dashboard/days${query({ month, store_id: storeId })}`, { method: 'GET' }),
     // month: "YYYY-MM" to search only that month's days ("This month"); omitted for every day.
     search: async (q, month, storeId) => apiRequest(`/dashboard/search${query({ q, month, store_id: storeId })}`, { method: 'GET' }),
     // party: "sender" | "receiver" → also { totals }

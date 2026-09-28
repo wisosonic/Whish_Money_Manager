@@ -184,3 +184,15 @@
 /* Gradients on light-only screens (e.g. the access-restricted page) */
 .dark .from-white { --tw-gradient-from: #1e293b var(--tw-gradient-from-position); --tw-gradient-to: rgb(30 41 59 / 0) var(--tw-gradient-to-position); --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to); }
 .dark .to-slate-50 { --tw-gradient-to: #0f172a var(--tw-gradient-to-position); }
+
+/* ═══ Dashboard date picker: how busy a day is (JournalDatePicker) ═══
+   One blue ramp, lightest = fewest transactions. The selected day keeps its own colour. Text on
+   every step is ≥ 4.9:1 in both themes; the count is also in each day's accessible name. */
+.day-busy-1:not([aria-selected="true"]) { background-color: #dbeafe; color: #0f172a; }
+.day-busy-2:not([aria-selected="true"]) { background-color: #bfdbfe; color: #0f172a; }
+.day-busy-3:not([aria-selected="true"]) { background-color: #93c5fd; color: #0f172a; }
+.day-busy-4:not([aria-selected="true"]) { background-color: #60a5fa; color: #0f172a; }
+.dark .day-busy-1:not([aria-selected="true"]) { background-color: #1e3a5f; color: #f8fafc; }
+.dark .day-busy-2:not([aria-selected="true"]) { background-color: #1e40af; color: #f8fafc; }
+.dark .day-busy-3:not([aria-selected="true"]) { background-color: #1d4ed8; color: #f8fafc; }
+.dark .day-busy-4:not([aria-selected="true"]) { background-color: #2563eb; color: #f8fafc; }

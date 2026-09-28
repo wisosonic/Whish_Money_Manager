@@ -14,6 +14,7 @@ import { useI18n } from "@/lib/i18n";
 import { notify } from "@/lib/notify";
 import { NO_SORT, nextSort, sortTransactions } from "@/lib/transactionSort";
 import { usePreferences } from "@/lib/PreferencesContext";
+import JournalDatePicker from "./JournalDatePicker";
 import { SEARCH_SCOPES, TABLE_COLUMNS } from "@/lib/preferences";
 
 // ═══ Type column: icon + sorting ═══
@@ -339,12 +340,8 @@ export default function TransactionsList({
 
         <div className="flex items-center gap-2 text-sm text-gray-600">
           <span className="font-medium text-[hsl(var(--foreground))]">{tr("list.journal")}:</span>
-          <input
-            type="date"
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-            className="border rounded-lg px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 font-bold text-[hsl(var(--foreground))]" />
-          
+          <JournalDatePicker value={selectedDate} onChange={setSelectedDate} storeId={storeId} closedDates={closedDates} />
+
           <button
             onClick={onToday}
             className="bg-gray-100 hover:bg-gray-200 px-3 py-1 rounded-lg text-sm font-medium transition text-[hsl(var(--popover-foreground))]">

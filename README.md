@@ -20,6 +20,7 @@ It runs entirely on your machine: a React frontend and a small Node.js/Express A
 ## Features
 
 - **Daily journal**: every transaction for the selected day, with deposits (Cash In), withdrawals (Cash Out), commissions and the running wallet balance.
+- **Date picker with busy days**: click the day shown next to "اليومية" to open a calendar. Days with transactions are shaded blue, darker the busier they are compared with the month's busiest day, and closed days show a 🔒. The month and year lists (or the arrows) move to another month; each day's tooltip and screen-reader name give its count ("2026-09-22 · 3 عملية"). The counts are fetched each time the calendar opens or changes month, so they're current after an import or a delete. In "All stores" the shades count every store and closed days aren't marked (days are closed per store).
 - **Monthly and yearly summaries**: two collapsible blocks at the top of the dashboard. Both follow the month and year of the date selected in the date picker.
   - **ملخص الشهر** (open by default): wallet net balance, number of transactions, commissions, withdrawals and deposits for the month.
   - **ملخص السنة** (collapsed by default): number of transactions, commissions, withdrawals and deposits for the year.
@@ -415,7 +416,7 @@ Safety rules: there must always be at least one active Admin, and an Admin can't
 
 ### Daily workflow
 
-1. Pick the day with the date picker ("اليومية") or press "اليوم" for today.
+1. Pick the day with the date picker ("اليومية"; shaded days have transactions) or press "اليوم" for today.
 2. Import the CSV statement from Whish Money ("استيراد PDF / CSV"). Check the reconciliation banner before saving.
 3. Only if a real transaction from the statement is missing from the table, add it with **Cash In** / **Cash Out** (and ideally report the line, so the parser can learn it).
 4. Check the wallet summary: opening balance + deposits − withdrawals = net balance.
@@ -500,7 +501,8 @@ tests/
 ├── backend/
 │   ├── helpers.js            # test server, one account per role, cookie-keeping client
 │   ├── dashboard.test.js     # per-day queries (100 vs 1,000 rows), the 10,000 cap, server totals and wallet,
-│   │                         # all-days search, sender / receiver reports, opening-balance cleanup
+│   │                         # all-days / this-month search, sender / receiver reports, opening-balance
+│   │                         # cleanup, the date picker's days per month
 │   ├── api.test.js           # HTTP API (as Admin): CRUD, shared store data, created_by, filter safety,
 │   │                         # balances, import, duplicates/overwrite, bulk update/delete
 │   ├── auth.test.js          # login, cookie flags, JWT (no expiry), tampered/forged tokens, 401 on
@@ -552,8 +554,11 @@ tests/
     ├── ReceiverReportModal.test.jsx  # receiver matching, totals, date filter
     ├── branding.test.jsx             # header (logo, name, role, last login, sticky), login page, tab title/icon, manifest
     ├── notifications.test.jsx        # toasts: position/direction/theme, kinds, and each action's feedback
-    ├── codebase.test.js              # removed modals and toast packages stay gone; no base44 names; the chart
-    │                                 # and non-dashboard pages stay loaded on demand
+    ├── codebase.test.js              # removed modals and toast packages stay gone; no base44 names; the chart,
+    │                                 # the calendar and non-dashboard pages stay loaded on demand
+    ├── JournalDatePicker.test.jsx    # the dashboard's calendar: busy shades, closed-day locks, one query per
+    │                                 # month, choosing a day, labels in both languages, direction
+    ├── calendarDays.test.js          # busy levels relative to the month's busiest day, date helpers
     ├── i18n.test.jsx                 # language toggle: dictionaries match, no untranslated text, cookie,
     │                                 # page direction, main screens in English
     ├── StatsCards.test.jsx           # monthly/yearly summaries: defaults, collapse, layout, animation

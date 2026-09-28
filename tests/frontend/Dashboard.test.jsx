@@ -7,6 +7,7 @@ import { setAuthRole } from "./authMock";
 import AppToaster from "@/components/layout/AppToaster";
 import { clearToasts, findToast } from "./toastHelpers";
 import { installFakeDashboard } from "./fakeDashboardApi";
+import { dayButton, openCalendar, pickDay, shownDay } from "./datePickerHelpers";
 
 vi.mock("@/lib/AuthContext", async () => (await import("./authMock")).authContextMock);
 beforeEach(() => setAuthRole("admin"));
@@ -21,7 +22,7 @@ vi.mock("@/api/apiClient", () => ({
     },
     closedDays: { list: vi.fn(), close: vi.fn(), reopen: vi.fn() },
     commissionRates: { get: vi.fn() },
-    dashboard: { day: vi.fn(), summary: vi.fn(), search: vi.fn(), party: vi.fn(), cleanupBalances: vi.fn() },
+    dashboard: { day: vi.fn(), days: vi.fn(), summary: vi.fn(), search: vi.fn(), party: vi.fn(), cleanupBalances: vi.fn() },
   },
 }));
 
@@ -178,7 +179,7 @@ describe("Dashboard search — all days", () => {
     search("OTHER DAY");
     await waitFor(() => expect(rowCount(container)).toBe(1));
     fireEvent.click(screen.getByRole("button", { name: "2026-09-22" }));
-    await waitFor(() => expect(screen.getByDisplayValue("2026-09-22")).toBeInTheDocument());
+    await waitFor(() => expect(shownDay()).toHaveTextContent("2026-09-22"));
     expect(screen.getByPlaceholderText(/ابحث عن اسم/)).toHaveValue("");
     expect(screen.queryByTestId("all-days-results")).not.toBeInTheDocument();
     expect(senders(container)).toEqual(["OTHER DAY"]);
@@ -256,7 +257,7 @@ describe("Dashboard search — this month", () => {
     thisMonth();
     search("vicario");
     await waitFor(() => expect(rowCount(container)).toBe(3));
-    fireEvent.change(screen.getByDisplayValue("2026-09-23"), { target: { value: "2026-06-01" } });
+    await pickDay("2026-06-01");
     await waitFor(() => expect(senders(container)).toEqual(["EARLIER MONTH"]));
     expect(api.dashboard.search).toHaveBeenLastCalledWith("vicario", "2026-06");
   });
@@ -329,7 +330,7 @@ describe("Dashboard summaries", () => {
 
   it("summaries follow the date picker", async () => {
     await renderLoaded();
-    fireEvent.change(screen.getByDisplayValue("2026-09-23"), { target: { value: "2025-12-31" } });
+    await pickDay("2025-12-31");
     const yearly = screen.getByTestId("yearly-summary");
     await waitFor(() => expect(within(yearly).getByText("2025")).toBeInTheDocument());
     expect(within(yearly).getByText("1 عملية · عمولات $0.00")).toBeInTheDocument();
@@ -490,7 +491,7 @@ describe("Dashboard — one server query per day (user's report)", () => {
     await waitFor(() => expect(screen.getByText("S2026-09-02-999")).toBeInTheDocument(), { timeout: 15000 });
     expect(api.dashboard.day).toHaveBeenLastCalledWith("2026-09-02");
 
-    fireEvent.change(screen.getByDisplayValue("2026-09-02"), { target: { value: "2026-09-01" } });
+    await pickDay("2026-09-01");
     await waitFor(() => expect(api.dashboard.day).toHaveBeenLastCalledWith("2026-09-01"));
     await waitFor(() => expect(screen.getByText("S2026-09-01-99")).toBeInTheDocument(), { timeout: 15000 });
     expect(screen.queryByText("S2026-09-02-0")).not.toBeInTheDocument();
@@ -505,13 +506,30 @@ describe("Dashboard — one server query per day (user's report)", () => {
     api.dashboard.day.mockImplementationOnce(() => slow.promise); // 2026-09-23, still loading
     const { container } = render(<Dashboard />);
     await waitFor(() => expect(api.dashboard.day).toHaveBeenCalledWith("2026-09-23"));
-    fireEvent.change(screen.getByDisplayValue("2026-09-23"), { target: { value: "2026-09-22" } });
+    await pickDay("2026-09-22");
     await waitFor(() => expect(screen.getByText("OTHER DAY")).toBeInTheDocument());
     slow.resolve(await answer("2026-09-23"));
     await new Promise((r) => setTimeout(r, 20));
     expect(rowCount(container)).toBe(1);
     expect(screen.queryByText("MOUNIR TOSKA")).not.toBeInTheDocument();
   });
+
+  it("the date picker shades the days that have transactions, from the server's counts", async () => {
+    installFakeDashboard(api, () => days);
+    window.localStorage.setItem("selectedDate", "2026-09-01");
+    render(<Dashboard />);
+    await waitFor(() => expect(screen.getByText("S2026-09-01-99")).toBeInTheDocument(), { timeout: 15000 });
+    const calendar = await openCalendar();
+    await waitFor(() => expect(api.dashboard.days).toHaveBeenLastCalledWith("2026-09", undefined));
+    await waitFor(() => expect(dayButton(calendar, "2026-09-02")).toHaveClass("day-busy-4")); // 1,000 rows
+    expect(dayButton(calendar, "2026-09-01")).toHaveClass("day-busy-1"); // 100 rows
+    expect(dayButton(calendar, "2026-09-01")).toHaveAccessibleName("2026-09-01 · 100 عملية");
+    expect(dayButton(calendar, "2026-09-03").className).not.toContain("day-busy-");
+    // Choosing a shaded day opens it.
+    fireEvent.click(dayButton(calendar, "2026-09-02"));
+    await waitFor(() => expect(api.dashboard.day).toHaveBeenLastCalledWith("2026-09-02"));
+    expect(shownDay()).toHaveTextContent("2026-09-02");
+  }, 40000);
 
   it("says so when a day has more rows than the page shows (the 10,000 rule)", async () => {
     installFakeDashboard(api, () => stored, () => [], { maxRows: 1 });

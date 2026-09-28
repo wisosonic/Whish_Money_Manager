@@ -20,6 +20,7 @@ import { api } from "@/api/apiClient";
 import { setAuthRole } from "./authMock";
 import { clearToasts, findToast } from "./toastHelpers";
 import { installFakeDashboard } from "./fakeDashboardApi";
+import { pickDay, shownDay } from "./datePickerHelpers";
 
 vi.mock("@/lib/AuthContext", async () => (await import("./authMock")).authContextMock);
 vi.mock("@/api/apiClient", () => ({
@@ -37,7 +38,7 @@ vi.mock("@/api/apiClient", () => ({
     commissionRates: { get: vi.fn(), set: vi.fn(), remove: vi.fn() },
     admin: { range: vi.fn(), summary: vi.fn(), exportCsv: vi.fn(), purge: vi.fn(), restorePreview: vi.fn(), restore: vi.fn(),
       reports: { income: vi.fn(), parties: vi.fn(), stores: vi.fn() } },
-    dashboard: { day: vi.fn(), summary: vi.fn(), search: vi.fn(), party: vi.fn(), cleanupBalances: vi.fn() },
+    dashboard: { day: vi.fn(), days: vi.fn(), summary: vi.fn(), search: vi.fn(), party: vi.fn(), cleanupBalances: vi.fn() },
   },
 }));
 vi.mock("recharts", async (importOriginal) => {
@@ -230,9 +231,9 @@ describe("dashboard", () => {
     const { container } = wrap(<Dashboard />);
     await waitFor(() => expect(api.dashboard.day).toHaveBeenLastCalledWith("2026-09-22", 2));
     expect(screen.getByTestId("dashboard-store")).toHaveValue("2");
-    expect(container.querySelector('input[type="date"]')).toHaveValue("2026-09-22");
+    expect(shownDay()).toHaveTextContent("2026-09-22");
     // Choosing another day remembers it.
-    fireEvent.change(container.querySelector('input[type="date"]'), { target: { value: "2026-09-23" } });
+    await pickDay("2026-09-23");
     expect(document.cookie).toContain("wmm_selected_date=2026-09-23");
   });
 

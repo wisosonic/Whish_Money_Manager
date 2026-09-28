@@ -90,6 +90,20 @@ describe("bundle split", () => {
     expect(staticUsers).toEqual([]);
   });
 
+  it("the dashboard's calendar loads on demand: only the date picker pulls it in, lazily", () => {
+    const picker = read("src/components/dashboard/JournalDatePicker.jsx");
+    expect(picker).toContain('const loadCalendar = () => import("@/components/dashboard/JournalCalendar");');
+    expect(picker).toContain("lazy(loadCalendar)");
+    // The popup library too: Radix Popover only in the lazy calendar.
+    const popoverUsers = appSources.filter((f) => /from ["']@\/components\/ui\/popover["']/.test(fs.readFileSync(f, "utf8"))).map(relative);
+    expect(popoverUsers).toEqual(["src/components/dashboard/JournalCalendar.jsx"]);
+    const staticUsers = appSources.filter((f) => importsStatically(fs.readFileSync(f, "utf8"), "@/components/dashboard/JournalCalendar")).map(relative);
+    expect(staticUsers).toEqual([]);
+    // react-day-picker (through ui/calendar) only in the lazy calendar.
+    const calendarUsers = appSources.filter((f) => /from ["'](?:react-day-picker|@\/components\/ui\/calendar)["']/.test(fs.readFileSync(f, "utf8"))).map(relative);
+    expect(calendarUsers.sort()).toEqual(["src/components/dashboard/JournalCalendar.jsx", "src/components/ui/calendar.jsx"]);
+  });
+
   it("the dashboard's chart window is gone (user's request): the chart lives in the admin panel", () => {
     expect(fs.existsSync(path.join(root, "src/components/dashboard/MonthlyChartModal.jsx"))).toBe(false);
     const users = sources.filter((f) => f !== __filename && fs.readFileSync(f, "utf8").includes("MonthlyChartModal")).map(relative);
