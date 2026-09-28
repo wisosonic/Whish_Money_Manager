@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
-// The dashboard's date picker: a calendar in a popup, days with transactions shaded by how busy
-// they are, closed days with a 🔒, one /dashboard/days query per month shown.
+// The dashboard's date picker: a calendar in a popup, days with transactions in one colour (however
+// many), closed days with a 🔒, one /dashboard/days query per month shown.
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import JournalDatePicker from "@/components/dashboard/JournalDatePicker";
@@ -25,7 +25,7 @@ const renderPicker = (props = {}, lang) => {
   render(lang ? <LanguageProvider initialLang={lang}>{ui}</LanguageProvider> : ui);
   return { onChange };
 };
-const shade = (button) => [...button.classList].find((c) => c.startsWith("day-busy-")) ?? null;
+const highlighted = (button) => button.classList.contains("day-has-data");
 
 describe("JournalDatePicker", () => {
   it("replaces the date field: a button showing the day, which opens a calendar", async () => {
@@ -49,13 +49,16 @@ describe("JournalDatePicker", () => {
     expect(api.dashboard.days).toHaveBeenCalledTimes(1);
   });
 
-  it("shades days with transactions, darker the busier, and says how many in each day's name", async () => {
+  it("marks every day with transactions in one colour, however many, and says how many in its name", async () => {
     renderPicker();
     const calendar = await openCalendar();
-    await waitFor(() => expect(shade(dayButton(calendar, "2026-09-10"))).toBe("day-busy-2"));
-    expect(shade(dayButton(calendar, "2026-09-23"))).toBe("day-busy-4"); // the month's busiest
-    expect(shade(dayButton(calendar, "2026-09-01"))).toBe("day-busy-1");
-    expect(shade(dayButton(calendar, "2026-09-02"))).toBeNull(); // no transactions
+    await waitFor(() => expect(highlighted(dayButton(calendar, "2026-09-10"))).toBe(true));
+    // 1, 20 and 40 transactions: the same single class (user's request: no shades).
+    ["2026-09-01", "2026-09-10", "2026-09-23"].forEach((day) => {
+      expect([...dayButton(calendar, day).classList].filter((c) => c.startsWith("day-"))).toContain("day-has-data");
+    });
+    expect(calendar.querySelectorAll('[class*="day-busy-"]')).toHaveLength(0); // the old shades are gone
+    expect(highlighted(dayButton(calendar, "2026-09-02"))).toBe(false); // no transactions
     expect(dayButton(calendar, "2026-09-10")).toHaveAccessibleName("2026-09-10 · 20 عملية");
     expect(dayButton(calendar, "2026-09-02")).toHaveAccessibleName("2026-09-02 · لا عمليات");
   });
@@ -69,13 +72,20 @@ describe("JournalDatePicker", () => {
     expect(dayButton(calendar, "2026-09-16")).not.toHaveTextContent("🔒");
   });
 
-  it("shows a legend for the shades and the lock", async () => {
+  it("shows a legend: one swatch for days with transactions, and the lock", async () => {
     renderPicker();
     const legend = within(await openCalendar()).getByTestId("calendar-legend");
-    expect(legend).toHaveTextContent("أقل");
-    expect(legend).toHaveTextContent("أكثر");
+    expect(legend).toHaveTextContent("فيه عمليات");
     expect(legend).toHaveTextContent("🔒 يوم مغلق");
-    expect(legend.querySelectorAll('[class*="day-busy-"]')).toHaveLength(4);
+    expect(legend.querySelectorAll(".day-has-data")).toHaveLength(1);
+  });
+
+  it("a day counted 0 is not highlighted", async () => {
+    api.dashboard.days.mockResolvedValue({ month: "2026-09", days: [{ date: "2026-09-05", count: 0 }, { date: "2026-09-06", count: 1 }] });
+    renderPicker();
+    const calendar = await openCalendar();
+    await waitFor(() => expect(highlighted(dayButton(calendar, "2026-09-06"))).toBe(true));
+    expect(highlighted(dayButton(calendar, "2026-09-05"))).toBe(false);
   });
 
   it("moving to another month asks for that month; an answer for a month left behind is ignored", async () => {
@@ -87,7 +97,7 @@ describe("JournalDatePicker", () => {
     await waitFor(() => expect(api.dashboard.days).toHaveBeenLastCalledWith("2026-10", undefined));
     answerSeptember();
     await new Promise((r) => setTimeout(r, 20));
-    expect(calendar.querySelectorAll('[class*="day-busy-"]:not([aria-hidden])')).toHaveLength(0);
+    expect(calendar.querySelectorAll("button.day-has-data")).toHaveLength(0);
 
     showMonth(calendar, "2025-03");
     await waitFor(() => expect(api.dashboard.days).toHaveBeenLastCalledWith("2025-03", undefined));
@@ -112,12 +122,12 @@ describe("JournalDatePicker", () => {
     await waitFor(() => expect(api.dashboard.days).toHaveBeenCalledTimes(2));
   });
 
-  it("without the counts (a failed request) the calendar still works, with no shades", async () => {
+  it("without the counts (a failed request) the calendar still works, with nothing highlighted", async () => {
     api.dashboard.days.mockRejectedValue(new Error("offline"));
     const { onChange } = renderPicker();
     const calendar = await openCalendar();
     await waitFor(() => expect(api.dashboard.days).toHaveBeenCalled());
-    expect(calendar.querySelectorAll('button[class*="day-busy-"]')).toHaveLength(0);
+    expect(calendar.querySelectorAll("button.day-has-data")).toHaveLength(0);
     fireEvent.click(dayButton(calendar, "2026-09-02"));
     expect(onChange).toHaveBeenCalledWith("2026-09-02");
   });

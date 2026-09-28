@@ -23,7 +23,7 @@ It runs entirely on your machine: a React frontend and a small Node.js/Express A
 - **Previous / next day**: the ‹ and › arrows on either side of the date step one day back or forward, without opening the calendar. They follow the reading direction: in Arabic "previous" is on the right.
 - **Sticky table header**: the column names stay visible while you scroll through a long day. The table scrolls inside its own box, one screen tall, so on a phone it still scrolls sideways too.
 - **Import history** (**سجل الاستيراد** in the header): every statement saved from the import screen, newest first: when, the file name and type, the days it covers, the store, how many transactions were added (and replaced), and who imported it. The Admin sees every store's imports (and can pick one store), a Manager their store's, and a User only their own. The history is a log: deleting the imported transactions later doesn't remove its entries.
-- **Date picker with busy days**: click the day shown next to "اليومية" to open a calendar. Days with transactions are shaded blue, darker the busier they are compared with the month's busiest day, and closed days show a 🔒. The month and year lists (or the arrows) move to another month; each day's tooltip and screen-reader name give its count ("2026-09-22 · 3 عملية"). The counts are fetched each time the calendar opens or changes month, so they're current after an import or a delete. In "All stores" the shades count every store and closed days aren't marked (days are closed per store).
+- **Date picker that marks days with data**: click the day shown next to "اليومية" to open a calendar. Every day that has transactions is highlighted in one blue, however many it has, and closed days show a 🔒. The month and year lists (or the arrows) move to another month; each day's tooltip and screen-reader name give its count ("2026-09-22 · 3 عملية"). The counts are fetched each time the calendar opens or changes month, so they're current after an import or a delete. In "All stores" a day is highlighted if any store has transactions on it, and closed days aren't marked (days are closed per store).
 - **Monthly and yearly summaries**: two collapsible blocks at the top of the dashboard. Both follow the month and year of the date selected in the date picker.
   - **ملخص الشهر** (open by default): wallet net balance, number of transactions, commissions, withdrawals and deposits for the month.
   - **ملخص السنة** (collapsed by default): number of transactions, commissions, withdrawals and deposits for the year.
@@ -423,7 +423,7 @@ Safety rules: there must always be at least one active Admin, and an Admin can't
 
 ### Daily workflow
 
-1. Pick the day with the date picker ("اليومية"; shaded days have transactions), step with the ‹ › arrows beside it, or press "اليوم" for today.
+1. Pick the day with the date picker ("اليومية"; highlighted days have transactions), step with the ‹ › arrows beside it, or press "اليوم" for today.
 2. Import the CSV statement from Whish Money ("استيراد PDF / CSV"). Check the reconciliation banner before saving.
 3. Only if a real transaction from the statement is missing from the table, add it with **Cash In** / **Cash Out** (and ideally report the line, so the parser can learn it).
 4. Check the wallet summary: opening balance + deposits − withdrawals = net balance.
@@ -570,9 +570,9 @@ tests/
     ├── notifications.test.jsx        # toasts: position/direction/theme, kinds, and each action's feedback
     ├── codebase.test.js              # removed modals and toast packages stay gone; no base44 names; the chart,
     │                                 # the calendar and non-dashboard pages stay loaded on demand
-    ├── JournalDatePicker.test.jsx    # the dashboard's calendar: busy shades, closed-day locks, one query per
+    ├── JournalDatePicker.test.jsx    # the dashboard's calendar: days with data, closed-day locks, one query per
     │                                 # month, choosing a day, labels in both languages, direction
-    ├── calendarDays.test.js          # busy levels relative to the month's busiest day, date helpers
+    ├── calendarDays.test.js          # which days are highlighted, one day back / forward, date helpers
     ├── i18n.test.jsx                 # language toggle: dictionaries match, no untranslated text, cookie,
     │                                 # page direction, main screens in English
     ├── StatsCards.test.jsx           # monthly/yearly summaries: defaults, collapse, layout, animation

@@ -514,18 +514,19 @@ describe("Dashboard — one server query per day (user's report)", () => {
     expect(screen.queryByText("MOUNIR TOSKA")).not.toBeInTheDocument();
   });
 
-  it("the date picker shades the days that have transactions, from the server's counts", async () => {
+  it("the date picker highlights the days that have transactions, from the server's counts", async () => {
     installFakeDashboard(api, () => days);
     window.localStorage.setItem("selectedDate", "2026-09-01");
     render(<Dashboard />);
     await waitFor(() => expect(screen.getByText("S2026-09-01-99")).toBeInTheDocument(), { timeout: 15000 });
     const calendar = await openCalendar();
     await waitFor(() => expect(api.dashboard.days).toHaveBeenLastCalledWith("2026-09", undefined));
-    await waitFor(() => expect(dayButton(calendar, "2026-09-02")).toHaveClass("day-busy-4")); // 1,000 rows
-    expect(dayButton(calendar, "2026-09-01")).toHaveClass("day-busy-1"); // 100 rows
+    // 1,000 rows and 100 rows: the same one colour.
+    await waitFor(() => expect(dayButton(calendar, "2026-09-02")).toHaveClass("day-has-data"));
+    expect(dayButton(calendar, "2026-09-01")).toHaveClass("day-has-data");
     expect(dayButton(calendar, "2026-09-01")).toHaveAccessibleName("2026-09-01 · 100 عملية");
-    expect(dayButton(calendar, "2026-09-03").className).not.toContain("day-busy-");
-    // Choosing a shaded day opens it.
+    expect(dayButton(calendar, "2026-09-03")).not.toHaveClass("day-has-data");
+    // Choosing a highlighted day opens it.
     fireEvent.click(dayButton(calendar, "2026-09-02"));
     await waitFor(() => expect(api.dashboard.day).toHaveBeenLastCalledWith("2026-09-02"));
     expect(shownDay()).toHaveTextContent("2026-09-02");

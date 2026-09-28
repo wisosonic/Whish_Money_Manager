@@ -5,7 +5,7 @@ import { api } from "@/api/apiClient";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import JournalDayButton from "@/components/dashboard/JournalDayButton";
-import { BUSY_LEVELS, busyLevels, fromIsoDay, isoDay, isoMonth } from "@/lib/calendarDays";
+import { daysWithData, fromIsoDay, isoDay, isoMonth } from "@/lib/calendarDays";
 import { useI18n } from "@/lib/i18n";
 
 // The dashboard's date picker popup (loaded on demand by JournalDatePicker, so the dashboard's own
@@ -14,12 +14,11 @@ import { useI18n } from "@/lib/i18n";
 // The month's counts come from GET /dashboard/days, asked each time the popup opens or shows another
 // month, so they're always current after an import, a delete or any other change.
 //
-// Days with transactions are shaded, darker the busier they are (relative to the month's busiest
-// day), and closed days carry a 🔒. Every mark is also in the day's accessible name
-// ("2026-09-22 · 3 transactions · Closed"), so none is colour-alone.
+// Days with transactions have one colour, however many (user's request, 2026-09-28), and closed days
+// carry a 🔒. Every mark is also in the day's accessible name ("2026-09-22 · 3 transactions ·
+// Closed"), so none is colour-alone.
 
 const FIRST_YEAR = 2000;
-const BUSY_CLASSES = Object.fromEntries(Array.from({ length: BUSY_LEVELS }, (_, i) => [`busy${i + 1}`, `day-busy-${i + 1}`]));
 
 // What each day shows; a context keeps DayContent a stable component (no remount on every render).
 const DayInfo = createContext({ counts: new Map(), t: (k) => k, num: String });
@@ -88,11 +87,10 @@ export default function JournalCalendarPopup({ value, onChange, storeId, closedD
 function MonthCalendar({ month, onMonthChange, days, closedDates, value, onSelect }) {
   const { t, num, dir, lang } = useI18n();
   const counts = useMemo(() => new Map(days.map((d) => [d.date, Number(d.count) || 0])), [days]);
-  const modifiers = useMemo(() => {
-    const byLevel = Object.fromEntries(Object.keys(BUSY_CLASSES).map((key) => [key, []]));
-    for (const [date, level] of busyLevels(days)) byLevel[`busy${level}`].push(fromIsoDay(date));
-    return { ...byLevel, closed: [...closedDates].map(fromIsoDay) };
-  }, [days, closedDates]);
+  const modifiers = useMemo(() => ({
+    hasData: daysWithData(days).map(fromIsoDay),
+    closed: [...closedDates].map(fromIsoDay),
+  }), [days, closedDates]);
   const info = useMemo(() => ({ counts, t, num }), [counts, t, num]);
   const locale = lang === "ar" ? ar : enUS;
 
@@ -114,7 +112,7 @@ function MonthCalendar({ month, onMonthChange, days, closedDates, value, onSelec
           selected={fromIsoDay(value)}
           onSelect={(date) => { if (date) onSelect(isoDay(date)); }}
           modifiers={modifiers}
-          modifiersClassNames={{ ...BUSY_CLASSES, closed: "day-closed" }}
+          modifiersClassNames={{ hasData: "day-has-data", closed: "day-closed" }}
           formatters={{
             formatMonthCaption: (date) => t(`months.${date.getMonth() + 1}`),
             formatYearCaption: (date) => num(date.getFullYear()),
@@ -138,7 +136,7 @@ function MonthCalendar({ month, onMonthChange, days, closedDates, value, onSelec
             dropdown: "rounded-md border px-1 py-0.5 text-xs bg-transparent focus:outline-none focus:ring-2 focus:ring-blue-300",
             nav_button_previous: "absolute start-1",
             nav_button_next: "absolute end-1",
-            // A gap between the days (user's request): shaded days next to each other stay apart.
+            // A gap between the days (user's request): highlighted days next to each other stay apart.
             table: "w-full border-collapse",
             head_row: "flex gap-1",
             row: "flex w-full gap-1 mt-1",
@@ -152,12 +150,9 @@ function MonthCalendar({ month, onMonthChange, days, closedDates, value, onSelec
           }} />
       </DayInfo.Provider>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t px-3 py-2 text-xs text-gray-600" data-testid="calendar-legend">
-        <span className="flex items-center gap-1">
-          {t("calendar.fewer")}
-          {Array.from({ length: BUSY_LEVELS }, (_, i) =>
-            <span key={i} aria-hidden="true" className={`day-busy-${i + 1} inline-block h-3 w-3 rounded-sm border`} />
-          )}
-          {t("calendar.more")}
+        <span className="flex items-center gap-1.5">
+          <span aria-hidden="true" className="day-has-data inline-block h-3 w-3 rounded-sm border" />
+          {t("calendar.hasData")}
         </span>
         <span><span aria-hidden="true">🔒</span> {t("calendar.closedLegend")}</span>
       </div>

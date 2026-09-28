@@ -1,26 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { BUSY_LEVELS, busyLevels, fromIsoDay, isoDay, isoMonth, shiftDay } from "@/lib/calendarDays";
+import { daysWithData, fromIsoDay, isoDay, isoMonth, shiftDay } from "@/lib/calendarDays";
 
-describe("busyLevels", () => {
-  it("shades relative to the month's busiest day: the busiest is the darkest, any activity at least 1", () => {
-    const levels = busyLevels([
-      { date: "2026-09-01", count: 100 }, { date: "2026-09-02", count: 76 }, { date: "2026-09-03", count: 50 },
-      { date: "2026-09-04", count: 26 }, { date: "2026-09-05", count: 25 }, { date: "2026-09-06", count: 1 },
-    ]);
-    expect(BUSY_LEVELS).toBe(4);
-    expect(Object.fromEntries(levels)).toEqual({
-      "2026-09-01": 4, "2026-09-02": 4, "2026-09-03": 2, "2026-09-04": 2, "2026-09-05": 1, "2026-09-06": 1,
-    });
+describe("daysWithData", () => {
+  it("every day with at least one transaction, however many (one colour for all)", () => {
+    expect(daysWithData([
+      { date: "2026-09-01", count: 1000 }, { date: "2026-09-02", count: 1 }, { date: "2026-09-03", count: 0 }, { date: "2026-09-04", count: "7" },
+    ])).toEqual(["2026-09-01", "2026-09-02", "2026-09-04"]);
   });
 
-  it("a month where every day has the same count shades them all darkest", () => {
-    expect([...busyLevels([{ date: "a", count: 3 }, { date: "b", count: 3 }]).values()]).toEqual([4, 4]);
-  });
-
-  it("no days, or only zero counts: nothing is shaded", () => {
-    expect(busyLevels([]).size).toBe(0);
-    expect(busyLevels(undefined).size).toBe(0);
-    expect(busyLevels([{ date: "a", count: 0 }]).size).toBe(0);
+  it("no days, or only zero counts: nothing is highlighted", () => {
+    expect(daysWithData([])).toEqual([]);
+    expect(daysWithData(undefined)).toEqual([]);
+    expect(daysWithData([{ date: "a", count: 0 }, { date: "b" }])).toEqual([]);
   });
 });
 
