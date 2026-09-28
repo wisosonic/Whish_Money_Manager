@@ -5,6 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
+import { jsPDF } from "jspdf";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createUser } from "../../server/auth.js";
 import { db } from "../../server/db.js";
@@ -265,6 +266,51 @@ describe("per store: opening balances, closed days, commission rate", () => {
     const inStore1 = credit((await as("admin").post("/csv/extract", { text: csv, store_id: store1 })).body);
     expect(inStore1.commission).toBeCloseTo(inStore1.amount * 0.01, 3);
     expect((await as("admin").post("/csv/extract", { text: csv })).body.error).toBe("Choose a store");
+  });
+});
+
+describe("the store's name on imported rows", () => {
+  // The office's side of every imported row (the sender of a Cash Out, the receiver of a Cash In)
+  // is the name of the store the statement is imported into (user's decision, 2026-09-28).
+  const csv = () => fs.readFileSync(path.join(__dirname, "../fixtures/statement.csv"), "utf8");
+  const ownSide = (rows) => [...new Set(rows.map((t) => (t.type === "cash_out" ? t.sender_name : t.receiver_name)))];
+  const statementPdf = () => {
+    const doc = new jsPDF({ unit: "pt" });
+    doc.setFontSize(9);
+    const columns = [30, 95, 165, 215, 390, 450, 510];
+    ["DATE", "REFERENCE", "SERVICE", "DESCRIPTION", "DEBIT", "CREDIT", "BALANCE"].forEach((h, i) => doc.text(h, columns[i], 80));
+    doc.text("OPENING BALANCE", 30, 110);
+    doc.text("100.00", 510, 110);
+    [["23/09/2026", "tr:p1", "W2W", "KHALIL FAKIH - 9613077461", "", "75.00", "175.00"],
+      ["23/09/2026", "tr:p2", "W2W", "SALAM ISSA", "50.00", "", "125.00"]]
+      .forEach((row, r) => row.forEach((cell, i) => cell && doc.text(cell, columns[i], 145 + r * 35)));
+    doc.text("CLOSING BALANCE", 30, 235);
+    doc.text("125.00", 510, 235);
+    return Buffer.from(doc.output("arraybuffer")).toString("base64");
+  };
+
+  it("CSV: each store's import carries that store's name, not the statement's full_name", async () => {
+    const store1Name = db.prepare("SELECT name FROM stores WHERE id = ?").get(store1).name;
+    const inStore2 = (await as("manager2").post("/csv/extract", { text: csv() })).body;
+    expect(ownSide(inStore2.transactions)).toEqual(["Tripoli Branch"]);
+    expect(inStore2.account.full_name).toBe("Vicario"); // still reported, just not used for the rows
+    expect(ownSide((await as("admin").post("/csv/extract", { text: csv(), store_id: store1 })).body.transactions)).toEqual([store1Name]);
+    expect(ownSide((await as("admin").post("/csv/extract", { text: csv(), store_id: store2 })).body.transactions)).toEqual(["Tripoli Branch"]);
+  });
+
+  it("PDF: the same, instead of the fixed \"Vicario\"", async () => {
+    const [credit, debit] = (await as("manager2").post("/pdf/extract", { base64: statementPdf() })).body.transactions;
+    expect(credit).toMatchObject({ type: "cash_in", sender_name: "KHALIL FAKIH", receiver_name: "Tripoli Branch" });
+    expect(debit).toMatchObject({ type: "cash_out", sender_name: "Tripoli Branch", receiver_name: "SALAM ISSA" });
+  });
+
+  it("follows a renamed store on the next import", async () => {
+    await as("admin").put(`/stores/${store2}`, { name: "Tripoli Souk" });
+    try {
+      expect(ownSide((await as("manager2").post("/csv/extract", { text: csv() })).body.transactions)).toEqual(["Tripoli Souk"]);
+    } finally {
+      await as("admin").put(`/stores/${store2}`, { name: "Tripoli Branch" });
+    }
   });
 });
 

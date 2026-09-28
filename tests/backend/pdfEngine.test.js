@@ -22,9 +22,9 @@ const buildStatementPdf = ({ opening, rows, closing }) => {
   return Buffer.from(doc.output("arraybuffer"));
 };
 
-const parsePdf = async (spec) => {
+const parsePdf = async (spec, options = { accountName: "Vicario" }) => {
   const { tableRows, pageCount } = await extractPdfTable(buildStatementPdf(spec));
-  return { pageCount, ...extractTransactionsFromRows(tableRows) };
+  return { pageCount, ...extractTransactionsFromRows(tableRows, options) };
 };
 
 describe("PDF engine (pdfjs text extraction)", () => {
@@ -62,6 +62,30 @@ describe("PDF engine (pdfjs text extraction)", () => {
       customer_number: "3077461",
       commission: "0.750",
     });
+  });
+});
+
+describe("PDF engine — the office's side of each row is the store's name", () => {
+  // It used to be the fixed text "Vicario" whatever the store (user's decision, 2026-09-28).
+  const spec = {
+    opening: "100.00",
+    rows: [
+      ["23/09/2026", "tr:1", "W2W", "KHALIL FAKIH - 9613077461", "", "75.00", "175.00"],
+      ["23/09/2026", "tr:2", "W2W", "SALAM ISSA", "50.00", "", "125.00"],
+    ],
+    closing: "125.00",
+  };
+
+  it("Cash In: received by the store; Cash Out: sent by the store", async () => {
+    const [credit, debit] = (await parsePdf(spec, { accountName: "Tripoli Branch" })).transactions;
+    expect(credit).toMatchObject({ type: "cash_in", sender_name: "KHALIL FAKIH", receiver_name: "Tripoli Branch" });
+    expect(debit).toMatchObject({ type: "cash_out", sender_name: "Tripoli Branch", receiver_name: "SALAM ISSA" });
+  });
+
+  it("nothing is hard-coded: without a store name the office's side stays empty", async () => {
+    const [credit, debit] = (await parsePdf(spec, {})).transactions;
+    expect(credit.receiver_name).toBe("");
+    expect(debit.sender_name).toBe("");
   });
 });
 

@@ -408,7 +408,9 @@ const inferIsDebit = (row, service, normalizedDescription) => {
 
 // rateFor(date) → the office commission rate (percent) on that day; 1% unless the server passes the
 // rate history (tests and callers without a database get the long-standing 1%).
-const extractTransactionsFromRows = (tableRows, { rateFor = () => 1 } = {}) => {
+// accountName: the name of the store the statement is imported into (user's decision, 2026-09-28).
+// It's the office's own side of every row: the sender of a Cash Out, the receiver of a Cash In.
+const extractTransactionsFromRows = (tableRows, { rateFor = () => 1, accountName = "" } = {}) => {
 
   const joinedText = tableRows.map((row) => row.join(" ")).join("\n");
   const dateMatch = joinedText.match(/\b(\d{2}\/\d{2}\/\d{4})\b/);
@@ -454,8 +456,8 @@ const extractTransactionsFromRows = (tableRows, { rateFor = () => 1 } = {}) => {
       type,
       amount,
       commission,
-      sender_name: isDebit ? "Vicario" : counterparty,
-      receiver_name: isDebit ? counterparty : "Vicario",
+      sender_name: isDebit ? accountName : counterparty,
+      receiver_name: isDebit ? counterparty : accountName,
       phone: namePhone ? namePhone.phone : "",
       customer_number: namePhone ? namePhone.customer_number : "",
       service,
@@ -564,7 +566,10 @@ app.post("/local-api/pdf/extract", requirePermission(P.TRANSACTIONS_IMPORT), asy
 
     const pdfBuffer = Buffer.from(base64, "base64");
     const { pageCount, tableRows } = await extractPdfTable(pdfBuffer);
-    const result = extractTransactionsFromRows(tableRows, { rateFor: (date) => commissionRateOn(storeId, date) });
+    const result = extractTransactionsFromRows(tableRows, {
+      rateFor: (date) => commissionRateOn(storeId, date),
+      accountName: storeById(storeId)?.name ?? "",
+    });
 
     res.json({
       ...result,
@@ -652,8 +657,9 @@ const reconcileWithRounding = ({ opening, closing, rows }) => {
   };
 };
 
-// rateFor(date) → the office commission rate on that day (see extractTransactionsFromRows).
-const extractTransactionsFromCsv = (text, { rateFor = () => 1 } = {}) => {
+// rateFor(date) → the office commission rate on that day; accountName → the store's name, written on
+// the office's side of every row (see extractTransactionsFromRows).
+const extractTransactionsFromCsv = (text, { rateFor = () => 1, accountName = "" } = {}) => {
   const content = String(text || "").replace(/^﻿/, "");
   const firstLine = content.split(/\r?\n/, 1)[0] || "";
   const delimiter = (firstLine.match(/;/g) || []).length > (firstLine.match(/,/g) || []).length ? ";" : ",";
@@ -684,7 +690,9 @@ const extractTransactionsFromCsv = (text, { rateFor = () => 1 } = {}) => {
     .map((row) => toRecord(transactionHeader, row))
     .filter((record) => csvDateToIso(record.date));
 
-  const accountName = summary.full_name || "Vicario";
+  // The office's side of each row is always the store's name (user's decision, 2026-09-28), never the
+  // statement's full_name: that's the Whish account holder, who may be a person rather than the store.
+  // full_name is still returned in `account` below.
 
   const transactions = records.map((record, index) => {
     const debit = parseAmount(record.debit);
@@ -797,7 +805,10 @@ app.post("/local-api/csv/extract", requirePermission(P.TRANSACTIONS_IMPORT), (re
       return;
     }
 
-    res.json(extractTransactionsFromCsv(text, { rateFor: (date) => commissionRateOn(storeId, date) }));
+    res.json(extractTransactionsFromCsv(text, {
+      rateFor: (date) => commissionRateOn(storeId, date),
+      accountName: storeById(storeId)?.name ?? "",
+    }));
   } catch (error) {
     res.status(400).json({ error: error.message || "Failed to parse CSV" });
   }

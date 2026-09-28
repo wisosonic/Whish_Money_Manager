@@ -440,11 +440,12 @@ Safety rules: there must always be at least one active Admin, and an Admin can't
 | Rule | Behaviour |
 |---|---|
 | Direction | Debit → **Cash Out**, credit → **Cash In** |
+| The store's side | The **name of the store** the statement is imported into goes on the office's side of every row: the **sender** of a Cash Out, the **receiver** of a Cash In. Always the store's name, in both engines: never the CSV's `full_name` (the Whish account holder, which may be a person), and no fixed name. Renaming a store changes later imports only; rows already saved keep their name. |
 | Commission (CSV) | The office commission rate (1% unless changed in Settings → Office) on every credit, using the rate in effect on the transaction's date, rounded to 3 decimals. Debits have no commission. |
 | Commission (PDF) | The office commission rate on credits (as for CSV), except descriptions containing "cashin" or "qr topup" and services containing "reversed". Debits have no commission. |
 | `NAME - 96171588017` | Split in both engines: name → sender/receiver, `phone` = `96171588017`, `customer_number` = `71588017` (without 961) |
 | Bare phone as receiver | Moved to `phone` / `customer_number` on save |
-| Duplicates | Same reference number for the same user |
+| Duplicates | Same reference number in the same store (one already in another store blocks the import) |
 
 ### CSV statement format
 
@@ -459,6 +460,7 @@ SOA-20260923-0001,1,"=""2026-09-23""",tr:626186571,,+9613915112,50.00,0.00,"10,5
 ```
 
 - Required transaction columns: `date`, `debit`, `credit`, `balance`. Also used: `line_no`, `reference`, `service`, `description`.
+- `full_name` is read and shown with the statement's details, but the rows get the store's name (see the table above).
 - The summary section is optional. Without it, opening and closing balances are taken from the first and last rows.
 - Excel's `="…"` wrapping and thousands separators are handled.
 - The provider prints every figure rounded to the cent from more precise values (sub-cent fees, currency conversions). So a row's balance may move a cent more or less than its amount, and over a whole statement these cents can leave the closing balance one cent away from opening + credits − debits.

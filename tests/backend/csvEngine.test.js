@@ -42,7 +42,8 @@ describe("splitNamePhone", () => {
 });
 
 describe("extractTransactionsFromCsv — real statement export", () => {
-  const result = extractTransactionsFromCsv(statementCsv);
+  // The server passes the name of the store the statement is imported into.
+  const result = extractTransactionsFromCsv(statementCsv, { accountName: "Vicario" });
 
   it("reads the statement summary from the header section", () => {
     expect(result.source).toBe("csv");
@@ -110,6 +111,33 @@ describe("extractTransactionsFromCsv — real statement export", () => {
       customer_number: "71588017",
     });
     expect(result.transactions.filter((t) => t.phone)).toHaveLength(4);
+  });
+});
+
+describe("extractTransactionsFromCsv — the office's side of each row is the store's name", () => {
+  // User's decision (2026-09-28): always the store the statement is imported into, never the
+  // statement's full_name (the Whish account holder, who may be a person rather than the store).
+  const inStore = extractTransactionsFromCsv(statementCsv, { accountName: "Hamra Branch" });
+
+  it("Cash Out: sent by the store; Cash In: received by the store", () => {
+    const outs = inStore.transactions.filter((t) => t.type === "cash_out");
+    const ins = inStore.transactions.filter((t) => t.type === "cash_in");
+    expect(outs.every((t) => t.sender_name === "Hamra Branch")).toBe(true);
+    expect(ins.every((t) => t.receiver_name === "Hamra Branch")).toBe(true);
+    // The other party is untouched.
+    expect(inStore.transactions.find((t) => t.line_no === 79)).toMatchObject({ sender_name: "MOUNIR TOSKA", receiver_name: "Hamra Branch" });
+    expect(inStore.transactions[0].receiver_name).toBe("+9613915112");
+  });
+
+  it("the statement's full_name is ignored for the rows, but still reported as the account", () => {
+    expect(inStore.account.full_name).toBe("Vicario");
+    expect(inStore.transactions.some((t) => t.sender_name === "Vicario" || t.receiver_name === "Vicario")).toBe(false);
+  });
+
+  it("nothing is hard-coded: without a store name the office's side stays empty", () => {
+    const noName = extractTransactionsFromCsv(statementCsv);
+    expect(noName.transactions[0].sender_name).toBe("");
+    expect(noName.transactions.some((t) => t.sender_name === "Vicario" || t.receiver_name === "Vicario")).toBe(false);
   });
 });
 
