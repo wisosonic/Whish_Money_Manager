@@ -236,10 +236,11 @@ describe("Admin panel — header link and English", () => {
     else expect(screen.queryByTestId("admin-link")).not.toBeInTheDocument();
   });
 
-  it("the link is hidden on the admin panel itself (the dashboard link is there instead)", () => {
+  it("on the admin panel itself the link stays, marked as the current page (the dashboard link too)", () => {
     render(<LanguageProvider><MemoryRouter initialEntries={["/admin"]}><Header /></MemoryRouter></LanguageProvider>);
-    expect(screen.queryByTestId("admin-link")).not.toBeInTheDocument();
+    expect(screen.getByTestId("admin-link")).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: /لوحة التحكم/ })).toHaveAttribute("href", "/");
+    expect(screen.getByRole("link", { name: /لوحة التحكم/ })).not.toHaveAttribute("aria-current");
   });
 
   it("reads in English with singular/plural counts", async () => {

@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { User, LogOut, Users, LayoutDashboard, Settings, ShieldCheck, Store } from "lucide-react";
+import { Users, LayoutDashboard, Settings, ShieldCheck, Store } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 import { APP_NAME } from "@/lib/branding";
 import { useI18n } from "@/lib/i18n";
 import { usePreferences } from "@/lib/PreferencesContext";
 import { PERMISSIONS } from "@/lib/permissions";
 import AppLogo from "@/components/layout/AppLogo";
+import UserMenu from "@/components/layout/UserMenu";
 
 // "2026/09/23 08:05 PM" in the viewer's local time, matching the header clock's date format.
 export const formatLastLogin = (iso, { hour24 = false } = {}) => {
@@ -26,30 +27,33 @@ export const scrollToTop = () => {
   window.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
 };
 
-const ROLE_BADGE = {
-  admin: "bg-red-500/30 text-red-100",
-  manager: "bg-amber-500/30 text-amber-100",
-  user: "bg-sky-500/30 text-sky-100",
-};
+// Header layout (user's request, 2026-09-28): logo + clock | the pages (all of them, the current one
+// marked) | Settings + the account menu. On narrow screens the pages wrap onto their own row.
+const NAV_LINK = "flex items-center gap-2 whitespace-nowrap rounded-2xl px-4 py-2 transition text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400";
+// The current page: tinted, outlined and bold (not colour alone), plus aria-current="page".
+const NAV_CURRENT = "bg-sky-500/30 ring-1 ring-inset ring-sky-300/70 font-semibold text-white";
+const NAV_OTHER = "bg-white/10 hover:bg-white/20";
 
 export default function Header() {
   const [time, setTime] = useState(new Date());
   const { user, logout, can } = useAuth();
   const { t, dir, lang, num } = useI18n();
-  // Settings → General → Clock: 12-hour (default), 24-hour, or hidden.
-  const { clock } = usePreferences().preferences;
+  // Settings → General → Clock: 12-hour (default) or 24-hour; Settings → Appearance: show it or not.
+  const { clock, showClock } = usePreferences().preferences;
   const hour24 = clock === "24h";
   const location = useLocation();
-  const onDashboard = location.pathname === "/";
-  const onUsersPage = location.pathname.startsWith("/users");
-  const onSettingsPage = location.pathname.startsWith("/settings");
-  const onAdminPage = location.pathname.startsWith("/admin");
-  const onProfilePage = location.pathname.startsWith("/profile");
-  const onStoresPage = location.pathname.startsWith("/stores");
+  const onPage = (path) => (path === "/" ? location.pathname === "/" : location.pathname.startsWith(path));
+  const onSettingsPage = onPage("/settings");
+  const onProfilePage = onPage("/profile");
   // Stores: the Admin manages them all; others see the store they work in (if any).
   const canManageStores = can(PERMISSIONS.STORES_MANAGE);
-  const showStoresLink = !onStoresPage && (canManageStores || user?.store_id != null);
-  const navLink = "flex items-center gap-2 whitespace-nowrap bg-white/10 hover:bg-white/20 rounded-2xl px-4 py-2 transition text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400";
+  // Every page the user may open, whatever page is showing (the current one is marked).
+  const pages = [
+    { to: "/", icon: LayoutDashboard, label: t("header.dashboard"), testId: "dashboard-link" },
+    can(PERMISSIONS.USERS_MANAGE) && { to: "/users", icon: Users, label: t("header.users"), testId: "users-link" },
+    (canManageStores || user?.store_id != null) && { to: "/stores", icon: Store, label: canManageStores ? t("header.stores") : t("header.myStore"), testId: "stores-link" },
+    can(PERMISSIONS.DATA_EXPORT) && { to: "/admin", icon: ShieldCheck, label: t("header.admin"), testId: "admin-link" },
+  ].filter(Boolean);
 
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000);
@@ -107,105 +111,61 @@ export default function Header() {
     <header
       ref={headerRef}
       data-testid="app-header"
-      className={`sticky top-0 z-40 ${dir === "rtl" ? "bg-gradient-to-l" : "bg-gradient-to-r"} from-gray-900 to-slate-800 text-white px-4 md:px-6 py-3 md:py-4 flex flex-wrap items-center justify-between gap-3 shadow-2xl`}
+      className={`sticky top-0 z-40 ${dir === "rtl" ? "bg-gradient-to-l" : "bg-gradient-to-r"} from-gray-900 to-slate-800 text-white px-4 md:px-6 py-3 flex flex-wrap items-center gap-x-4 gap-y-3 shadow-2xl`}
       dir={dir}>
-      {/* Right: Logo + title — clicking it scrolls back to the top of the page. The button sits
-          inside the <h1> (a heading isn't allowed inside a button), so it stays the page heading. */}
-      <h1 className="min-w-0">
-        <button
-          type="button"
-          onClick={scrollToTop}
-          title={t("header.backToTop")}
-          data-testid="scroll-to-top"
-          className="flex items-center gap-3 text-start rounded-xl p-1 -m-1 cursor-pointer transition-opacity hover:opacity-85 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900">
-          <AppLogo className="w-11 h-11 md:w-12 md:h-12 shadow-md" />
-          <span className="min-w-0 flex flex-col">
-            <span className="text-xl md:text-2xl font-bold whitespace-nowrap" dir="ltr">{APP_NAME}</span>
-            <span className="text-slate-300 text-sm font-normal">{t("app.tagline")}</span>
-          </span>
-        </button>
-      </h1>
-
-      {/* Center: User + navigation. Wraps on narrow screens (Admins have up to five items here).
-          The user's name opens their profile. */}
-      <div className="flex flex-wrap items-center gap-2 md:gap-3">
-        <Link
-          to="/profile"
-          title={t("header.profile")}
-          aria-current={onProfilePage ? "page" : undefined}
-          data-testid="profile-link"
-          className={`flex items-center gap-3 backdrop-blur-sm rounded-2xl px-4 py-2 hover:bg-white/15 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${onProfilePage ? "bg-white/20" : "bg-white/10"}`}>
-          <div className="text-start">
-            <p className="font-semibold text-sm flex items-center gap-2">
-              {user?.full_name || user?.email || t("header.userFallback")}
-              {user?.role_label &&
-              <span className={`text-[10px] font-bold rounded-full px-2 py-0.5 ${ROLE_BADGE[user.role] || "bg-white/20"}`} data-testid="role-badge">
-                  {t(`roles.${user.role}`)}
-                </span>
-              }
-              {user?.store_name &&
-              <span className="text-[10px] font-bold rounded-full px-2 py-0.5 bg-white/15 text-slate-100" data-testid="store-badge" title={t("stores.column")}>
-                  {user.store_name}
-                </span>
-              }
-            </p>
-            <p className="text-slate-300 text-xs font-bold" data-testid="last-login">
-              {lastLogin}
-            </p>
+      {/* Start: logo + title (clicking it scrolls back to the top; the button sits inside the <h1>,
+          since a heading isn't allowed inside a button), then the clock. */}
+      {/* flex-1 below lg: the start takes the room left by the icons, so they stay on the first row
+          (the clock wraps under the logo on phones instead). */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 min-w-0 flex-1 lg:flex-none" data-testid="header-start">
+        <h1 className="min-w-0">
+          <button
+            type="button"
+            onClick={scrollToTop}
+            title={t("header.backToTop")}
+            data-testid="scroll-to-top"
+            className="flex items-center gap-3 text-start rounded-xl p-1 -m-1 cursor-pointer transition-opacity hover:opacity-85 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900">
+            <AppLogo className="w-11 h-11 md:w-12 md:h-12 shadow-md" />
+            <span className="min-w-0 flex flex-col">
+              <span className="text-xl md:text-2xl font-bold whitespace-nowrap" dir="ltr">{APP_NAME}</span>
+              <span className="text-slate-300 text-sm font-normal">{t("app.tagline")}</span>
+            </span>
+          </button>
+        </h1>
+        {/* The clock (Settings → Appearance → Show the clock; its format under General). */}
+        {showClock &&
+        <div className="bg-white/10 rounded-xl px-3 py-1 text-center" title={t("header.clock")} data-testid="header-clock">
+            <p className="text-sm font-mono font-bold leading-tight whitespace-nowrap">{formatTime(time)}</p>
+            <p className="text-blue-100 text-[11px] font-bold leading-tight">{formatDate(time)}</p>
           </div>
-          <div className="bg-slate-600 rounded-full p-2">
-            <User className="w-5 h-5" aria-hidden="true" />
-          </div>
-        </Link>
-        {/* Navigation: back to the dashboard from any other page, Users (Admin only), Admin panel
-            (Admin + Manager), Settings (everyone). */}
-        {!onDashboard &&
-        <Link to="/" className={navLink}>
-            <LayoutDashboard className="w-4 h-4" />
-            <span>{t("header.dashboard")}</span>
-          </Link>
         }
-        {can(PERMISSIONS.USERS_MANAGE) && !onUsersPage &&
-        <Link to="/users" className={navLink}>
-            <Users className="w-4 h-4" />
-            <span>{t("header.users")}</span>
-          </Link>
-        }
-        {showStoresLink &&
-        <Link to="/stores" className={navLink} data-testid="stores-link">
-            <Store className="w-4 h-4" aria-hidden="true" />
-            <span>{canManageStores ? t("header.stores") : t("header.myStore")}</span>
-          </Link>
-        }
-        {can(PERMISSIONS.DATA_EXPORT) && !onAdminPage &&
-        <Link to="/admin" className={navLink} data-testid="admin-link">
-            <ShieldCheck className="w-4 h-4" aria-hidden="true" />
-            <span>{t("header.admin")}</span>
-          </Link>
-        }
-        {!onSettingsPage &&
-        <Link to="/settings" className={`${navLink} px-3`} title={t("header.settings")} aria-label={t("header.settings")} data-testid="settings-link">
-            <Settings className="w-4 h-4" aria-hidden="true" />
-          </Link>
-        }
-        <button
-          onClick={() => logout()}
-          className="flex items-center gap-2 bg-red-500/30 hover:bg-red-500/50 backdrop-blur-sm rounded-2xl px-4 py-2 transition text-sm font-medium"
-          title={t("header.logoutTitle")}>
-          
-          <LogOut className="w-4 h-4" />
-          <span>{t("header.logout")}</span>
-        </button>
-        {/* No language switch here: signed-in users change it in Settings; the login page has one. */}
       </div>
 
-      {/* Left: Clock (hidden when Settings → General → Clock is "Hide") */}
-      {clock !== "hidden" &&
-      <div className="bg-white/10 backdrop-blur-sm rounded-2xl px-4 py-2 text-center min-w-[140px]" data-testid="header-clock">
-          <p className="text-xl font-mono font-bold">{formatTime(time)}</p>
-          <p className="text-blue-100 text-xs font-bold">{formatDate(time)}</p>
-        </div>
-      }
+      {/* The pages: all of them, always, the current one marked. Their own full-width row below lg,
+          centred between the two ends from lg. */}
+      <nav aria-label={t("header.nav")} data-testid="header-nav" className="order-last w-full lg:order-none lg:w-auto lg:flex-1 flex flex-wrap items-center lg:justify-center gap-2">
+        {pages.map(({ to, icon: Icon, label, testId }) => {
+          const current = onPage(to);
+          return (
+            <Link key={to} to={to} aria-current={current ? "page" : undefined} data-testid={testId}
+              className={`${NAV_LINK} ${current ? NAV_CURRENT : NAV_OTHER}`}>
+              <Icon className="w-4 h-4" aria-hidden="true" />
+              <span>{label}</span>
+            </Link>
+          );
+        })}
+      </nav>
+
+      {/* End: Settings, then the account menu (details, profile, Log out). No language switch here:
+          signed-in users change it in Settings; the login page has one. */}
+      <div className="flex items-center gap-2 ms-auto" data-testid="header-end">
+        <Link to="/settings" title={t("header.settings")} aria-label={t("header.settings")} aria-current={onSettingsPage ? "page" : undefined}
+          data-testid="settings-link"
+          className={`flex items-center justify-center rounded-full w-10 h-10 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${onSettingsPage ? NAV_CURRENT : NAV_OTHER}`}>
+          <Settings className="w-5 h-5" aria-hidden="true" />
+        </Link>
+        <UserMenu user={user} lastLogin={lastLogin} onProfilePage={onProfilePage} onLogout={() => logout()} />
+      </div>
     </header>);
 
 }

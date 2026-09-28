@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 // Settings page layout (tabs) and the newer options — and what each one changes: start-on, clock,
 // number style, default sort, rows per page, search scope, notification duration / confirmations.
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -14,6 +14,7 @@ import { applyPreferenceChanges, resolvePreferences } from "@/lib/preferences";
 import { TOAST_DURATION, configureNotify, notify } from "@/lib/notify";
 import { api } from "@/api/apiClient";
 import { setAuthRole } from "./authMock";
+import { openUserMenu } from "./headerHelpers";
 import { clearToasts, findToast, toastTexts } from "./toastHelpers";
 
 vi.mock("@/lib/AuthContext", async () => (await import("./authMock")).authContextMock);
@@ -104,8 +105,12 @@ describe("new options are saved", () => {
     await saved({ startOn: "today" });
     fireEvent.click(screen.getByTestId("clock-24h"));
     await saved({ clock: "24h" });
-    fireEvent.click(screen.getByTestId("clock-hidden"));
-    await saved({ clock: "hidden" });
+    // Hiding the clock moved to Appearance: only the two formats here.
+    expect(screen.queryByTestId("clock-hidden")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("radio").filter((r) => r.name === "clock")).toHaveLength(2);
+    expect(screen.getByRole("radiogroup", { name: "الساعة" })).toHaveAccessibleDescription(/إظهار الساعة أو إخفاؤها في قسم المظهر/);
+    fireEvent.click(screen.getByTestId("clock-12h"));
+    await saved({ clock: "12h" });
     fireEvent.click(screen.getByTestId("numerals-arabic"));
     await saved({ numerals: "arabic" });
     expect(screen.getByTestId("numerals-arabic")).toBeChecked();
@@ -134,6 +139,21 @@ describe("new options are saved", () => {
     await saved({ searchScope: "month" });
   });
 
+  it("Appearance: show or hide the header clock", async () => {
+    render(withApp(<SettingsPage />, { path: "/settings#appearance" })); // the page has its own header
+    const toggle = screen.getByTestId("showClock");
+    expect(toggle).toBeChecked();
+    expect(within(screen.getByRole("tabpanel")).getByText("الشريط العلوي")).toBeInTheDocument();
+    expect(screen.getByTestId("header-clock")).toBeInTheDocument();
+    fireEvent.click(toggle);
+    await saved({ showClock: false });
+    expect(screen.getByTestId("showClock")).not.toBeChecked();
+    expect(screen.queryByTestId("header-clock")).not.toBeInTheDocument(); // at once, before the page reloads
+    fireEvent.click(screen.getByTestId("showClock"));
+    await saved({ showClock: true });
+    expect(screen.getByTestId("header-clock")).toBeInTheDocument();
+  });
+
   it("Notifications: duration and confirmations", async () => {
     render(withApp(<SettingsPage />, { path: "/settings#notifications" }));
     fireEvent.click(screen.getByTestId("toastDuration-long"));
@@ -145,7 +165,7 @@ describe("new options are saved", () => {
 });
 
 describe("what the options change", () => {
-  it("clock: 12-hour by default, 24-hour, or hidden; last login follows it", () => {
+  it("clock: 12-hour by default or 24-hour (last login follows it); hidden with Show the clock off", () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date(2026, 8, 24, 20, 5, 9));
     const previous = new Date(2026, 8, 23, 21, 30).toISOString();
@@ -153,6 +173,7 @@ describe("what the options change", () => {
     setAuthRole("user", { previous_login: previous });
     const { unmount } = render(withApp(<Header />, { path: "/", lang: "en" }));
     expect(screen.getByTestId("header-clock")).toHaveTextContent("08:05:09 PM");
+    openUserMenu();
     expect(screen.getByTestId("last-login")).toHaveTextContent("2026/09/23 09:30 PM");
     unmount();
 
@@ -160,9 +181,18 @@ describe("what the options change", () => {
     const second = render(withApp(<Header />, { path: "/", lang: "en" }));
     expect(screen.getByTestId("header-clock")).toHaveTextContent("20:05:09");
     expect(screen.getByTestId("header-clock")).not.toHaveTextContent("PM");
+    openUserMenu();
     expect(screen.getByTestId("last-login")).toHaveTextContent("2026/09/23 21:30");
     second.unmount();
 
+    setAuthRole("user", { preferences: { showClock: false, clock: "24h" } });
+    const third = render(withApp(<Header />, { path: "/", lang: "en" }));
+    expect(screen.queryByTestId("header-clock")).not.toBeInTheDocument();
+    openUserMenu();
+    expect(screen.getByTestId("last-login")).toHaveTextContent("First sign-in"); // the menu still works
+    third.unmount();
+
+    // An account saved before the change, with the old clock: "hidden", still has no clock.
     setAuthRole("user", { preferences: { clock: "hidden" } });
     render(withApp(<Header />, { path: "/", lang: "en" }));
     expect(screen.queryByTestId("header-clock")).not.toBeInTheDocument();

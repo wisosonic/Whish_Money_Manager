@@ -63,6 +63,9 @@ const en = {
   "header.admin": "Admin panel",
   "header.logout": "Log out",
   "header.logoutTitle": "Log out",
+  "header.nav": "Main menu",
+  "header.userMenu": "Account menu: {name}",
+  "header.clock": "Current time",
 
   // Roles
   "roles.admin": "Admin",
@@ -315,7 +318,11 @@ const en = {
   "settings.clock.title": "Clock",
   "settings.clock.12h": "12-hour (08:05 PM)",
   "settings.clock.24h": "24-hour (20:05)",
-  "settings.clock.hidden": "Hide the clock",
+  "settings.clock.hint": "For the header clock and your last login. Showing or hiding the clock is under Appearance.",
+  "settings.header.title": "Header",
+  "settings.header.description": "What the bar at the top of every page shows.",
+  "settings.showClock.label": "Show the clock",
+  "settings.showClock.hint": "The time and date next to the logo.",
   "settings.numerals.title": "Number style",
   "settings.numerals.hint": "Applies to the Arabic interface: amounts, counts, dates and the clock. Phone and reference numbers stay as they are.",
   "settings.numerals.western": "Western digits (0123)",

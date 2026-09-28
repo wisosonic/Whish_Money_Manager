@@ -33,6 +33,7 @@ const DEFAULTS = {
   searchScope: "all",
   defaultSort: { key: null, dir: "asc" },
   clock: "12h",
+  showClock: true,
   numerals: "western",
   toastDuration: "normal",
   toastSuccess: true,
@@ -90,7 +91,9 @@ describe("preferences API", () => {
     ["searchScope", "month"],
     ["defaultSort", { key: "amount", dir: "desc" }],
     ["clock", "24h"],
-    ["clock", "hidden"],
+    ["clock", "12h"],
+    ["showClock", false],
+    ["showClock", true],
     ["numerals", "arabic"],
     ["toastDuration", "long"],
     ["toastSuccess", false],
@@ -117,6 +120,8 @@ describe("preferences API", () => {
     ["defaultSort", { key: "amount", dir: "sideways" }],
     ["defaultSort", { key: "amount", extra: 1 }],
     ["clock", "36h"],
+    ["showClock", "no"],
+    ["showClock", 0],
     ["numerals", "roman"],
     ["toastDuration", "forever"],
     ["toastSuccess", "no"],
@@ -125,6 +130,32 @@ describe("preferences API", () => {
   ])("rejects %s = %j", async (key, value) => {
     const res = await save("user2", { [key]: value });
     expect(res.status).toBe(400);
+  });
+
+  it("Show the clock (Appearance) is separate from its format (General)", async () => {
+    await save("user", { clock: "24h" });
+    let res = await save("user", { showClock: false });
+    expect(res.body.preferences).toMatchObject({ clock: "24h", showClock: false });
+    res = await save("user", { showClock: true });
+    expect(res.body.preferences).toMatchObject({ clock: "24h", showClock: true });
+  });
+
+  it("the old clock: \"hidden\" (a page loaded before the change) hides the clock and keeps the format", async () => {
+    await save("user", { clock: "24h", showClock: true });
+    const res = await save("user", { clock: "hidden" });
+    expect(res.status).toBe(200);
+    expect(res.body.preferences).toMatchObject({ clock: "24h", showClock: false });
+    expect(JSON.parse(stored("user@test.local")).clock).toBe("24h"); // "hidden" is never stored again
+  });
+
+  it("an account saved with the old clock: \"hidden\" reads as showClock false with the 12-hour format", async () => {
+    db.prepare("UPDATE users SET preferences = ? WHERE email = ?").run(JSON.stringify({ clock: "hidden", theme: "dark" }), "user2@test.local");
+    const { body } = await client.request("GET", "/auth/me", { as: "user2" });
+    expect(body.preferences).toMatchObject({ clock: "12h", showClock: false, theme: "dark" });
+    // Showing it again later works as usual.
+    const res = await save("user2", { showClock: true });
+    expect(res.body.preferences).toMatchObject({ clock: "12h", showClock: true });
+    db.prepare("UPDATE users SET preferences = NULL WHERE email = ?").run("user2@test.local");
   });
 
   it("can clear the saved language back to null", async () => {

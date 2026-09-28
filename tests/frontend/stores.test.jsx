@@ -21,6 +21,7 @@ import { setAuthRole } from "./authMock";
 import { clearToasts, findToast } from "./toastHelpers";
 import { installFakeDashboard } from "./fakeDashboardApi";
 import { pickDay, shownDay } from "./datePickerHelpers";
+import { openUserMenu } from "./headerHelpers";
 
 vi.mock("@/lib/AuthContext", async () => (await import("./authMock")).authContextMock);
 vi.mock("@/api/apiClient", () => ({
@@ -425,11 +426,13 @@ describe("header", () => {
     setAuthRole("user");
     const second = wrap(<Header />);
     expect(screen.getByTestId("stores-link")).toHaveTextContent("متجري");
+    openUserMenu();
     expect(screen.getByTestId("store-badge")).toHaveTextContent("Main store");
     second.unmount();
     setAuthRole("user", { store_id: null, store_name: null });
     wrap(<Header />);
     expect(screen.queryByTestId("stores-link")).not.toBeInTheDocument();
+    openUserMenu();
     expect(screen.queryByTestId("store-badge")).not.toBeInTheDocument();
   });
 });

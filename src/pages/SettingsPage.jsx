@@ -2,7 +2,7 @@ import { useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   Languages, Columns3, LayoutList, RotateCcw, CheckCircle2, Loader2, AlertCircle,
-  SlidersHorizontal, Palette, Table2, Bell, Building2, Clock3, CalendarDays, ArrowUpDown,
+  SlidersHorizontal, Palette, Table2, Bell, Building2, Clock3, CalendarDays, ArrowUpDown, PanelTop,
 } from "lucide-react";
 import Header from "@/components/layout/Header";
 import { Section, Choice, RadioGroup } from "@/components/settings/SettingsControls";
@@ -29,6 +29,7 @@ const PERSONAL_DEFAULTS = {
   searchScope: DEFAULT_PREFERENCES.searchScope,
   defaultSort: { ...DEFAULT_PREFERENCES.defaultSort },
   clock: DEFAULT_PREFERENCES.clock,
+  showClock: DEFAULT_PREFERENCES.showClock,
   numerals: DEFAULT_PREFERENCES.numerals,
   toastDuration: DEFAULT_PREFERENCES.toastDuration,
   toastSuccess: DEFAULT_PREFERENCES.toastSuccess,
@@ -145,7 +146,7 @@ export default function SettingsPage() {
                   value={preferences.startOn} onChange={(startOn) => savePreferences({ startOn })} />
               </Section>
               <Section id="settings-format" icon={Clock3} title={t("settings.format.title")} description={t("settings.format.description")}>
-                <RadioGroup id="clock" label={t("settings.clock.title")} columns="sm:grid-cols-3"
+                <RadioGroup id="clock" label={t("settings.clock.title")} hint={t("settings.clock.hint")}
                   options={options(CLOCKS, "settings.clock")} value={preferences.clock} onChange={(clock) => savePreferences({ clock })} />
                 <RadioGroup id="numerals" label={t("settings.numerals.title")} hint={t("settings.numerals.hint")}
                   options={options(NUMERALS, "settings.numerals")} value={preferences.numerals} onChange={(numerals) => savePreferences({ numerals })} />
@@ -153,6 +154,13 @@ export default function SettingsPage() {
             </>}
 
             {active === "appearance" && <>
+              {/* The header (user's request, 2026-09-28): whether the clock next to the logo shows.
+                  Its 12 / 24-hour format stays under General → Time and numbers. */}
+              <Section id="settings-header" icon={PanelTop} title={t("settings.header.title")} description={t("settings.header.description")}>
+                <Choice type="checkbox" checked={preferences.showClock}
+                  onChange={() => savePreferences({ showClock: !preferences.showClock })}
+                  label={t("settings.showClock.label")} hint={t("settings.showClock.hint")} testId="showClock" />
+              </Section>
               <Section id="settings-display" icon={LayoutList} title={t("settings.display.title")} description={t("settings.display.description")}>
                 <RadioGroup id="theme" label={t("settings.theme.title")} columns="sm:grid-cols-3"
                   options={options(THEMES, "settings.theme", (v) => ({ hint: t(`settings.theme.${v}Hint`) }))}

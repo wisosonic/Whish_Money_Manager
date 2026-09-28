@@ -17,6 +17,7 @@ import LoginPage from "@/components/auth/LoginPage";
 import StatsCards from "@/components/dashboard/StatsCards";
 import TransactionsList from "@/components/dashboard/TransactionsList";
 import { setAuthRole } from "./authMock";
+import { openUserMenu } from "./headerHelpers";
 
 vi.mock("@/lib/AuthContext", async () => (await import("./authMock")).authContextMock);
 vi.mock("@/api/apiClient", () => ({ api: { entities: { Transaction: { delete: vi.fn(), bulkDelete: vi.fn(), bulkUpdate: vi.fn() } } } }));
@@ -264,7 +265,11 @@ describe("screens in English", () => {
     const header = screen.getByTestId("app-header");
     expect(header).toHaveAttribute("dir", "ltr");
     expect(header).toHaveClass("bg-gradient-to-r");
+    expect(screen.getByTestId("user-menu-button")).toHaveAccessibleName(/^Account menu: /);
+    expect(screen.getByRole("navigation", { name: "Main menu" })).toBeInTheDocument();
+    openUserMenu();
     expect(within(header).getByText("Log out")).toBeInTheDocument();
+    expect(screen.getByTestId("profile-link")).toHaveTextContent("My profile");
     expect(screen.getByTestId("role-badge")).toHaveTextContent("Manager");
     expect(screen.getByTestId("last-login")).toHaveTextContent("Last login: 2026/09/23 08:05 PM");
     expect(screen.getByText("Money transfers and financial transactions")).toBeInTheDocument();
@@ -275,6 +280,7 @@ describe("screens in English", () => {
   it("header in Arabic keeps its Arabic labels, and has no language switch (it's in Settings)", () => {
     setAuthRole("admin");
     render(<LanguageProvider><MemoryRouter><Header /></MemoryRouter></LanguageProvider>);
+    openUserMenu();
     expect(screen.getByText("خروج")).toBeInTheDocument();
     expect(screen.getByTestId("role-badge")).toHaveTextContent("مسؤول");
     expect(screen.queryByRole("switch")).not.toBeInTheDocument();
@@ -336,6 +342,7 @@ describe("screens in English", () => {
       return <button onClick={() => setLang("en")}>to-en</button>;
     };
     render(<LanguageProvider><MemoryRouter><Switcher /><Header /></MemoryRouter></LanguageProvider>);
+    openUserMenu();
     expect(screen.getByText("خروج")).toBeInTheDocument();
     act(() => fireEvent.click(screen.getByText("to-en")));
     expect(screen.getByText("Log out")).toBeInTheDocument();

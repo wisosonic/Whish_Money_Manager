@@ -64,6 +64,9 @@ const ar = {
   "header.admin": "لوحة الإدارة",
   "header.logout": "خروج",
   "header.logoutTitle": "تسجيل الخروج",
+  "header.nav": "القائمة الرئيسية",
+  "header.userMenu": "قائمة الحساب: {name}",
+  "header.clock": "الوقت الحالي",
 
   // Roles (the API names them in English; shown translated)
   "roles.admin": "مسؤول",
@@ -310,7 +313,11 @@ const ar = {
   "settings.clock.title": "الساعة",
   "settings.clock.12h": "12 ساعة (⁦08:05 PM⁩)",
   "settings.clock.24h": "24 ساعة (⁦20:05⁩)",
-  "settings.clock.hidden": "إخفاء الساعة",
+  "settings.clock.hint": "لساعة الشريط العلوي ولآخر دخول لك. إظهار الساعة أو إخفاؤها في قسم المظهر.",
+  "settings.header.title": "الشريط العلوي",
+  "settings.header.description": "ما يظهر في الشريط أعلى كل صفحة.",
+  "settings.showClock.label": "إظهار الساعة",
+  "settings.showClock.hint": "الوقت والتاريخ بجانب الشعار.",
   "settings.numerals.title": "شكل الأرقام",
   "settings.numerals.hint": "يطبَّق على الواجهة العربية: المبالغ والأعداد والتواريخ والساعة. أرقام الهاتف والعمليات تبقى كما هي.",
   "settings.numerals.western": "أرقام غربية (0123)",

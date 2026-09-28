@@ -9,7 +9,8 @@
 //   startOn        "last" | "today"      which day the dashboard opens on
 //   searchScope    "all" | "month" | "day"  where a search looks by default (month = the selected date's)
 //   defaultSort    { key, dir }          the table's sort when it opens (key null = journal order)
-//   clock          "12h" | "24h" | "hidden"
+//   clock          "12h" | "24h"         the header clock's and last login's time format
+//   showClock      boolean               whether the header shows the clock (Settings → Appearance)
 //   numerals       "western" | "arabic"  digits in the Arabic interface (0123 or ٠١٢٣)
 //   toastDuration  "short" | "normal" | "long"
 //   toastSuccess   boolean               false = only warnings and errors are shown
@@ -27,7 +28,9 @@ export const THEMES = ["light", "dark", "system"];
 export const START_ON = ["last", "today"];
 export const SEARCH_SCOPES = ["all", "month", "day"];
 export const SORT_DIRECTIONS = ["asc", "desc"];
-export const CLOCKS = ["12h", "24h", "hidden"];
+export const CLOCKS = ["12h", "24h"];
+// Before Appearance → "Show the clock" (2026-09-28), hiding it was a third clock format.
+const LEGACY_HIDDEN_CLOCK = "hidden";
 export const NUMERALS = ["western", "arabic"];
 export const TOAST_DURATIONS = ["short", "normal", "long"];
 export const ROWS_PER_PAGE = [0, 25, 50, 100];
@@ -46,6 +49,7 @@ export const DEFAULT_PREFERENCES = Object.freeze({
   searchScope: "all",
   defaultSort: Object.freeze({ key: null, dir: "asc" }),
   clock: "12h",
+  showClock: true,
   numerals: "western",
   toastDuration: "normal",
   toastSuccess: true,
@@ -91,6 +95,9 @@ export const resolvePreferences = (stored) => {
     searchScope: oneOf(SEARCH_SCOPES, source.searchScope, DEFAULT_PREFERENCES.searchScope),
     defaultSort: resolveSort(source.defaultSort),
     clock: oneOf(CLOCKS, source.clock, DEFAULT_PREFERENCES.clock),
+    // A saved clock: "hidden" (the old way to hide it) becomes showClock: false with the default format.
+    showClock: typeof source.showClock === "boolean" ? source.showClock
+      : source.clock === LEGACY_HIDDEN_CLOCK ? false : DEFAULT_PREFERENCES.showClock,
     numerals: oneOf(NUMERALS, source.numerals, DEFAULT_PREFERENCES.numerals),
     toastDuration: oneOf(TOAST_DURATIONS, source.toastDuration, DEFAULT_PREFERENCES.toastDuration),
     toastSuccess: typeof source.toastSuccess === "boolean" ? source.toastSuccess : DEFAULT_PREFERENCES.toastSuccess,
@@ -125,20 +132,26 @@ export const applyPreferenceChanges = (current, changes) => {
         if (!THEMES.includes(value)) return { error: "Invalid preferences" };
         next.theme = value;
         break;
+      case "clock":
+        // A page loaded before the change may still send the old "hidden" format.
+        if (value === LEGACY_HIDDEN_CLOCK) { next.showClock = false; break; }
+        if (!CLOCKS.includes(value)) return { error: "Invalid preferences" };
+        next.clock = value;
+        break;
       case "startOn":
       case "searchScope":
-      case "clock":
       case "numerals":
       case "toastDuration":
       case "rowsPerPage": {
-        const allowed = { startOn: START_ON, searchScope: SEARCH_SCOPES, clock: CLOCKS, numerals: NUMERALS, toastDuration: TOAST_DURATIONS, rowsPerPage: ROWS_PER_PAGE }[key];
+        const allowed = { startOn: START_ON, searchScope: SEARCH_SCOPES, numerals: NUMERALS, toastDuration: TOAST_DURATIONS, rowsPerPage: ROWS_PER_PAGE }[key];
         if (!allowed.includes(value)) return { error: "Invalid preferences" };
         next[key] = value;
         break;
       }
       case "toastSuccess":
+      case "showClock":
         if (typeof value !== "boolean") return { error: "Invalid preferences" };
-        next.toastSuccess = value;
+        next[key] = value;
         break;
       case "defaultSort":
         if (!isPlainObject(value) || Object.keys(value).some((k) => !["key", "dir"].includes(k))) return { error: "Invalid preferences" };

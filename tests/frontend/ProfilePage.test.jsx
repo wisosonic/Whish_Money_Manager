@@ -11,6 +11,7 @@ import { LanguageProvider } from "@/lib/i18n";
 import { PreferencesProvider } from "@/lib/PreferencesContext";
 import { api } from "@/api/apiClient";
 import { authMocks, setAuthRole } from "./authMock";
+import { openUserMenu } from "./headerHelpers";
 import { clearToasts, findToast } from "./toastHelpers";
 
 vi.mock("@/lib/AuthContext", async () => (await import("./authMock")).authContextMock);
@@ -166,15 +167,21 @@ describe("change password", () => {
 });
 
 describe("header link", () => {
-  it("the user's name in the header opens the profile, and is marked current there", () => {
+  it("the account menu (the user's icon in the header) opens the profile, and is marked current there", () => {
     const { unmount } = renderPage({ path: "/", ui: <Header /> });
+    expect(screen.getByTestId("user-menu-button")).toHaveAccessibleName("قائمة الحساب: Rami Haddad");
+    expect(screen.queryByTestId("profile-link")).not.toBeInTheDocument(); // inside the closed menu
+    openUserMenu();
     const link = screen.getByTestId("profile-link");
     expect(link).toHaveAttribute("href", "/profile");
-    expect(link).toHaveTextContent("Rami Haddad");
-    expect(link).toHaveAttribute("title", "ملفي الشخصي");
+    expect(link).toHaveAttribute("role", "menuitem");
+    expect(link).toHaveTextContent("ملفي الشخصي");
     expect(link).not.toHaveAttribute("aria-current");
+    expect(screen.getByTestId("user-menu-identity")).toHaveTextContent("Rami Haddad");
     unmount();
     renderPage({ path: "/profile", ui: <Header /> });
+    expect(screen.getByTestId("user-menu-button")).toHaveClass("ring-1"); // marked while on the profile
+    openUserMenu();
     expect(screen.getByTestId("profile-link")).toHaveAttribute("aria-current", "page");
   });
 });

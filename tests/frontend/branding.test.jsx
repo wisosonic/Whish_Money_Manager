@@ -10,6 +10,7 @@ import Header, { formatLastLogin, scrollToTop } from "@/components/layout/Header
 import LoginPage from "@/components/auth/LoginPage";
 import { LOGO_CROP_STYLE } from "@/components/layout/AppLogo";
 import { authMocks, setAuthRole } from "./authMock";
+import { openUserMenu } from "./headerHelpers";
 
 vi.mock("@/lib/AuthContext", async () => (await import("./authMock")).authContextMock);
 beforeEach(() => setAuthRole("admin", { full_name: "Local User" }));
@@ -55,9 +56,11 @@ describe("Header (navigation bar)", () => {
     expect(LOGO_CROP_STYLE).toEqual({ width: "104.65%", height: "103.26%", left: "-2.33%", top: "-1.63%" });
   });
 
-  it("still shows the user and logs out", () => {
+  it("still shows the user and logs out (from the account menu)", () => {
     renderHeader();
-    expect(screen.getByText("Local User")).toBeInTheDocument();
+    expect(screen.getByTestId("user-menu-button")).toHaveAccessibleName("قائمة الحساب: Local User");
+    openUserMenu();
+    expect(screen.getByTestId("user-menu-identity")).toHaveTextContent("Local User");
     fireEvent.click(screen.getByTitle("تسجيل الخروج"));
     expect(authMocks().logout).toHaveBeenCalledTimes(1);
   });
@@ -194,6 +197,7 @@ describe("Header — last login", () => {
   it("shows the previous sign-in's date and time", () => {
     setAuthRole("manager", { previous_login: previous, last_login: new Date().toISOString() });
     renderHeader();
+    openUserMenu();
     expect(screen.getByTestId("last-login")).toHaveTextContent("آخر دخول: 2026/09/23 08:05 PM");
   });
 
@@ -203,6 +207,7 @@ describe("Header — last login", () => {
     try {
       setAuthRole("manager", { previous_login: previous });
       renderHeader();
+      openUserMenu();
       const label = screen.getByTestId("last-login").textContent;
       expect(label).not.toContain("2026/09/24");
       expect(label).not.toContain("09:30");
@@ -214,6 +219,7 @@ describe("Header — last login", () => {
   it("keeps the date left-to-right inside the Arabic label", () => {
     setAuthRole("user", { previous_login: previous });
     renderHeader();
+    openUserMenu();
     const date = screen.getByText("2026/09/23 08:05 PM");
     expect(date).toHaveAttribute("dir", "ltr");
   });
@@ -221,6 +227,7 @@ describe("Header — last login", () => {
   it("says it's the first sign-in when there is no previous one", () => {
     setAuthRole("user", { previous_login: null });
     renderHeader();
+    openUserMenu();
     expect(screen.getByTestId("last-login")).toHaveTextContent("أول تسجيل دخول");
   });
 });
@@ -242,6 +249,7 @@ describe("formatLastLogin", () => {
 describe("Header — role and navigation", () => {
   it("shows the signed-in user's role", () => {
     renderHeader();
+    openUserMenu();
     // Role names come from the API in English and are shown translated (Arabic by default).
     expect(screen.getByTestId("role-badge")).toHaveTextContent("مسؤول");
   });
@@ -258,6 +266,7 @@ describe("Header — role and navigation", () => {
     setAuthRole(role);
     renderHeader();
     expect(screen.queryByRole("link", { name: /المستخدمون/ })).not.toBeInTheDocument();
+    openUserMenu();
     expect(screen.getByTestId("role-badge")).toHaveTextContent(role === "manager" ? "مدير" : "مستخدم");
   });
 });

@@ -174,8 +174,8 @@ describe("dark stylesheet", () => {
     if (entry.isDirectory()) { if (entry.name !== "ui") walk(full); } else if (/\.jsx$/.test(entry.name)) files.push(full);
   });
   walk(path.resolve(__dirname, "../../src"));
-  // Always-dark screens (header, login page, language switch) don't need mappings.
-  const alwaysDark = ["Header.jsx", "LoginPage.jsx", "LanguageToggle.jsx", "AppLogo.jsx"];
+  // Always-dark screens (header and its account menu, login page, language switch) don't need mappings.
+  const alwaysDark = ["Header.jsx", "UserMenu.jsx", "LoginPage.jsx", "LanguageToggle.jsx", "AppLogo.jsx"];
 
   it("maps every light colour class used by the screens", () => {
     const used = new Set();

@@ -147,14 +147,14 @@ describe("Settings page", () => {
   it("restores every personal default in one save (the language is left alone)", async () => {
     setAuthRole("user", { preferences: {
       language: "ar", hiddenColumns: ["note"], density: "compact", summaries: { month: false, year: true }, theme: "dark",
-      clock: "24h", numerals: "arabic", rowsPerPage: 50, defaultSort: { key: "amount", dir: "desc" }, toastSuccess: false,
+      clock: "24h", showClock: false, numerals: "arabic", rowsPerPage: 50, defaultSort: { key: "amount", dir: "desc" }, toastSuccess: false,
     } });
     renderSettings("appearance");
     fireEvent.click(box("settings-reset"));
     await waitFor(() => expect(api.auth.updatePreferences).toHaveBeenCalledTimes(1));
     expect(api.auth.updatePreferences).toHaveBeenCalledWith({
       hiddenColumns: [], theme: "light", density: "comfortable", summaries: { month: true, year: false },
-      startOn: "last", searchScope: "all", defaultSort: { key: null, dir: "asc" }, clock: "12h", numerals: "western",
+      startOn: "last", searchScope: "all", defaultSort: { key: null, dir: "asc" }, clock: "12h", showClock: true, numerals: "western",
       toastDuration: "normal", toastSuccess: true, rowsPerPage: 0,
     });
     await waitFor(() => expect(box("settings-reset")).toBeDisabled());
@@ -270,28 +270,32 @@ describe("Preferences follow the account", () => {
 });
 
 describe("Header link to Settings", () => {
-  it("every role gets a Settings link; on the Settings page it is replaced by a way back", () => {
+  it("every role gets a Settings icon button, beside the account menu, marked on the Settings page", () => {
     setAuthRole("user");
     const { unmount } = render(withProviders(<Header />, "/"));
     const link = screen.getByTestId("settings-link");
     expect(link).toHaveAttribute("href", "/settings");
     expect(link).toHaveAccessibleName("الإعدادات");
-    expect(screen.queryByRole("link", { name: /لوحة التحكم/ })).not.toBeInTheDocument();
+    expect(link).not.toHaveAttribute("aria-current");
+    // Settings then the account menu, together at the end of the bar (not among the pages).
+    const end = screen.getByTestId("header-end");
+    expect([...end.children].map((el) => el.dataset.testid ?? el.firstElementChild?.dataset.testid)).toEqual(["settings-link", "user-menu-button"]);
+    expect(within(screen.getByTestId("header-nav")).queryByTestId("settings-link")).not.toBeInTheDocument();
     unmount();
 
     render(withProviders(<Header />, "/settings"));
-    expect(screen.queryByTestId("settings-link")).not.toBeInTheDocument();
+    expect(screen.getByTestId("settings-link")).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: /لوحة التحكم/ })).toHaveAttribute("href", "/");
   });
 
-  it("Admins see both Users and Settings", () => {
+  it("Admins see both Users and Settings; the pages' row wraps on phones", () => {
     setAuthRole("admin");
     render(withProviders(<Header />, "/"));
     expect(screen.getByRole("link", { name: /المستخدمون/ })).toHaveAttribute("href", "/users");
     expect(screen.getByTestId("settings-link")).toBeInTheDocument();
-    // With up to five items, the row must wrap on phones instead of widening the page.
-    expect(screen.getByTestId("settings-link").parentElement).toHaveClass("flex-wrap");
-    expect(screen.getByTestId("settings-link")).toHaveClass("whitespace-nowrap");
+    // With up to four pages, the row must wrap on phones instead of widening the page.
+    expect(screen.getByTestId("header-nav")).toHaveClass("flex-wrap");
+    expect(screen.getByTestId("users-link")).toHaveClass("whitespace-nowrap");
   });
 });
 

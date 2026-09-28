@@ -72,9 +72,9 @@ It runs entirely on your machine: a React frontend and a small Node.js/Express A
     - Rows with an empty value always go last, and rows with the same value keep their journal order.
   - The "#" column always shows each row's real number in the day's journal. Selecting rows and bulk actions work the same while sorted.
   - The sort resets when the page reloads.
-- **Settings** (⚙️ in the header), grouped in tabs: language, start-up day, clock, number style, theme, row spacing, summaries, table columns, default sort, rows per page, default search scope and notifications, all saved to each user's account. Admins and Managers also set the office **commission rate** there. See [Settings](#settings).
+- **Settings** (⚙️ at the end of the header, next to your account icon), grouped in tabs: language, start-up day, clock format, number style, theme, the header clock, row spacing, summaries, table columns, default sort, rows per page, default search scope and notifications, all saved to each user's account. Admins and Managers also set the office **commission rate** there. See [Settings](#settings).
 - **Stores** (branches): every transaction belongs to a store. The Admin manages the stores and sees all of them; each store has one Manager, who adds its Users; Managers and Users see only their own store. Each store has its own opening balances, closed days and commission rate. See [Stores](#stores).
-- **My profile** (click your name in the header): see your account, and change your own name, email and password. See [My profile](#my-profile).
+- **My profile** (your account icon at the end of the header → **ملفي الشخصي**): see your account, and change your own name, email and password. See [My profile](#my-profile).
 - **Closing a day** (Admin and Manager): lock a day so nobody can add, edit, import or delete its transactions or change its opening balance, until it's reopened. See [Closing a day](#closing-a-day).
 - **Admin panel** (Admin and Manager): **reports** (income by month, top senders, top recipients), a CSV backup of any date range, restoring a backup, or permanently deleting all data in a range. See [Admin panel](#admin-panel-admin-and-manager).
 - **Notifications**: a short message pops up in the bottom corner (bottom-left in Arabic, bottom-right in English; full width on phones) after every action, so you always know whether it worked.
@@ -239,8 +239,10 @@ Everyone signs in with their own email and password. There are three roles:
   - **The choice is saved in a cookie** (`wmm_lang`, kept for a year), so it survives reloads and applies from the first screen.
   - **When you're signed in, it's also saved to your account** (see [Settings](#settings)), so it follows you to other devices and is applied when you sign in there.
 - **Back to top:** click the logo or the app name in the header to scroll smoothly back to the top of the page (instantly if "reduce motion" is on). It also works from the keyboard: Tab to it, then press Enter.
-- **Header position:** the header (logo, user, logout, clock) stays **fixed at the top of the screen** while you scroll, on every page and screen size. Pop-up windows still appear above it. When the keyboard moves focus to a field lower down, the page scrolls so the field lands just below the header, not behind it.
-- **Header:** shows your name, your role, and **your last login**. That's the date and time of the sign-in *before* the current one (e.g. `آخر دخول: 2026/09/23 08:05 PM`), in your local time. It shows "أول تسجيل دخول" on your first ever sign-in. Because sessions don't expire, it changes only when you sign in again. Signing in on another device counts as a new sign-in.
+- **Header layout:** from the start of the line: the **logo and name**, then the **clock**; in the middle, **every page you can open** (لوحة التحكم, المستخدمون, المتاجر / متجري, لوحة الإدارة), always shown, with the page you're on outlined and highlighted; at the end, **⚙️ Settings** and your **account icon**. On a phone the pages take a row of their own under the logo, and the clock goes under the logo.
+- **Account menu:** click your account icon (or Tab to it and press Enter or ↓). It shows your name, email, role, store and **last login**, then **ملفي الشخصي** (My profile) and **خروج** (Log out); there's no separate Log out button any more. Arrow keys move between the two, Escape closes it (focus goes back to the icon), and clicking anywhere else closes it too.
+- **Header position:** the header stays **fixed at the top of the screen** while you scroll, on every page and screen size. Pop-up windows still appear above it. When the keyboard moves focus to a field lower down, the page scrolls so the field lands just below the header, not behind it.
+- **Last login** (in the account menu): the date and time of the sign-in *before* the current one (e.g. `آخر دخول: 2026/09/23 08:05 PM`), in your local time. It shows "أول تسجيل دخول" on your first ever sign-in. Because sessions don't expire, it changes only when you sign in again. Signing in on another device counts as a new sign-in.
 
 ### Stores
 
@@ -259,14 +261,14 @@ Every transaction belongs to a **store** (a branch, physical or online). Each st
 **Where the store shows up**
 - **Dashboard:** a **Store** field above the summaries is always shown. Managers and Users see their store there, greyed out (they can't switch). With one store, the Admin sees that store, greyed out. With several stores, the Admin can pick (remembered in this browser, in a cookie): one store, or **All stores**, which shows every store's rows with a **Store** column. Adding transactions, importing into a store, closing a day and setting the opening balance need one store, so in All stores Cash In / Cash Out, closing the day and the opening-balance pencil are off (the import asks which store). The opening balance and wallet figures add up the stores'.
 - **Importing:** the import screen always shows a **store** field. With several stores (the Admin), the store is **picked by hand** before the file is read, because commissions use that store's rate; it starts on the store shown on the dashboard, if one is. With one store, and for Managers and Users (who always import into their own store), the field shows that store, greyed out. A statement line already imported into **another** store blocks the import, so the same money is never counted twice.
-- **Header:** your store's name next to your role.
+- **Header:** your store's name next to your role, in the account menu.
 - **Admin panel:** the date range, backup, restore and delete work on the chosen store (the Admin can choose All stores; a Manager always gets their own). Reports can be filtered by store, and the Admin has a **Compare stores** report.
 - **Backups** include each row's store; older backups without it are restored into the store chosen at the top of the panel.
 - **With only one store,** everything works as before stores: the store field just shows that store, and everything goes to it.
 
 ### My profile
 
-Every user has a **profile page** (`/profile`): click **your name** in the header.
+Every user has a **profile page** (`/profile`): click your **account icon** at the end of the header, then **ملفي الشخصي** (My profile).
 
 - **Account:** your name, email, role, when the account was created, this sign-in and the previous one.
 - **Personal information:**
@@ -296,19 +298,20 @@ Everything the app remembers in the browser is kept in **cookies**, for one year
 
 ### Settings
 
-Every user has a **Settings** page: click the ⚙️ gear in the header (next to Log out). The options are grouped in **tabs**: a column beside the page on a computer, a row you can scroll on a phone. Use the arrow keys to move between tabs. The open tab is part of the address (e.g. `/settings#table`), so it can be bookmarked or shared.
+Every user has a **Settings** page: click the ⚙️ gear at the end of the header (next to your account icon). The options are grouped in **tabs**: a column beside the page on a computer, a row you can scroll on a phone. Use the arrow keys to move between tabs. The open tab is part of the address (e.g. `/settings#table`), so it can be bookmarked or shared.
 
 Personal settings apply **immediately** and are **saved to your account** on the server, so they follow you to any device or browser. They're also kept in a **cookie** in this browser (`wmm_prefs`, one year), so they apply as soon as the page loads, before the server answers. If the two ever differ, your account's copy wins and replaces the cookie. A status line at the top says "Saving…", then "Saved", or explains what went wrong; if a save fails, the previous value comes back. Personal settings never change what other users see.
 
 **General**
 - **Language:** العربية or English. The whole interface switches at once.
 - **Start on:** *the last day viewed* (the default; remembered in this browser, in a cookie) or *today*.
-- **Clock:** *12-hour* (default), *24-hour*, or *hide the clock*. The "last login" time in the header follows the same choice.
+- **Clock:** *12-hour* (default) or *24-hour*. The "last login" time in the account menu follows the same choice. Showing or hiding the clock is under Appearance.
 - **Number style:** *Western digits* (0123, the default) or *Arabic-Indic digits* (٠١٢٣).
   - It applies to the Arabic interface: amounts, counts, dates, the clock, the summaries, the chart and the admin panel.
   - Phone numbers, reference and customer numbers, and anything you type stay as they are, because they're codes you copy elsewhere.
 
 **Appearance**
+- **Header → Show the clock:** on (the default) or off. The clock is the time and date next to the logo. (An account that had chosen "hide the clock" before this option existed keeps its clock hidden.)
 - **Theme:** *Light* (the default), *Dark*, or *Match system*, which follows the device's light/dark setting and switches with it.
   - Dark mode covers every screen, pop-up and the chart, which uses its own colours checked for colour-blind readers on the dark background.
   - The header and login page are dark in both themes.
@@ -553,6 +556,8 @@ tests/
     ├── BulkEditModal.test.jsx        # opt-in fields, payload, commission rate, validation, errors
     ├── ReceiverReportModal.test.jsx  # receiver matching, totals, date filter
     ├── branding.test.jsx             # header (logo, name, role, last login, sticky), login page, tab title/icon, manifest
+    ├── Header.test.jsx               # header layout (logo + clock | pages | Settings + account), every page listed with
+    │                                 # the current one marked, the account menu (keys, closing, profile, Log out)
     ├── notifications.test.jsx        # toasts: position/direction/theme, kinds, and each action's feedback
     ├── codebase.test.js              # removed modals and toast packages stay gone; no base44 names; the chart,
     │                                 # the calendar and non-dashboard pages stay loaded on demand
