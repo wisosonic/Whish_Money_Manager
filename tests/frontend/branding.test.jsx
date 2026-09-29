@@ -123,6 +123,15 @@ describe("Header — sticky while scrolling", () => {
     const css = readProjectFile("src/assets/css/index.css");
     expect(css).toMatch(/scroll-padding-top:\s*calc\(var\(--app-header-height, 0px\) \+ 0\.5rem\)/);
   });
+
+  it("the page always keeps room for the scrollbar, so switching between short and long pages doesn't shift it", () => {
+    // User-reported (2026-09-29): Dashboard and Admin panel (taller than the window) had a scrollbar
+    // and the other pages didn't, so the page narrowed by the scrollbar's width and jumped sideways.
+    // Measured in Edge: content 1256px (short) vs 1241px (tall) without it; 1241px on both with it.
+    const css = readProjectFile("src/assets/css/index.css");
+    const htmlRule = css.match(/\n\s*html\s*\{([^}]*)\}/)?.[1] ?? "";
+    expect(htmlRule).toMatch(/scrollbar-gutter:\s*stable\s*;/);
+  });
 });
 
 describe("Header — logo and name scroll back to the top", () => {

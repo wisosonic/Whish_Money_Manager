@@ -91,6 +91,10 @@
      (focus, anchors). --app-header-height is set by Header.jsx and follows its real height. */
   html {
     scroll-padding-top: calc(var(--app-header-height, 0px) + 0.5rem);
+    /* Always keep room for the vertical scrollbar (user-reported, 2026-09-29): pages taller than
+       the window (Dashboard, Admin panel) got a scrollbar and shorter ones didn't, so the page
+       narrowed and everything, header included, jumped sideways when switching pages. */
+    scrollbar-gutter: stable;
   }
 }
 
