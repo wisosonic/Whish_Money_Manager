@@ -202,7 +202,7 @@ describe("table options", () => {
   const renderTable = (rows = many, props = {}) => render(withApp(
     <TransactionsList transactions={rows} dayTransactions={rows} loading={false} search="" setSearch={vi.fn()}
       selectedDate={DAY} setSelectedDate={vi.fn()} onToday={vi.fn()} onCashIn={vi.fn()} onCashOut={vi.fn()}
-      onImportPDF={vi.fn()} onRefresh={vi.fn()} onResetOpeningBalance={vi.fn()} onDeleteDailyBalanceForDate={vi.fn()} {...props} />
+      onImportPDF={vi.fn()} onRefresh={vi.fn()} onDeleteDailyBalanceForDate={vi.fn()} {...props} />
   ));
   const bodyRows = (container) => [...container.querySelectorAll("tbody tr")];
 
@@ -245,7 +245,7 @@ describe("table options", () => {
     rerender(withApp(
       <TransactionsList transactions={refreshed} dayTransactions={refreshed} loading={false} search="" setSearch={vi.fn()}
         selectedDate={DAY} setSelectedDate={vi.fn()} onToday={vi.fn()} onCashIn={vi.fn()} onCashOut={vi.fn()}
-        onImportPDF={vi.fn()} onRefresh={vi.fn()} onResetOpeningBalance={vi.fn()} onDeleteDailyBalanceForDate={vi.fn()} />
+        onImportPDF={vi.fn()} onRefresh={vi.fn()} onDeleteDailyBalanceForDate={vi.fn()} />
     ));
     expect(screen.getByTestId("pager-range")).toHaveTextContent("26–30");
     fireEvent.click(screen.getByTestId("sort-amount"));

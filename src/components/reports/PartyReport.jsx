@@ -9,7 +9,7 @@ import { formatMoney } from "@/lib/monthlyChartData";
 // Reports → Top senders (party "sender": who sent money in, Cash In) and Top recipients (party
 // "receiver": who money was sent to, Cash Out), in a date range. Grouping and ranking are done by
 // the server (server/reports.js): by phone number when there is one, otherwise by name.
-export const LIMITS = [10, 25, 50, 100];
+const LIMITS = [10, 25, 50, 100];
 const selectCls = "border rounded-lg px-3 py-2 text-sm font-bold bg-white focus:outline-none focus:ring-2 focus:ring-blue-300";
 
 // storeId: one store (the Admin's filter); without it, every store you can see.
@@ -43,7 +43,7 @@ export default function PartyReport({ party, storeId }) {
       .finally(() => { if (current) setLoading(false); });
     return () => { current = false; };
     // errorText only changes with the language; re-fetching for that isn't needed.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [party, from, to, by, limit, rangeValid, storeId]);
 
   const money = (value) => num(formatMoney(value));

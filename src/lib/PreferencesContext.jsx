@@ -21,7 +21,7 @@ import { configureNotify, notify } from "@/lib/notify";
 import { DEFAULT_PREFERENCES, resolvePreferences } from "@/lib/preferences";
 import { COOKIES, readCookie, writeCookie } from "@/lib/cookies";
 
-export const THEME_COOKIE = COOKIES.theme;
+const THEME_COOKIE = COOKIES.theme;
 
 // The settings cookie (user's request): every personal setting of the account last signed in on
 // this browser, { u: user id, p: preferences }. It applies them as soon as the page loads, before

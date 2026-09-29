@@ -1,11 +1,11 @@
-import { QueryClientProvider } from '@tanstack/react-query'
-import { queryClientInstance } from '@/lib/query-client'
-import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
-import { Suspense, lazy } from 'react';
-import PageNotFound from './lib/PageNotFound';
+import { BrowserRouter as Router, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { Suspense, lazy, useEffect } from 'react';
+import { SERVER_ERROR_EVENT } from '@/api/apiClient';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
-import UserNotRegisteredError from '@/components/UserNotRegisteredError';
+import AppErrorBoundary from "@/components/layout/AppErrorBoundary";
 import Dashboard from "./pages/Dashboard";
+import NotFoundPage from "./pages/NotFoundPage";
+import ServerErrorPage from "./pages/ServerErrorPage";
 import LoginPage from "@/components/auth/LoginPage";
 import { PERMISSIONS } from "@/lib/permissions";
 import { LanguageProvider, useI18n } from "@/lib/i18n";
@@ -45,11 +45,31 @@ const PageSpinner = () => (
   </div>
 );
 
-const AuthenticatedApp = () => {
-  const { isLoadingAuth, isLoadingPublicSettings, authError, isAuthenticated } = useAuth();
+// Any server error (a 5xx answer, or no answer at all) opens the 500 page (user's request,
+// 2026-09-29), remembering the page it came from so "Try again" can go back to it.
+export const ServerErrorRedirect = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const current = `${location.pathname}${location.search}${location.hash}`;
+  useEffect(() => {
+    const onServerError = (event) => {
+      if (window.location.pathname === "/500") return;
+      navigate("/500", { state: { from: current, reason: event.detail?.status === 0 ? "unreachable" : "server" } });
+    };
+    window.addEventListener(SERVER_ERROR_EVENT, onServerError);
+    return () => window.removeEventListener(SERVER_ERROR_EVENT, onServerError);
+  }, [navigate, current]);
+  return null;
+};
 
-  // Show loading spinner while checking app public settings or auth
-  if (isLoadingPublicSettings || isLoadingAuth) {
+export const AuthenticatedApp = () => {
+  const { isLoadingAuth, isAuthenticated } = useAuth();
+  const { pathname } = useLocation();
+
+  // The 500 page shows signed in or not: the session check itself may be what failed.
+  if (pathname === "/500") return <ServerErrorPage />;
+
+  if (isLoadingAuth) {
     return <PageSpinner />;
   }
 
@@ -57,15 +77,9 @@ const AuthenticatedApp = () => {
     return <LoginPage />;
   }
 
-  // Handle authentication errors
-  if (authError) {
-    if (authError.type === 'user_not_registered') {
-      return <UserNotRegisteredError />;
-    }
-  }
-
-  // Render the main app
+  // Render the main app. A screen that crashes shows the 500 page instead of a blank page.
   return (
+    <AppErrorBoundary resetKey={pathname}>
     <Suspense fallback={<PageSpinner />}>
     <Routes>
       <Route path="/" element={<Dashboard />} />
@@ -85,10 +99,10 @@ const AuthenticatedApp = () => {
       <Route path="/profile" element={<ProfilePage />} />
       {/* Stores: the Admin manages them all; everyone else sees their own store. */}
       <Route path="/stores" element={<StoresPage />} />
-      {/* Add your page Route elements here */}
-      <Route path="*" element={<PageNotFound />} />
+      <Route path="*" element={<NotFoundPage />} />
     </Routes>
     </Suspense>
+    </AppErrorBoundary>
   );
 };
 
@@ -99,12 +113,11 @@ function App() {
     <LanguageProvider>
       <AuthProvider>
         <PreferencesProvider>
-          <QueryClientProvider client={queryClientInstance}>
-            <Router>
-              <AuthenticatedApp />
-            </Router>
-            <AppToaster />
-          </QueryClientProvider>
+          <Router>
+            <ServerErrorRedirect />
+            <AuthenticatedApp />
+          </Router>
+          <AppToaster />
         </PreferencesProvider>
       </AuthProvider>
     </LanguageProvider>

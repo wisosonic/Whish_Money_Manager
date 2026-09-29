@@ -14,7 +14,7 @@ export const TOAST_DURATION = { success: 4000, info: 4000, warning: 7000, error:
 
 // Settings → Notifications (set by PreferencesProvider): how long toasts stay, and whether success
 // confirmations are shown (warnings and errors always are).
-export const DURATION_SCALE = { short: 0.5, normal: 1, long: 2 };
+const DURATION_SCALE = { short: 0.5, normal: 1, long: 2 };
 const config = { scale: 1, showSuccess: true };
 export const configureNotify = ({ duration = "normal", showSuccess = true } = {}) => {
   config.scale = DURATION_SCALE[duration] ?? 1;

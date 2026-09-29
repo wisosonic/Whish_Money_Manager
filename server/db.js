@@ -70,6 +70,23 @@ const IMPORT_HISTORY_SQL = `CREATE TABLE IF NOT EXISTS import_history (
     );
     CREATE INDEX IF NOT EXISTS idx_import_history_store ON import_history(store_id, imported_at);
     CREATE INDEX IF NOT EXISTS idx_import_history_by ON import_history(imported_by, imported_at);`;
+// Statement rows the CSV engine set aside as ambiguous (user's request, 2026-09-29): a negative
+// debit or credit, both, or neither. Never saved as transactions; kept with their import (as printed
+// in the file) so they can be reviewed from the dashboard and entered by hand if they're real.
+const AMBIGUOUS_ROWS_SQL = `CREATE TABLE IF NOT EXISTS ambiguous_rows (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      import_id INTEGER NOT NULL REFERENCES import_history(id) ON DELETE CASCADE,
+      line_no INTEGER,
+      date TEXT,
+      reference_number TEXT NOT NULL DEFAULT '',
+      service TEXT NOT NULL DEFAULT '',
+      description TEXT NOT NULL DEFAULT '',
+      debit TEXT NOT NULL DEFAULT '',     -- as printed in the file
+      credit TEXT NOT NULL DEFAULT '',
+      balance TEXT NOT NULL DEFAULT '',
+      reason TEXT NOT NULL              -- "negative" | "both" | "neither"
+    );
+    CREATE INDEX IF NOT EXISTS idx_ambiguous_rows_import ON ambiguous_rows(import_id);`;
 
 export const initializeDb = () => {
   db.exec(`
@@ -153,6 +170,8 @@ export const initializeDb = () => {
 
     ${IMPORT_HISTORY_SQL}
 
+    ${AMBIGUOUS_ROWS_SQL}
+
     -- One-time upgrade steps already applied (e.g. "granted:data:export").
     CREATE TABLE IF NOT EXISTS app_meta (
       key TEXT PRIMARY KEY,
@@ -190,7 +209,7 @@ const rebuildTable = (table, createSql, columns, orderBy) => {
 
 // Name of the store that receives the existing data: the office's account name as the importers
 // wrote it (the sender of Cash Out rows), or a plain default. The Admin can rename it.
-export const DEFAULT_STORE_NAME = "Main store";
+const DEFAULT_STORE_NAME = "Main store";
 const firstStoreName = () => {
   const account = db.prepare(
     `SELECT sender_name AS name, COUNT(*) AS n FROM transactions

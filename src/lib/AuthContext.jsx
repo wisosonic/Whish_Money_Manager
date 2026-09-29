@@ -10,8 +10,6 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
-  const [authError, setAuthError] = useState(null);
-  const [authChecked, setAuthChecked] = useState(false);
 
   const signedOut = useCallback(() => {
     setUser(null);
@@ -24,15 +22,11 @@ export const AuthProvider = ({ children }) => {
       const currentUser = await api.auth.me();
       setUser(currentUser);
       setIsAuthenticated(true);
-      setAuthError(null);
-    } catch (error) {
-      if (error?.status !== 401) {
-        console.error('User auth check failed:', error);
-      }
+    } catch {
+      // 401: not signed in. A server error also opens the 500 page (the API client's event).
       signedOut();
     } finally {
       setIsLoadingAuth(false);
-      setAuthChecked(true);
     }
   }, [signedOut]);
 
@@ -47,18 +41,12 @@ export const AuthProvider = ({ children }) => {
     return () => window.removeEventListener(SESSION_ENDED_EVENT, signedOut);
   }, [signedOut]);
 
+  // A wrong password throws; the login page shows the server's message.
   const login = async (email, password) => {
-    try {
-      const currentUser = await api.auth.login(email, password);
-      setUser(currentUser);
-      setIsAuthenticated(true);
-      setAuthError(null);
-      setAuthChecked(true);
-      return currentUser;
-    } catch (error) {
-      setAuthError({ type: 'auth_required', message: error?.message || 'Authentication required' });
-      throw error;
-    }
+    const currentUser = await api.auth.login(email, password);
+    setUser(currentUser);
+    setIsAuthenticated(true);
+    return currentUser;
   };
 
   const logout = async () => {
@@ -77,11 +65,9 @@ export const AuthProvider = ({ children }) => {
       user,
       isAuthenticated,
       isLoadingAuth,
-      isLoadingPublicSettings: false,
-      authError,
-      authChecked,
       login,
       logout,
+      // The 500 page's "Try again" asks again who is signed in, when that's what failed.
       checkUserAuth,
       updateUser,
       can,

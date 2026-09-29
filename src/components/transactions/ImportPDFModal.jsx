@@ -8,6 +8,7 @@ import { PERMISSIONS } from "@/lib/permissions";
 import { useI18n } from "@/lib/i18n";
 import { notify } from "@/lib/notify";
 import { X, Upload, FileText, CheckCircle, AlertCircle, Loader2, Calendar, Store } from "lucide-react";
+import AmbiguousRowsTable from "./AmbiguousRowsTable";
 
 // stores: the stores the statement can go to — the Admin's stores, or the one a Manager / User works
 // in (by default, their own store from the session). The field is always shown (user's request):
@@ -30,6 +31,8 @@ export default function ImportPDFModal({ onClose, onSaved, stores = [], defaultS
   const [duplicates, setDuplicates] = useState([]);
   const [overwrite, setOverwrite] = useState(false);
   const [validation, setValidation] = useState(null);
+  // Rows the CSV engine set aside as ambiguous: shown here, kept with the import, never saved.
+  const [ambiguous, setAmbiguous] = useState([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -65,17 +68,21 @@ export default function ImportPDFModal({ onClose, onSaved, stores = [], defaultS
         ? await api.integrations.Core.ExtractCsv(file, target)
         : await api.integrations.Core.ExtractPdf(file, target);
       setValidation(result?.validation || null);
+      setAmbiguous(Array.isArray(result?.ambiguous) ? result.ambiguous : []);
 
       const rows = result?.transactions || [];
       if (rows.length === 0) {
         setError(t("import.noRows"));
         notify.warning(t("import.noRows"));
       }
+      // The set-aside rows are accounted for: only a row missing altogether is a warning here.
       const expectedCount = result?.total_transactions_count;
-      if (expectedCount && rows.length < expectedCount) {
+      const setAside = Array.isArray(result?.ambiguous) ? result.ambiguous.length : 0;
+      if (expectedCount && rows.length + setAside < expectedCount) {
         setError(t("import.fewerRows", { expected: expectedCount, found: rows.length }));
         notify.warning(t("import.fewerRows", { expected: expectedCount, found: rows.length }));
       }
+      if (setAside) notify.warning(t("import.ambiguousToast", { count: setAside }));
       // The banner in the preview gives the details; the toast makes sure it isn't missed.
       if (rows.length > 0 && result?.validation && !result.validation.is_valid) {
         notify.warning(t("toast.import.notReconciled"));
@@ -142,11 +149,6 @@ export default function ImportPDFModal({ onClose, onSaved, stores = [], defaultS
   const handleSaveAll = async () => {
     setStep("saving");
     try {
-      if (!editRows || editRows.length === 0) {
-        console.error("لا توجد عمليات للحفظ");
-        setStep("preview");
-        return;
-      }
 
       // تأكد من أن التاريخ محدد
       const finalDate = detectedDate || new Date().toISOString().split("T")[0];
@@ -171,7 +173,7 @@ export default function ImportPDFModal({ onClose, onSaved, stores = [], defaultS
         };
       });
 
-      await api.entities.Transaction.importRecords(records, { overwrite, storeId: target, statement });
+      await api.entities.Transaction.importRecords(records, { overwrite, storeId: target, statement, ambiguous });
 
       notify.success(overwrite && duplicates.length > 0
         ? t("toast.import.savedReplaced", { count: records.length, replaced: duplicates.length })
@@ -194,6 +196,7 @@ export default function ImportPDFModal({ onClose, onSaved, stores = [], defaultS
     setDuplicates([]);
     setOverwrite(false);
     setValidation(null);
+    setAmbiguous([]);
     setError("");
   };
 
@@ -393,6 +396,20 @@ export default function ImportPDFModal({ onClose, onSaved, stores = [], defaultS
                     </span>
                   </div>
                 )
+              )}
+
+              {/* Rows the engine couldn't read as one Cash In or Cash Out (user's request): not saved,
+                  kept with the import so they can be reviewed from the dashboard. */}
+              {ambiguous.length > 0 && (
+                <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 text-sm text-amber-900" data-testid="import-ambiguous">
+                  <p className="flex items-start gap-2 px-4 py-3">
+                    <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" aria-hidden="true" />
+                    <span>{t("import.ambiguous", { count: ambiguous.length })}</span>
+                  </p>
+                  <div className="bg-white border-t border-amber-200 rounded-b-xl">
+                    <AmbiguousRowsTable rows={ambiguous} testId="import-ambiguous-table" />
+                  </div>
+                </div>
               )}
 
               {/* Opening Balance */}

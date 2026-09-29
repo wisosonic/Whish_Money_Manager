@@ -26,7 +26,7 @@ const inStore = (store) => (store?.all ? { sql: "1 = 1", params: [] } : { sql: "
 
 // 12 rows of raw sums (months without transactions are zero); the page rounds them and blanks
 // months that haven't happened yet, like the dashboard chart (src/lib/monthlyChartData.js).
-export const incomeByMonth = (year, store = { all: true }) => {
+const incomeByMonth = (year, store = { all: true }) => {
   const scope = inStore(store);
   const rows = db.prepare(
     `SELECT CAST(substr(day, 6, 2) AS INTEGER) AS month, COUNT(*) AS count,
@@ -43,7 +43,7 @@ export const incomeByMonth = (year, store = { all: true }) => {
 };
 
 // Years that have transactions, newest first.
-export const yearsWithData = (store = { all: true }) =>
+const yearsWithData = (store = { all: true }) =>
   db.prepare(`SELECT DISTINCT substr(${TX_DAY}, 1, 4) AS year FROM transactions WHERE ${inStore(store).sql} ORDER BY year DESC`).all(...inStore(store).params)
     .map((row) => row.year)
     .filter((year) => /^\d{4}$/.test(year));
@@ -53,12 +53,12 @@ export const yearsWithData = (store = { all: true }) =>
 // Senders are who sent money in (Cash In); recipients are who money was sent to (Cash Out). The
 // other side of those rows is the office's own account (the importers put the account name there),
 // so leaving it out keeps the office itself off both lists.
-export const PARTY_REPORTS = {
+const PARTY_REPORTS = {
   sender: { type: "cash_in", nameField: "sender_name" },
   receiver: { type: "cash_out", nameField: "receiver_name" },
 };
-export const RANK_BY = ["volume", "count"];
-export const MAX_LIMIT = 500;
+const RANK_BY = ["volume", "count"];
+const MAX_LIMIT = 500;
 
 const normalizeName = (value) => String(value ?? "").toLowerCase().replace(/\s+/g, " ").trim();
 // The most used value; ties go to the shortest (a number's short local form, as the table shows it).

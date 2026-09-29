@@ -30,7 +30,7 @@ const todayIso = () => nowIso().slice(0, 10);
 
 // ═══ Closed days ═══
 
-export const CLOSED_DAY_ERROR = "This day is closed. Reopen it to make changes.";
+const CLOSED_DAY_ERROR = "This day is closed. Reopen it to make changes.";
 
 // Which of these dates are closed in the store (unique, sorted).
 export const closedAmong = (storeId, dates) => {

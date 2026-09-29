@@ -95,6 +95,13 @@
        the window (Dashboard, Admin panel) got a scrollbar and shorter ones didn't, so the page
        narrowed and everything, header included, jumped sideways when switching pages. */
     scrollbar-gutter: stable;
+    /* The reserved strip shows the page root's background, not the page's: give it the pages' grey
+       (bg-gray-100) so a short page has no light stripe down its edge (seen in Edge, 2026-09-29).
+       In dark mode --background is already that page colour (#0f172a). */
+    background-color: #f3f4f6;
+  }
+  html.dark {
+    background-color: hsl(var(--background));
   }
 }
 
@@ -165,9 +172,9 @@
 .dark .text-yellow-600, .dark .text-yellow-700 { color: #fde047; }
 .dark .text-purple-500, .dark .text-purple-600 { color: #d8b4fe; }
 .dark .text-indigo-600 { color: #a5b4fc; }
-.dark .hover\:text-blue-500:hover, .dark .hover\:text-blue-800:hover { color: #93c5fd; }
+.dark .hover\:text-blue-500:hover, .dark .hover\:text-blue-600:hover, .dark .hover\:text-blue-800:hover { color: #93c5fd; }
 .dark .hover\:text-red-500:hover, .dark .hover\:text-red-600:hover { color: #fca5a5; }
-.dark .hover\:text-green-700:hover { color: #86efac; }
+.dark .hover\:text-green-600:hover, .dark .hover\:text-green-700:hover { color: #86efac; }
 .dark .hover\:text-indigo-500:hover { color: #c7d2fe; }
 
 /* Tinted borders */

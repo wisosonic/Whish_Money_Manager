@@ -121,7 +121,6 @@ describe("a closed day can't be changed — by anyone, through any route", () =>
   it("imports: new rows on a closed day, or replacing rows that are on one", async () => {
     locked(await req("POST", "/transactions/import", "admin", { records: [{ type: "cash_in", amount: 1, transaction_date: CLOSED, reference_number: "tr:new" }] }));
     locked(await req("POST", "/transactions/import", "admin", { overwrite: true, records: [{ type: "cash_in", amount: 1, transaction_date: "2026-09-12", reference_number: "tr:1" }] }));
-    locked(await req("POST", "/transactions/bulk-create", "admin", { records: [{ type: "cash_in", amount: 1, transaction_date: CLOSED }] }));
     expect(count("transactions")).toBe(2);
   });
 
@@ -223,11 +222,18 @@ describe("commission rate", () => {
   });
 });
 
-describe("restoring a backup", () => {
+describe("restoring a backup (replaces the file's days)", () => {
+  // User's decision (2026-09-29): restoring deletes what's on the file's days (per store), then puts
+  // every row of the file back, in one database transaction. It used to only add the missing ids.
   const exportCsv = async (kind, from = "2026-09-01", to = "2026-09-30") =>
     (await req("GET", `/admin/export?kind=${kind}&from=${from}&to=${to}`, "admin")).body;
   const preview = (csv, as = "admin") => req("POST", "/admin/restore/preview", as, { csv });
-  const restore = (csv, expected_count, as = "admin") => req("POST", "/admin/restore", as, { csv, expected_count });
+  const restore = (csv, expected_count, expected_delete, as = "admin") => req("POST", "/admin/restore", as, { csv, expected_count, expected_delete });
+  const restoreAsPreviewed = async (csv, as = "admin") => {
+    const { body } = await preview(csv, as);
+    return restore(csv, body.to_add, body.to_delete, as);
+  };
+  const references = () => db.prepare("SELECT reference_number FROM transactions ORDER BY reference_number").all().map((r) => r.reference_number);
 
   it("a full round trip: back up, delete, preview, restore — rows come back exactly as they were", async () => {
     const a = addTx({ amount: 12.5, sender_name: "=SUM(A1)", reference_number: "tr:a", transaction_date: "2026-09-05" });
@@ -239,12 +245,12 @@ describe("restoring a backup", () => {
 
     const p = await preview(csv);
     expect(p.status).toBe(200);
-    expect(p.body).toMatchObject({ kind: "transactions", rows: 2, to_add: 2, existing: 0, on_closed_days: 0, invalid_count: 0, first_date: "2026-09-05", last_date: "2026-09-06", total_in: 42.5 });
+    expect(p.body).toMatchObject({ kind: "transactions", rows: 2, to_add: 2, to_delete: 0, days: 2, blocked: null, invalid_count: 0, first_date: "2026-09-05", last_date: "2026-09-06", total_in: 42.5 });
     expect(count("transactions")).toBe(0); // the preview changes nothing
 
-    const r = await restore(csv, 2);
+    const r = await restore(csv, 2, 0);
     expect(r.status).toBe(200);
-    expect(r.body).toEqual({ kind: "transactions", restored: 2, skipped_existing: 0, skipped_closed: 0 });
+    expect(r.body).toEqual({ kind: "transactions", restored: 2, deleted: 0, days: 2 });
     const after = db.prepare("SELECT * FROM transactions ORDER BY id").all();
     // Same ids, formula-guarded text un-escaped, "entered by", dates… A CSV can't tell an empty text
     // from no value (NULL); the app treats both the same, so they compare as equal here.
@@ -253,52 +259,117 @@ describe("restoring a backup", () => {
     expect(after.map((t) => t.id)).toEqual([a, b]);
   });
 
-  it("rows still in the database are left alone; only missing ones are added", async () => {
-    addTx({ reference_number: "tr:keep", transaction_date: "2026-09-05" });
+  it("what's on the file's days now is replaced by the backup (changed, added and deleted rows alike)", async () => {
+    const keep = addTx({ reference_number: "tr:keep", amount: 10, transaction_date: "2026-09-05" });
     const gone = addTx({ reference_number: "tr:gone", transaction_date: "2026-09-06" });
     const csv = await exportCsv("transactions");
     db.prepare("DELETE FROM transactions WHERE id = ?").run(gone);
-    db.prepare("UPDATE transactions SET amount = 999 WHERE reference_number = 'tr:keep'").run();
+    db.prepare("UPDATE transactions SET amount = 999 WHERE id = ?").run(keep); // changed since
+    addTx({ reference_number: "tr:new", transaction_date: "2026-09-05" }); // added since, on a file day
+    const outside = addTx({ reference_number: "tr:outside", transaction_date: "2026-09-20" }); // not a file day
     const p = await preview(csv);
-    expect(p.body).toMatchObject({ to_add: 1, existing: 1 });
-    await restore(csv, 1);
-    expect(db.prepare("SELECT amount FROM transactions WHERE reference_number = 'tr:keep'").get().amount).toBe(999);
-    expect(count("transactions")).toBe(2);
+    expect(p.body).toMatchObject({ to_add: 2, to_delete: 2, deleted_elsewhere: 0, days: 2 });
+    expect((await restore(csv, 2, 2)).body).toMatchObject({ restored: 2, deleted: 2 });
+    expect(db.prepare("SELECT amount FROM transactions WHERE id = ?").get(keep).amount).toBe(10); // as in the backup
+    expect(references()).toEqual(["tr:gone", "tr:keep", "tr:outside"]); // tr:new (only on a file day now) is gone
+    expect(db.prepare("SELECT 1 FROM transactions WHERE id = ?").get(outside)).toBeTruthy();
   });
 
-  it("rows on closed days are skipped (and named)", async () => {
-    addTx({ transaction_date: "2026-09-05" });
-    addTx({ transaction_date: "2026-09-06" });
+  it("a statement re-imported with 'replace' since the backup (new ids) isn't doubled", async () => {
+    // The reviewer's case: the old restore matched ids only, so the re-imported copies stayed and
+    // the backup's originals came back too.
+    const first = await req("POST", "/transactions/import", "admin", { records: [
+      { type: "cash_in", amount: 50, reference_number: "tr:R1", transaction_date: "2026-09-07" },
+      { type: "cash_in", amount: 60, reference_number: "tr:R2", transaction_date: "2026-09-07" },
+    ] });
+    expect(first.status).toBe(201);
+    const csv = await exportCsv("transactions");
+    await req("POST", "/transactions/import", "admin", { overwrite: true, records: [
+      { type: "cash_in", amount: 50, reference_number: "tr:R1", transaction_date: "2026-09-07" },
+      { type: "cash_in", amount: 60, reference_number: "tr:R2", transaction_date: "2026-09-07" },
+    ] });
+    expect((await preview(csv)).body).toMatchObject({ to_add: 2, to_delete: 2 });
+    await restoreAsPreviewed(csv);
+    expect(references()).toEqual(["tr:R1", "tr:R2"]);
+  });
+
+  it("the same transaction moved to another day, or re-imported onto another day, is removed there too", async () => {
+    const moved = addTx({ reference_number: "tr:m", transaction_date: "2026-09-05" });
+    addTx({ reference_number: "tr:r", transaction_date: "2026-09-05" });
+    const csv = await exportCsv("transactions");
+    db.prepare("UPDATE transactions SET transaction_date = '2026-09-25' WHERE id = ?").run(moved); // moved since
+    db.prepare("DELETE FROM transactions WHERE reference_number = 'tr:r'").run();
+    addTx({ reference_number: "tr:r", transaction_date: "2026-09-26" }); // re-imported on another day, new id
+    const p = await preview(csv);
+    expect(p.body).toMatchObject({ to_add: 2, to_delete: 2, deleted_elsewhere: 2 });
+    await restoreAsPreviewed(csv);
+    expect(db.prepare("SELECT reference_number, transaction_date FROM transactions ORDER BY reference_number").all()).toEqual([
+      { reference_number: "tr:m", transaction_date: "2026-09-05" }, { reference_number: "tr:r", transaction_date: "2026-09-05" },
+    ]);
+  });
+
+  it("a reference used by another store's transaction refuses the restore (409), like an import", async () => {
+    addTx({ reference_number: "tr:x", transaction_date: "2026-09-05" });
     const csv = await exportCsv("transactions");
     db.exec("DELETE FROM transactions");
-    db.prepare("INSERT INTO closed_days (store_id, date, closed_by, closed_at) VALUES (1, '2026-09-06', 'admin@test.local', ?)").run(now);
-    const p = await preview(csv);
-    expect(p.body).toMatchObject({ to_add: 1, on_closed_days: 1, closed_days: ["2026-09-06"] });
-    expect((await restore(csv, 1)).body).toMatchObject({ restored: 1, skipped_closed: 1 });
-    expect(count("transactions", "transaction_date = '2026-09-06'")).toBe(0);
+    const other = db.prepare("INSERT INTO stores (name, created_date, updated_date) VALUES ('Branch 9', 'x', 'x')").run().lastInsertRowid;
+    try {
+      addTx({ reference_number: "tr:x", transaction_date: "2026-09-05", store_id: other });
+      const p = await preview(csv);
+      expect(p.body).toMatchObject({ blocked: "other_stores", in_other_stores: 1 });
+      const r = await restore(csv, p.body.to_add, p.body.to_delete);
+      expect(r.status).toBe(409);
+      expect(r.body.error).toBe("Some of these transactions are already recorded in another store");
+      expect(count("transactions")).toBe(1);
+    } finally {
+      // Later tests expect a single store (old backups without store_id go to it).
+      db.prepare("DELETE FROM transactions WHERE store_id = ?").run(other);
+      db.prepare("DELETE FROM stores WHERE id = ?").run(other);
+    }
   });
 
-  it("opening balances: restored by date, an existing balance for that date is kept", async () => {
+  it("a closed day among the days written or cleared refuses the whole restore (423)", async () => {
+    addTx({ transaction_date: "2026-09-05" });
+    const moved = addTx({ transaction_date: "2026-09-06" });
+    const csv = await exportCsv("transactions");
+    db.prepare("INSERT INTO closed_days (store_id, date, closed_by, closed_at) VALUES (1, '2026-09-06', 'admin@test.local', ?)").run(now);
+    let p = await preview(csv);
+    expect(p.body).toMatchObject({ blocked: "closed", closed_days: ["2026-09-06"] });
+    const r = await restore(csv, p.body.to_add, p.body.to_delete);
+    expect(r.status).toBe(423);
+    expect(count("transactions")).toBe(2);
+    // A day that would only be cleared (the same transaction, moved there since) counts too.
+    db.exec("DELETE FROM closed_days");
+    db.prepare("UPDATE transactions SET transaction_date = '2026-09-28' WHERE id = ?").run(moved);
+    db.prepare("INSERT INTO closed_days (store_id, date, closed_by, closed_at) VALUES (1, '2026-09-28', 'admin@test.local', ?)").run(now);
+    p = await preview(csv);
+    expect(p.body).toMatchObject({ blocked: "closed", closed_days: ["2026-09-28"] });
+  });
+
+  it("opening balances: the store's balance on each of the file's dates is replaced", async () => {
     addBalance("2026-09-05", 500);
     addBalance("2026-09-06", 600);
     const csv = await exportCsv("balances");
     db.exec("DELETE FROM daily_balances WHERE date = '2026-09-06'");
     db.prepare("UPDATE daily_balances SET opening_balance = 1 WHERE date = '2026-09-05'").run();
-    expect((await preview(csv)).body).toMatchObject({ kind: "balances", to_add: 1, existing: 1 });
-    await restore(csv, 1);
+    addBalance("2026-09-07", 700); // not in the file: kept
+    expect((await preview(csv)).body).toMatchObject({ kind: "balances", to_add: 2, to_delete: 1, days: 2 });
+    expect((await restore(csv, 2, 1)).body).toMatchObject({ restored: 2, deleted: 1 });
     expect(db.prepare("SELECT date, opening_balance FROM daily_balances ORDER BY date").all()).toEqual([
-      { date: "2026-09-05", opening_balance: 1 }, { date: "2026-09-06", opening_balance: 600 },
+      { date: "2026-09-05", opening_balance: 500 }, { date: "2026-09-06", opening_balance: 600 }, { date: "2026-09-07", opening_balance: 700 },
     ]);
   });
 
-  it("refuses (409) when the data changed since the preview", async () => {
+  it("refuses (409) when either count changed since the preview, and changes nothing", async () => {
     addTx({ transaction_date: "2026-09-05" });
     const csv = await exportCsv("transactions");
-    db.exec("DELETE FROM transactions");
-    const r = await restore(csv, 5);
+    let r = await restore(csv, 1, 5);
     expect(r.status).toBe(409);
-    expect(r.body).toMatchObject({ error: "The data changed since the preview. Check the counts and try again.", to_add: 1 });
-    expect(count("transactions")).toBe(0);
+    expect(r.body).toMatchObject({ error: "The data changed since the preview. Check the counts and try again.", to_add: 1, to_delete: 1 });
+    r = await restore(csv, 3, 1);
+    expect(r.status).toBe(409);
+    expect(count("transactions")).toBe(1);
+    expect((await req("POST", "/admin/restore", "admin", { csv, expected_count: 1 })).status).toBe(400); // expected_delete is required
   });
 
   it("a file with an invalid row can't be restored at all", async () => {
@@ -310,7 +381,7 @@ describe("restoring a backup", () => {
     const csv = toCsv(TRANSACTION_CSV_COLUMNS, rows);
     const p = await preview(csv);
     expect(p.body).toMatchObject({ invalid_count: 2, invalid: [{ line: 3, field: "type" }, { line: 4, field: "amount" }] });
-    const r = await restore(csv, 0);
+    const r = await restore(csv, 0, 0);
     expect(r.status).toBe(400);
     expect(count("transactions")).toBe(0);
   });
@@ -329,9 +400,17 @@ describe("restoring a backup", () => {
     expect((await preview(csv)).body).toMatchObject({ kind: "balances", to_add: 1 });
   });
 
-  it("needs the restore permission", async () => {
+  it("needs the restore permission, and the delete permission to restore (it deletes the file's days)", async () => {
     const csv = toCsv(TRANSACTION_CSV_COLUMNS, []);
     expect((await preview(csv, "user")).status).toBe(403);
-    expect((await restore(csv, 0, "user")).status).toBe(403);
+    expect((await restore(csv, 0, 0, "user")).status).toBe(403);
+    const role = db.prepare("SELECT permissions FROM roles WHERE name = 'manager'").get().permissions;
+    db.prepare("UPDATE roles SET permissions = ? WHERE name = 'manager'").run(JSON.stringify(JSON.parse(role).filter((p) => p !== "data:purge")));
+    try {
+      expect((await preview(csv, "manager")).status).toBe(200); // looking is fine
+      expect((await restore(csv, 0, 0, "manager")).status).toBe(403);
+    } finally {
+      db.prepare("UPDATE roles SET permissions = ? WHERE name = 'manager'").run(role);
+    }
   });
 });

@@ -3,7 +3,6 @@
 export {
   matchesReceiver,
   matchesSearch,
-  matchesSender,
   normalizeSearchText,
   receiverDisplay,
 } from "../../server/search.js";

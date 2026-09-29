@@ -8,7 +8,7 @@
 //   - "Ascending" means A→Z, smallest first, oldest first, and for Type: Cash In first.
 import { receiverDisplay } from "@/lib/transactionSearch";
 
-export const SORT_CYCLE = { none: "asc", asc: "desc", desc: "none" };
+const SORT_CYCLE = { none: "asc", asc: "desc", desc: "none" };
 export const NO_SORT = { key: null, dir: "none" };
 
 const numberOrNull = (v) => (v === null || v === undefined || v === "" || Number.isNaN(Number(v)) ? null : Number(v));

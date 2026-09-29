@@ -1,14 +1,15 @@
 import { useRef, useState } from "react";
-import { DatabaseBackup, Upload, Loader2, AlertTriangle, CheckCircle2, Lock } from "lucide-react";
+import { DatabaseBackup, Upload, Loader2, AlertTriangle, CheckCircle2, Lock, Trash2 } from "lucide-react";
 import { api } from "@/api/apiClient";
 import { useI18n } from "@/lib/i18n";
 import { notify } from "@/lib/notify";
 import { Section } from "@/components/settings/SettingsControls";
 
-// Admin panel → Restore from a backup (data:restore — Admin + Manager). Adds back rows from a CSV
-// downloaded with the panel's Backup section — transactions or opening balances. Nothing is written until the preview is confirmed:
-// rows still in the database are left as they are, rows on closed days are skipped, and a file
-// with any invalid row can't be restored (see server/admin.js).
+// Admin panel → Restore from a backup (data:restore + data:purge — Admin + Manager). Puts back a CSV
+// downloaded with the panel's Backup section — transactions or opening balances — REPLACING the
+// file's days (user's decision, 2026-09-29): what's on them now is deleted first. Nothing is written
+// until the preview is confirmed; a file with an invalid row, a closed day, or a reference already
+// used in another store can't be restored (see server/admin.js).
 const money = (n) => `$${Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 // onRestored: called after rows were added, so the panel can refresh its range summary.
@@ -58,15 +59,16 @@ export default function RestoreBackup({ onRestored, storeId }) {
   const restore = async () => {
     setRestoring(true);
     try {
-      const result = await api.admin.restore(...(storeId ? [csv, preview.to_add, storeId] : [csv, preview.to_add]));
-      notify.success(t(`toast.restore.done.${result.kind}`, { count: result.restored }), { duration: 10000 });
+      const counts = [csv, preview.to_add, preview.to_delete];
+      const result = await api.admin.restore(...(storeId ? [...counts, storeId] : counts));
+      notify.success(t(`toast.restore.done.${result.kind}`, { count: result.restored, deleted: result.deleted }), { duration: 10000 });
       setConfirming(false);
       reset();
       onRestored?.();
     } catch (err) {
       const message = errorText(err?.message || "") || t("restore.failed");
       setConfirming(false);
-      if (err?.status === 409) {
+      if (err?.status === 409 || err?.status === 423) {
         notify.warning(message);
         await check(csv); // show the new counts
       } else {
@@ -77,7 +79,7 @@ export default function RestoreBackup({ onRestored, storeId }) {
     }
   };
 
-  const canRestore = preview && preview.invalid_count === 0 && preview.to_add > 0;
+  const canRestore = preview && preview.invalid_count === 0 && !preview.blocked && preview.to_add > 0;
 
   return (
     <Section id="admin-restore" icon={DatabaseBackup} title={t("restore.title")} description={t("restore.description")}>
@@ -114,10 +116,20 @@ export default function RestoreBackup({ onRestored, storeId }) {
               </li>
               {preview.kind === "transactions" && preview.to_add > 0 &&
                 <li className="text-gray-700" dir="ltr">{t("admin.summary.in")} {num(money(preview.total_in))} · {t("admin.summary.out")} {num(money(preview.total_out))}</li>}
-              <li className="text-gray-600">{t("restore.existing", { count: preview.existing })}</li>
-              {preview.on_closed_days > 0 &&
-                <li className="text-amber-800 flex items-center gap-2"><Lock className="w-4 h-4" aria-hidden="true" />{t("restore.closed", { count: preview.on_closed_days, days: preview.closed_days.map(num).join(t("common.listSeparator")) })}</li>}
+              <li className="text-red-700 flex items-center gap-2" data-testid="restore-to-delete">
+                <Trash2 className="w-4 h-4" aria-hidden="true" />{t("restore.toDelete", { count: preview.to_delete })}
+              </li>
+              {preview.deleted_elsewhere > 0 &&
+                <li className="text-gray-600 ps-6" data-testid="restore-elsewhere">{t("restore.elsewhere", { count: preview.deleted_elsewhere })}</li>}
               {preview.duplicates_in_file > 0 && <li className="text-gray-600">{t("restore.duplicates", { count: preview.duplicates_in_file })}</li>}
+              {preview.blocked === "closed" &&
+                <li role="alert" className="text-amber-800 flex items-center gap-2 font-semibold" data-testid="restore-blocked">
+                  <Lock className="w-4 h-4" aria-hidden="true" />{t("restore.blockedClosed", { days: preview.closed_days.map(num).join(t("common.listSeparator")) })}
+                </li>}
+              {preview.blocked === "other_stores" &&
+                <li role="alert" className="text-amber-800 flex items-center gap-2 font-semibold" data-testid="restore-blocked">
+                  <AlertTriangle className="w-4 h-4" aria-hidden="true" />{t("restore.blockedOtherStores", { count: preview.in_other_stores })}
+                </li>}
             </ul>
           }
           {preview.invalid_count === 0 && preview.to_add === 0 && <p className="text-gray-700">{t("restore.nothing")}</p>}
@@ -140,14 +152,14 @@ export default function RestoreBackup({ onRestored, storeId }) {
             <h3 id="restore-confirm-title" className="font-bold text-gray-800 text-lg mb-2">
               {t(`restore.confirmTitle.${preview.kind}`, { count: preview.to_add })}
             </h3>
-            <p id="restore-confirm-body" className="text-sm text-gray-600 mb-5">{t("restore.confirmBody")}</p>
+            <p id="restore-confirm-body" className="text-sm text-gray-600 mb-5">{t("restore.confirmBody", { deleted: preview.to_delete })}</p>
             <div className="flex gap-3">
               <button type="button" onClick={() => setConfirming(false)} className="flex-1 border rounded-lg py-2 text-gray-600 hover:bg-gray-50">
                 {t("common.cancel")}
               </button>
               <button
                 type="button" onClick={restore} disabled={restoring} data-testid="restore-confirm"
-                className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg py-2 font-semibold transition disabled:opacity-50">
+                className="flex-1 flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white rounded-lg py-2 font-semibold transition disabled:opacity-50">
                 {restoring && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
                 {t("restore.confirm")}
               </button>

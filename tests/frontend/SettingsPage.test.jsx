@@ -308,7 +308,7 @@ describe("The dashboard follows the saved settings", () => {
   const renderTable = () => render(withProviders(
     <TransactionsList transactions={rows} allTransactions={rows} loading={false} search="" setSearch={noop}
       selectedDate="2026-09-23" setSelectedDate={noop} onToday={noop} onCashIn={noop} onCashOut={noop}
-      onImportPDF={noop} onRefresh={noop} onResetOpeningBalance={noop} onDeleteDailyBalanceForDate={noop} />, "/"));
+      onImportPDF={noop} onRefresh={noop} onDeleteDailyBalanceForDate={noop} />, "/"));
 
   it("hidden columns disappear from the table (header and cells); the rest keep their order", () => {
     setAuthRole("admin", { preferences: { hiddenColumns: ["note", "service", "commissionRate"] } });
@@ -342,7 +342,7 @@ describe("The dashboard follows the saved settings", () => {
     const { container } = render(withProviders(<>
       <TransactionsList transactions={rows} allTransactions={rows} loading={false} search="" setSearch={noop}
         selectedDate="2026-09-23" setSelectedDate={noop} onToday={noop} onCashIn={noop} onCashOut={noop}
-        onImportPDF={noop} onRefresh={noop} onResetOpeningBalance={noop} onDeleteDailyBalanceForDate={noop} />
+        onImportPDF={noop} onRefresh={noop} onDeleteDailyBalanceForDate={noop} />
       <SettingsPage />
     </>, "/settings#table"));
     const senders = () => [...container.querySelectorAll("tbody tr")].map((tr) => tr.children[3].textContent);

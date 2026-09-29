@@ -21,6 +21,8 @@ It runs entirely on your machine: a React frontend and a small Node.js/Express A
 
 - **Daily journal**: every transaction for the selected day, with deposits (Cash In), withdrawals (Cash Out), commissions and the running wallet balance.
 - **Previous / next day**: the ‹ and › arrows on either side of the date step one day back or forward, without opening the calendar. They follow the reading direction: in Arabic "previous" is on the right.
+- **Ambiguous rows** (**عمليات غير واضحة**, beside the import button): statement rows the CSV import couldn't read as one Cash In or Cash Out, a negative debit or credit, both a debit and a credit, or neither, are set aside instead of being saved as a guess. A red badge on the button shows how many there are (none: no badge; over 99: "99+"). The import screen lists them before you save; this window lists every set-aside row from past imports (line, date, description, debit and credit as printed, why, and the import it came from). Three actions per row, wherever you could import that statement: **accept as is** (with an inline confirmation) saves it exactly as printed — no review, the larger of debit/credit decides the type and the amount, same as the file's own numbers; **discard** it for good (with an inline confirmation); or **correct and add**, which opens a small form — separate **debit** and **credit** amount fields (mirroring the statement's own columns, prefilled from the row), plus names, phone, date, and so on — and saves it as a real transaction. Exactly one of debit/credit must end up filled with a non-zero number (negative values are accepted, since that's often exactly what made the row ambiguous); whichever one it is decides Cash Out or Cash In, and its absolute value is the amount. The commission is worked out the same way as any other CSV credit (the store's office rate on the date, nothing on debits), never typed by hand. Who sees, discards or corrects a row follows the import history.
+- **Error pages**: an address that isn't a page shows a 404 page with a link home. Any server error, or a server that can't be reached, opens a 500 page that can try the page again or go back to the dashboard; a screen that crashes shows it too, instead of a blank page.
 - **Sticky table header**: the column names stay visible while you scroll through a long day. The table scrolls inside its own box, one screen tall, so on a phone it still scrolls sideways too.
 - **Import history** (**سجل الاستيراد** in the header): every statement saved from the import screen, newest first: when, the file name and type, the days it covers, the store, how many transactions were added (and replaced), and who imported it. The Admin sees every store's imports (and can pick one store), a Manager their store's, and a User only their own. The history is a log: deleting the imported transactions later doesn't remove its entries.
 - **Date picker that marks days with data**: click the day shown next to "اليومية" to open a calendar. Every day that has transactions is highlighted in one blue, however many it has, and closed days show a 🔒. The month and year lists (or the arrows) move to another month; each day's tooltip and screen-reader name give its count ("2026-09-22 · 3 عملية"). The counts are fetched each time the calendar opens or changes month, so they're current after an import or a delete. In "All stores" a day is highlighted if any store has transactions on it, and closed days aren't marked (days are closed per store).
@@ -44,6 +46,7 @@ It runs entirely on your machine: a React frontend and a small Node.js/Express A
   - **In the results** (all days or this month): each date is a link. Click it to open that day, which also clears the search. "#" is each row's number within its own day, and rows from another day name their date for screen readers (e.g. "تحديد العملية 1 بتاريخ 2026-09-22").
   - **What doesn't change:** the day's totals above the table (deposits, withdrawals, commissions) always count the selected day only, whatever the search scope. "Delete all for this day" is hidden while all-days results are shown, so it can't be confused with them.
   - With an empty search box, the table shows the selected day as usual.
+  - **Clearing it:** once something is typed, an ✕ appears at the end of the box; click it (or press Escape in the box) to empty it. The cursor stays in the box, ready for the next search.
 - **Reports**: daily commission report, and two per-party reports with count, deposits, withdrawals and commissions over an optional date range:
   - **تقرير مرسل** (sender report): all transactions whose sender name matches.
   - **تقرير مستلم** (receiver report): all transactions whose receiver matches, by name or, when the receiver was stored as a phone number, by that number in any format (`71389296`, `+961 71 389 296`, `071389296`). The receiver is shown the same way as in the transactions table.
@@ -233,7 +236,7 @@ Everyone signs in with their own email and password. There are three roles:
 - **Where the session lives:** in a secure cookie that page scripts can't read (`HttpOnly`) and that other websites can't send (`SameSite=Strict`).
 - **The browser cap:** browsers keep cookies for at most about 400 days. The app renews the cookie as you use it, so this only matters if nobody opens the app for 400 days.
 - **Logout:** ends that session on the server immediately. A copy of the token can't be reused, and other devices stay signed in.
-- **Brute-force protection:** after 10 wrong passwords for the same email, sign-in is blocked for 15 minutes. Wrong *current* passwords on the profile page count too (10 per 15 minutes per account), so an unattended open session can't be used to guess the password.
+- **Brute-force protection:** after 10 wrong passwords for the same email, sign-in is blocked for 15 minutes. Failures older than 15 minutes are cleared from memory every 15 minutes, even for addresses nobody tries again. Wrong *current* passwords on the profile page count too (10 per 15 minutes per account), so an unattended open session can't be used to guess the password.
 - **Language (العربية / English):** once signed in, change it on the [Settings](#settings) page (⚙️ in the header).
   - **Before signing in:** the login page has an on/off switch. It shows **ع** on the left and **EN** on the right, and a white knob sits on the active language. Click it (or Tab to it and press Space/Enter) to slide to the other one. Screen readers announce it as the "English" switch, on or off.
   - The header has no language switch, to keep it uncluttered.
@@ -395,14 +398,15 @@ Open **لوحة الإدارة** (Admin panel) in the header. Users don't see th
    - **If the data changed:** if someone added or deleted transactions in that range after you opened the confirmation, nothing is deleted. You're asked to check the new counts first.
    - **Afterwards:** a message confirms how many transactions and opening balances were deleted. The server also logs who deleted what.
    - **It can't be undone.** Keep the CSV backup if you might need the data again.
-4. **Restore from a backup** (between Backup and Delete data): adds back rows from a CSV made with **Backup** above.
+4. **Restore from a backup** (between Backup and Delete data): puts back a CSV made with **Backup** above, **replacing the file's days**. It needs the right to delete data as well as to restore.
    1. **Choose a backup file:** transactions or opening balances; the type is detected automatically.
    2. **Check the preview.** Nothing is changed yet. It shows:
-      - How many rows the file holds, and how many will be added (with their dates and totals).
-      - How many are already in the database. These are left exactly as they are.
-      - How many are on closed days. These are skipped and the days listed.
-   3. **Confirm** to add the missing rows back exactly as they were: same dates and same "entered by". A notification says how many were restored, and the range preview above updates.
-   - **How rows are matched:** transactions by their original ID, which is never reused, so a restore puts back what was deleted and never duplicates what's still there. Opening balances are matched by store and date (one per store per day).
+      - How many rows the file holds and will be put back (with their dates and totals).
+      - How many rows now on those days will be **deleted first**, and how many of those are the same transactions found on other days (moved, or re-imported with "replace" since the backup).
+      - Why it can't be restored, if a closed day is involved or one of its reference numbers is used by a transaction in another store.
+   3. **Confirm** (a red button: the dialog says how many rows are deleted, and that it can't be undone). In one step, each store's rows on the file's days are deleted and the backup's rows are put back exactly as they were: same ids, dates and "entered by". A notification says how many were restored and replaced, and the range preview above updates.
+   - **What's replaced:** for transactions, everything on the file's days in the file's stores, plus the same transactions wherever they are now (the same id, or the same reference number in that store), so nothing ends up counted twice. For opening balances, the store's balance on each of the file's dates. Days the file doesn't cover are never touched.
+   - **Refused as a whole:** a closed day among the days written or cleared (reopen it first), or a reference number already used by another store's transaction (the same money can't be in two stores).
    - **Stores:** each row goes back to its own store. A Manager can only restore their store's rows (others make the file invalid). Backups made before stores go to the store chosen at the top of the panel.
    - **Files that can't be restored:** a file with any invalid row (e.g. a bad amount or type) is refused, and the preview lists the lines and columns, so a damaged or edited file is never half-restored. A file that isn't a backup is refused too.
    - **If the data changed** after the preview (someone added or deleted rows), nothing is written: you get a warning and the refreshed counts.
@@ -436,7 +440,7 @@ Safety rules: there must always be at least one active Admin, and an Admin can't
 2. If transactions with the same reference numbers already exist, you're asked to either:
    - **استبدال العمليات الموجودة** (replace): the existing entries are deleted and replaced when you save.
    - **إلغاء الرفع** (cancel): nothing is saved.
-3. Review the rows. For CSV files, a banner shows whether the file reconciles: debit total, credit total, closing balance, and each row's balance. Fix or remove rows if needed.
+3. Review the rows. For CSV files, a banner shows whether the file reconciles: debit total, credit total, closing balance, and each row's balance. Fix or remove rows if needed. Rows that can't be read as one Cash In or Cash Out are listed separately as **ambiguous**: they aren't saved, and stay reviewable from **عمليات غير واضحة** on the dashboard, where each can be **discarded** or **corrected and added** as a real transaction.
 4. Click **حفظ الكل**. The statement's opening balance is stored for that day, and the dashboard jumps to it. The import is added to **سجل الاستيراد** (Import history), with the file's name.
 
 ### Import rules
@@ -450,6 +454,7 @@ Safety rules: there must always be at least one active Admin, and an Admin can't
 | `NAME - 96171588017` | Split in both engines: name → sender/receiver, `phone` = `96171588017`, `customer_number` = `71588017` (without 961) |
 | Bare phone as receiver | Moved to `phone` / `customer_number` on save |
 | Duplicates | Same reference number in the same store (one already in another store blocks the import) |
+| Ambiguous rows (CSV) | A negative debit or credit, both a debit and a credit, or neither (blank or zero): set aside, not saved, kept with the import. They still count in the reconciliation, so the file still adds up. Later, from the dashboard: accept as is (the larger of debit/credit, unreviewed), discard for good, or correct and add as a real transaction — a debit and a credit field, exactly one of which must be a non-zero number (negative accepted) |
 
 ### CSV statement format
 
@@ -510,7 +515,10 @@ tests/
 ├── backend/
 │   ├── helpers.js            # test server, one account per role, cookie-keeping client
 │   ├── imports.test.js       # import history: recorded with the import (server-side period / count / user),
-│   │                         # file-name cleaning, nothing on a refused import, who sees what, email change
+│   │                         # file-name cleaning, nothing on a refused import, who sees what, email change,
+│   │                         # ambiguous rows kept with the import (cleaned, same visibility),
+│   │                         # discarding one and correcting one into a real transaction
+│   ├── errors.test.js        # every API failure is JSON: 404, malformed JSON, too large, an unexpected 500
 │   ├── dashboard.test.js     # per-day queries (100 vs 1,000 rows), the 10,000 cap, server totals and wallet,
 │   │                         # all-days / this-month search, sender / receiver reports, opening-balance
 │   │                         # cleanup, the date picker's days per month
@@ -547,6 +555,11 @@ tests/
     ├── transactionSearch.test.js
     ├── ImportPDFModal.test.jsx   # PDF/CSV routing, preview, duplicate prompt, save payload (with the file's name)
     ├── ImportHistoryPage.test.jsx # the history table, the Admin's store filter, each role's scope, empty / capped
+    ├── AmbiguousRowsModal.test.jsx # the dashboard's ambiguous-rows window, its button beside Import, and the
+    │                               # per-row actions: accept-as-is and discard (both inline confirm), and
+    │                               # correct-and-add (separate debit/credit fields: exactly one filled,
+    │                               # non-zero, negative accepted)
+    ├── errorPages.test.jsx   # 404 and 500 pages: the API client's signal, the redirect, retry, crashes, English
     ├── TransactionsList.test.jsx     # table, report/chart buttons, removed buttons, immediate delete,
     │                                 # multi-select, select-all, bulk edit/delete flows,
     │                                 # type icons, sorting by every column
@@ -568,8 +581,8 @@ tests/
     ├── Header.test.jsx               # header layout (logo + clock | pages | Settings + account), every page listed with
     │                                 # the current one marked, the account menu (keys, closing, profile, Log out)
     ├── notifications.test.jsx        # toasts: position/direction/theme, kinds, and each action's feedback
-    ├── codebase.test.js              # removed modals and toast packages stay gone; no base44 names; the chart,
-    │                                 # the calendar and non-dashboard pages stay loaded on demand
+    ├── codebase.test.js              # removed modals, files and unused packages stay gone; no base44 names; the
+    │                                 # chart, the calendar and non-dashboard pages stay loaded on demand
     ├── JournalDatePicker.test.jsx    # the dashboard's calendar: days with data, closed-day locks, one query per
     │                                 # month, choosing a day, labels in both languages, direction
     ├── calendarDays.test.js          # which days are highlighted, one day back / forward, date helpers
@@ -640,7 +653,7 @@ tests/                        Test suite
 
 **Stores:** every route that reads or changes transactions, opening balances, closed days, rates, the admin panel or reports takes an optional `store_id`. Without `stores:all` (everyone but the Admin) it's always your own store: asking for another is refused (403), and rows of other stores don't exist for you (404). With `stores:all`, it's the store asked for; writes need one once there are several stores (400 "Choose a store"), and lists without one cover every store.
 
-All routes are under `/local-api`.
+All routes are under `/local-api`. Every failure is JSON `{ error }`: an unknown address is 404 `"Not found"`, a malformed body 400 `"Invalid JSON"`, a body over 25 MB 413, and an unexpected error 500 `"Something went wrong on the server"` (the details go to the server's log only, never to the browser).
 - **Public:** only `/health`, `/auth/login` and `/auth/logout`. Everything else needs the session cookie (401 without it).
 - **Permissions:** the "Needs" column lists the permission required (403 without it).
 - **Writes:** must be `application/json`.
@@ -664,8 +677,8 @@ All routes are under `/local-api`.
 | POST / DELETE | `/stores/:id/members` · `/stores/:id/members/:userId` | same | Add / remove a User. 409 if the User is in another store (a Manager can't move them) |
 | GET | `/admin/reports/stores?from=&to=` | `data:export` + `stores:all` | Every store side by side: `count`, `cash_in`, `cash_out`, `volume`, `commission`, `share` |
 | GET | `/admin/range` | `data:export` | `{ first_date, last_date }` of all data |
-| POST | `/admin/restore/preview` | `data:restore` | `{ csv }` (a backup CSV) → what restoring it would do: `kind`, `rows`, `to_add`, `existing`, `on_closed_days`, `closed_days`, `invalid` (`{ line, field }`), dates and totals |
-| POST | `/admin/restore` | `data:restore` | `{ csv, expected_count }` adds the missing rows back (same ids) in one database transaction. 409 if `to_add` changed, 400 if any row is invalid |
+| POST | `/admin/restore/preview` | `data:restore` | `{ csv }` (a backup CSV) → what restoring it would do: `kind`, `rows`, `to_add`, `to_delete`, `deleted_elsewhere`, `days`, `blocked` (`null` / `"closed"` / `"other_stores"`), `closed_days`, `in_other_stores`, `invalid` (`{ line, field }`), dates and totals |
+| POST | `/admin/restore` | `data:restore` + `data:purge` | `{ csv, expected_count, expected_delete }`: deletes what's on the file's days (and the same transactions elsewhere), then inserts every row of the file (same ids), in one database transaction. 409 if either count changed or a reference is in another store, 423 on a closed day, 400 if any row is invalid |
 | GET | `/closed-days[?store_id=]` | `transactions:read` | Closed days `{ store_id, date, closed_by, closed_at }` (the Admin without a store: every store's) |
 | POST / DELETE | `/closed-days` · `/closed-days/:date?store_id=` | `days:close` | Close (`{ date, store_id }`) / reopen a store's day |
 | GET | `/commission-rates?store_id=[&date=]` | `transactions:read` | A store's `{ date, rate, current, history }`: the rate on `date`, today's rate, and every rate with its start date |
@@ -679,12 +692,15 @@ All routes are under `/local-api`.
 | PUT | `/users/:id` | `users:manage` | `{ full_name?, role?, is_active?, password? }`. Deactivation and password reset end the user's sessions |
 | POST | `/pdf/extract` · `/csv/extract` | `transactions:import` | Extract a statement |
 | POST | `/transactions/find-duplicates` | `transactions:import` | `{ references, store_id }` → the store's transactions with those references |
-| POST | `/transactions/import` | `transactions:import` (+ `transactions:delete` when `overwrite`) | `{ records, overwrite, store_id, statement: { file_name, source } }`. 409 if a reference is already in another store. Records an import-history entry (period, count, store, user and time worked out by the server) in the same database transaction; returns `import_id` |
+| POST | `/transactions/import` | `transactions:import` (+ `transactions:delete` when `overwrite`) | `{ records, overwrite, store_id, statement: { file_name, source }, ambiguous }` (`ambiguous`: the rows the engine set aside, stored with the import). 409 if a reference is already in another store. Records an import-history entry (period, count, store, user and time worked out by the server) in the same database transaction; returns `import_id` |
+| GET | `/ambiguous-rows` | `transactions:read` | `?store_id=` (Admin); `?count=1` answers just `{ total }` (the button's badge). The statement rows past imports set aside as ambiguous, with the same visibility as the import history: `{ total, truncated, rows }`, each with its import's `file_name`, `imported_at`, `imported_by(_name)` and `store_name` |
+| DELETE | `/ambiguous-rows/:id` | `transactions:import` | Discard one ambiguous row for good. 404 if it's out of the caller's scope (same rule as the list above, row by row) |
+| POST | `/ambiguous-rows/:id/convert` | `transactions:import` + `transactions:create` | `{ type, amount, transaction_date, sender_name?, receiver_name?, phone?, customer_number?, service?, note?, reference_number? }` → corrects the row into a real transaction (commission computed server-side, the CSV rule) and discards the row, in one database transaction. 404 out of scope; 400 on a bad type/amount/date; 423 on a closed day; 409 if the reference is already used in another store, or if the row's store no longer exists |
 | GET | `/import-history` | `transactions:read` | `?store_id=` (Admin). The Admin: every store; a Manager: their store (`imports:read:any`); a User: their own imports. Newest first, at most 10,000: `{ total, truncated, imports }`, each with `store_name` and `imported_by_name` |
 | POST | `/transactions/bulk-update` | `transactions:update:any`, or `:own` if every selected row is theirs | `{ ids, changes }` |
 | POST | `/transactions/bulk-delete` | `transactions:delete` | `{ ids }` |
 | POST | `/transactions/filter` · `/daily-balances/filter` | `transactions:read` / `balances:read` | List. Filter keys must be real columns |
-| POST | `/transactions/create` · `/bulk-create` | `transactions:create` / `transactions:import` | `created_by` is always the signed-in user |
+| POST | `/transactions/create` | `transactions:create` | `created_by` is always the signed-in user |
 | PUT | `/transactions/:id` | `transactions:update:any`, or `:own` for their own rows | Update |
 | DELETE | `/transactions/:id` | `transactions:delete` | Delete |
 | POST / PUT / DELETE | `/daily-balances/…` | `balances:write` | One opening balance per store and date (creating an existing one updates it) |

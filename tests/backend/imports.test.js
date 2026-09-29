@@ -8,6 +8,8 @@ import { cleanFileName } from "../../server/imports.js";
 import { DEFAULT_ROLES, PERMISSIONS, PERMISSIONS_ADDED_LATER } from "../../server/permissions.js";
 import { PASSWORD, assignToStore, createTestUsers, firstStoreId, loginAll, makeClient, startServer } from "./helpers.js";
 
+const withoutPermission = (permission) => DEFAULT_ROLES.find((r) => r.name === "admin").permissions.filter((p) => p !== permission);
+
 let srv;
 let client;
 let store1;
@@ -163,5 +165,207 @@ describe("the history outlives what it describes", () => {
     expect(res.status).toBe(200);
     expect(entries()[0].imported_by).toBe("moved@test.local");
     expect((await history("mover")).imports.map((e) => e.imported_by)).toEqual(["moved@test.local"]);
+  });
+});
+
+describe("ambiguous rows kept with the import (user's request, 2026-09-29)", () => {
+  const set = (line, reason, over = {}) => ({ line_no: line, date: "2026-09-05", reference_number: `tr:a${line}`, service: "W2W", description: `ROW ${line}`, debit: "-5.00", credit: "0.00", balance: "10.00", reason, ...over });
+  const ambiguousAs = async (as, query = "") => (await client.request("GET", `/ambiguous-rows${query}`, { as })).body;
+  beforeEach(() => db.prepare("DELETE FROM ambiguous_rows").run());
+
+  it("are stored with the import (never as transactions), as printed, with the import's details when listed", async () => {
+    const res = await importAs("user", [row("2026-09-05")], { ambiguous: [set(2, "negative"), set(3, "both", { debit: "3.00", credit: "2.00" }), set(4, "neither", { debit: "", credit: "" })] });
+    expect(res.status).toBe(201);
+    expect(db.prepare("SELECT COUNT(*) AS n FROM transactions").get().n).toBe(1);
+    const body = await ambiguousAs("user");
+    expect(body).toMatchObject({ total: 3, truncated: false });
+    expect(body.rows.map((r) => [r.line_no, r.reason, r.debit, r.credit])).toEqual([[2, "negative", "-5.00", "0.00"], [3, "both", "3.00", "2.00"], [4, "neither", "", ""]]);
+    expect(body.rows[0]).toMatchObject({ import_id: res.body.import_id, file_name: "statement.csv", imported_by: "user@test.local", imported_by_name: "Test User", store_id: store1, description: "ROW 2" });
+  });
+
+  it("only known reasons are kept, texts are cut short and cleaned, and bad lines / dates become empty", async () => {
+    await importAs("user", [row("2026-09-06")], { ambiguous: [
+      set(2, "made-up"), { reason: "both", line_no: -1, date: "yesterday", description: "x".repeat(600) + "\u0007", debit: { a: 1 } }, "junk", null,
+    ] });
+    const { rows } = await ambiguousAs("user");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ reason: "both", line_no: null, date: null, debit: "[object Object]" });
+    expect(rows[0].description).toHaveLength(500);
+    expect(rows[0].description).not.toMatch(/\u0007/);
+  });
+
+  it("follow the import history's visibility: Admin every store, a Manager their store's, a User their own", async () => {
+    await importAs("user", [row("2026-09-01")], { ambiguous: [set(1, "negative")] });
+    await importAs("user2", [row("2026-09-02")], { ambiguous: [set(2, "both")] });
+    await importAs("manager2", [row("2026-09-03")], { ambiguous: [set(3, "neither")] });
+    const lines = (body) => body.rows.map((r) => r.line_no).sort();
+    expect(lines(await ambiguousAs("admin"))).toEqual([1, 2, 3]);
+    expect(lines(await ambiguousAs("admin", `?store_id=${store2}`))).toEqual([3]);
+    expect(lines(await ambiguousAs("manager"))).toEqual([1, 2]);
+    expect(lines(await ambiguousAs("manager2"))).toEqual([3]);
+    expect(lines(await ambiguousAs("user"))).toEqual([1]);
+    expect(lines(await ambiguousAs("user2"))).toEqual([2]);
+    expect(await ambiguousAs("loose")).toEqual({ total: 0, truncated: false, rows: [] });
+    expect((await client.request("GET", `/ambiguous-rows?store_id=${store2}`, { as: "manager" })).status).toBe(403);
+  });
+
+  it("?count=1 answers just how many, with the same visibility (the dashboard badge)", async () => {
+    await importAs("user", [row("2026-09-01")], { ambiguous: [set(1, "negative"), set(2, "both")] });
+    await importAs("manager2", [row("2026-09-03")], { ambiguous: [set(3, "neither")] });
+    const count = async (as, q = "") => (await client.request("GET", `/ambiguous-rows?count=1${q}`, { as })).body;
+    expect(await count("admin")).toEqual({ total: 3 });
+    expect(await count("admin", `&store_id=${store2}`)).toEqual({ total: 1 });
+    expect(await count("manager")).toEqual({ total: 2 });
+    expect(await count("user")).toEqual({ total: 2 });
+    expect(await count("user2")).toEqual({ total: 0 });
+    expect(await count("loose")).toEqual({ total: 0 });
+  });
+
+  it("nothing is kept when the import is refused", async () => {
+    await client.request("POST", "/closed-days", { as: "manager", body: { date: "2026-09-15" } });
+    expect((await importAs("user", [row("2026-09-15")], { ambiguous: [set(1, "negative")] })).status).toBe(423);
+    expect(db.prepare("SELECT COUNT(*) AS n FROM ambiguous_rows").get().n).toBe(0);
+  });
+});
+
+describe("actions on an ambiguous row (user's request, 2026-09-29): discard, or correct and add", () => {
+  const set = (line, reason, over = {}) => ({ line_no: line, date: "2026-09-05", reference_number: `tr:c${line}`, service: "W2W", description: `NAME - 96171588017`, debit: "-5.00", credit: "0.00", balance: "10.00", reason, ...over });
+  const oneAmbiguous = async (as, reason = "negative", over = {}, importOver = {}) => {
+    await importAs(as, [row("2026-09-05")], { ambiguous: [set(1, reason, over)], ...importOver });
+    return db.prepare("SELECT id FROM ambiguous_rows ORDER BY id DESC LIMIT 1").get().id;
+  };
+  const discard = (id, as) => client.request("DELETE", `/ambiguous-rows/${id}`, { as });
+  const convert = (id, as, body) => client.request("POST", `/ambiguous-rows/${id}/convert`, { as, body });
+  const validBody = (over = {}) => ({ type: "cash_in", amount: 25, transaction_date: "2026-09-05", ...over });
+
+  beforeEach(() => {
+    db.prepare("DELETE FROM ambiguous_rows").run();
+    db.prepare("DELETE FROM commission_rates WHERE store_id != ?").run(store1);
+    db.prepare("INSERT OR IGNORE INTO commission_rates (store_id, rate, effective_from, created_by, created_date) VALUES (?, 1, '2000-01-01', 'system', 'x')").run(store2);
+  });
+
+  describe("discard", () => {
+    it("removes it for good", async () => {
+      const id = await oneAmbiguous("user");
+      const res = await discard(id, "user");
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ ok: true, id });
+      expect(db.prepare("SELECT * FROM ambiguous_rows WHERE id = ?").get(id)).toBeUndefined();
+      expect(db.prepare("SELECT COUNT(*) AS n FROM transactions").get().n).toBe(1); // only the clean row from the import
+    });
+
+    it("404s on a missing row, and on one out of scope, without changing anything", async () => {
+      expect((await discard(999999, "admin")).status).toBe(404);
+      const id = await oneAmbiguous("manager2"); // store2, not store1
+      expect((await discard(id, "user")).status).toBe(404);
+      expect((await discard(id, "manager")).status).toBe(404); // manager of store1, wrong store
+      expect(db.prepare("SELECT * FROM ambiguous_rows WHERE id = ?").get(id)).toBeDefined();
+      const own = await oneAmbiguous("user2");
+      expect((await discard(own, "user")).status).toBe(404); // a User can't touch another User's row
+      expect((await discard(own, "manager")).status).toBe(200); // their Manager can
+    });
+
+    it("needs transactions:import", async () => {
+      db.prepare(
+        "INSERT INTO roles (name, label, permissions, created_date, updated_date) VALUES ('no_import', 'No Import', ?, 'x', 'x')"
+      ).run(JSON.stringify(withoutPermission(PERMISSIONS.TRANSACTIONS_IMPORT)));
+      const limited = createUser({ email: "noimport@test.local", full_name: "No Import", password: PASSWORD, role: "no_import" });
+      assignToStore(limited, store1);
+      await client.login("noimport", "noimport@test.local");
+      const id = await oneAmbiguous("user");
+      const res = await discard(id, "noimport");
+      expect(res.status).toBe(403);
+      expect(db.prepare("SELECT * FROM ambiguous_rows WHERE id = ?").get(id)).toBeDefined();
+    });
+  });
+
+  describe("correct and add", () => {
+    it("creates the transaction with the corrected fields, computes commission the CSV way, and discards the row", async () => {
+      const id = await oneAmbiguous("user", "negative");
+      const res = await convert(id, "user", validBody({
+        sender_name: "Jane Doe", receiver_name: "John Doe", phone: "96171588017", customer_number: "71588017",
+        service: "W2W", note: "corrected", reference_number: "tr:corrected",
+      }));
+      expect(res.status).toBe(201);
+      expect(res.body.discarded_id).toBe(id);
+      expect(db.prepare("SELECT * FROM ambiguous_rows WHERE id = ?").get(id)).toBeUndefined();
+      const tx = res.body.transaction;
+      expect(tx).toMatchObject({
+        type: "cash_in", amount: 25, commission: 0.25, // 1% of 25
+        sender_name: "Jane Doe", receiver_name: "John Doe", reference_number: "tr:corrected",
+        transaction_date: "2026-09-05", created_by: "user@test.local", store_id: store1,
+      });
+      expect(db.prepare("SELECT * FROM transactions WHERE id = ?").get(tx.id)).toMatchObject({ commission: 0.25 });
+    });
+
+    it("cash_out never gets a commission, whatever the row printed", async () => {
+      const id = await oneAmbiguous("user");
+      const res = await convert(id, "user", validBody({ type: "cash_out" }));
+      expect(res.status).toBe(201);
+      expect(res.body.transaction.commission).toBe(0);
+    });
+
+    it("uses the store's rate on the transaction's date, not the import date", async () => {
+      await client.request("PUT", "/commission-rates", { as: "manager", body: { rate: 5, effective_from: "2026-09-01" } });
+      const id = await oneAmbiguous("user");
+      const res = await convert(id, "user", validBody({ amount: 100 }));
+      expect(res.body.transaction.commission).toBe(5);
+    });
+
+    it("rejects a bad type, a non-positive amount, or a bad date, changing nothing", async () => {
+      const id = await oneAmbiguous("user");
+      expect((await convert(id, "user", validBody({ type: "refund" }))).status).toBe(400);
+      expect((await convert(id, "user", validBody({ amount: 0 }))).status).toBe(400);
+      expect((await convert(id, "user", validBody({ amount: -5 }))).status).toBe(400);
+      expect((await convert(id, "user", validBody({ transaction_date: "09/05/2026" }))).status).toBe(400);
+      expect(db.prepare("SELECT * FROM ambiguous_rows WHERE id = ?").get(id)).toBeDefined();
+      expect(db.prepare("SELECT COUNT(*) AS n FROM transactions WHERE reference_number LIKE 'tr:c%'").get().n).toBe(0);
+    });
+
+    it("refuses a closed day (423), a reference already used in another store (409), and a row whose store was deleted (409)", async () => {
+      const closedId = await oneAmbiguous("user"); // imported while 2026-09-05 is still open
+      await client.request("POST", "/closed-days", { as: "manager", body: { date: "2026-09-05" } });
+      expect((await convert(closedId, "user", validBody())).status).toBe(423);
+      await client.request("DELETE", "/closed-days/2026-09-05", { as: "manager" });
+
+      await importAs("admin", [row("2026-09-06", { reference_number: "tr:elsewhere" })], { store_id: store2 });
+      const refId = await oneAmbiguous("user");
+      expect((await convert(refId, "user", validBody({ reference_number: "tr:elsewhere" }))).status).toBe(409);
+
+      const store3 = (await client.request("POST", "/stores", { as: "admin", body: { name: "Pop-up store" } })).body.id;
+      const orphanId = await oneAmbiguous("admin", "negative", {}, { store_id: store3 });
+      db.prepare("DELETE FROM transactions WHERE store_id = ?").run(store3);
+      await client.request("DELETE", `/stores/${store3}`, { as: "admin" });
+      expect((await convert(orphanId, "admin", validBody())).status).toBe(409);
+      // discarding a row with no store still works: it doesn't need one.
+      expect((await discard(orphanId, "admin")).status).toBe(200);
+    });
+
+    it("404s on a row out of scope, same as discard", async () => {
+      const id = await oneAmbiguous("manager2");
+      expect((await convert(id, "user", validBody())).status).toBe(404);
+      expect((await convert(id, "manager", validBody())).status).toBe(404);
+    });
+
+    it("needs both transactions:import (route) and transactions:create (checked in the handler)", async () => {
+      db.prepare(
+        "INSERT INTO roles (name, label, permissions, created_date, updated_date) VALUES ('no_import2', 'No Import', ?, 'x', 'x'), ('no_create', 'No Create', ?, 'x', 'x')"
+      ).run(JSON.stringify(withoutPermission(PERMISSIONS.TRANSACTIONS_IMPORT)), JSON.stringify(withoutPermission(PERMISSIONS.TRANSACTIONS_CREATE)));
+      assignToStore(createUser({ email: "noimport2@test.local", full_name: "x", password: PASSWORD, role: "no_import2" }), store1);
+      assignToStore(createUser({ email: "nocreate@test.local", full_name: "x", password: PASSWORD, role: "no_create" }), store1);
+      await client.login("noimport2", "noimport2@test.local");
+      await client.login("nocreate", "nocreate@test.local");
+
+      const id1 = await oneAmbiguous("user");
+      const res1 = await convert(id1, "noimport2", validBody());
+      expect(res1.status).toBe(403);
+      expect(db.prepare("SELECT * FROM ambiguous_rows WHERE id = ?").get(id1)).toBeDefined();
+
+      const id2 = await oneAmbiguous("user");
+      const res2 = await convert(id2, "nocreate", validBody());
+      expect(res2.status).toBe(403);
+      expect(res2.body.missing).toEqual([PERMISSIONS.TRANSACTIONS_CREATE]);
+      expect(db.prepare("SELECT * FROM ambiguous_rows WHERE id = ?").get(id2)).toBeDefined();
+    });
   });
 });

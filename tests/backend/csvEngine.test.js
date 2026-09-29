@@ -288,3 +288,47 @@ describe("extractTransactionsFromCsv — rounding-aware reconciliation", () => {
     });
   });
 });
+
+describe("extractTransactionsFromCsv — ambiguous rows are set aside (user's request, 2026-09-29)", () => {
+  // Opening 100; the balances follow the signed amounts, so the file itself still adds up.
+  const csv = [
+    "line_no,date,reference,service,description,debit,credit,balance",
+    "1,2026-09-05,tr:1,W2W,RAMI - 96171000001,0.00,10.00,110.00",   // clear Cash In
+    "2,2026-09-05,tr:2,W2W,REFUND,-5.00,0.00,115.00",                  // negative debit
+    "3,2026-09-05,tr:3,W2W,SPLIT,3.00,2.00,114.00",                    // both
+    "4,2026-09-05,tr:4,W2W,NOTHING,,,114.00",                          // neither (blank)
+    "5,2026-09-05,tr:5,W2W,ZEROS,0.00,0.00,114.00",                    // neither (zero)
+    "6,2026-09-05,tr:6,W2W,CREDIT BACK,0.00,-1.50,112.50",             // negative credit
+    "7,2026-09-05,tr:7,W2W,SALAM,20.00,0.00,92.50",                    // clear Cash Out
+  ].join("\n");
+  const result = extractTransactionsFromCsv(csv, { accountName: "Vicario" });
+
+  it("only the clear rows become transactions", () => {
+    expect(result.transactions.map((t) => [t.line_no, t.type, t.amount])).toEqual([[1, "cash_in", 10], [7, "cash_out", 20]]);
+    expect(result.transactions[0]).not.toHaveProperty("ambiguity");
+    expect(result.transactions[0]).not.toHaveProperty("raw");
+  });
+
+  it("the others are listed with why, as printed in the file", () => {
+    expect(result.ambiguous.map((r) => [r.line_no, r.reason])).toEqual([[2, "negative"], [3, "both"], [4, "neither"], [5, "neither"], [6, "negative"]]);
+    expect(result.ambiguous[0]).toEqual({
+      line_no: 2, date: "2026-09-05", reference_number: "tr:2", service: "W2W",
+      description: "REFUND", debit: "-5.00", credit: "0.00", balance: "115.00", reason: "negative",
+    });
+    expect(result.ambiguous[2]).toMatchObject({ debit: "", credit: "" });
+  });
+
+  it("they still count in the checks: the statement reconciles, and every line is accounted for", () => {
+    expect(result.validation).toMatchObject({ is_valid: true, balance_mismatch_lines: [], first_unexplained_line: null });
+    expect(result.opening_balance).toBe(100);
+    expect(result.closing_balance).toBe(92.5);
+    expect(result.total_transactions_count).toBe(7);
+    // What will be saved: the clear rows only.
+    expect(result.total_cash_in).toBe(10);
+    expect(result.total_cash_out).toBe(20);
+  });
+
+  it("a clean statement has none", () => {
+    expect(extractTransactionsFromCsv(statementCsv).ambiguous).toEqual([]);
+  });
+});

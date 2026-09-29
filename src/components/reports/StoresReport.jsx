@@ -33,7 +33,7 @@ export default function StoresReport() {
       .finally(() => { if (current) setLoading(false); });
     return () => { current = false; };
     // errorText only changes with the language.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [from, to, rangeValid]);
 
   const money = (value) => num(formatMoney(value));

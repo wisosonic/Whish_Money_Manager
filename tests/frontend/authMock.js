@@ -7,7 +7,7 @@
 import { vi } from "vitest";
 import { DEFAULT_ROLES, canUpdateTransaction, hasPermission } from "@/lib/permissions";
 
-const state = { user: null, logout: vi.fn(), login: vi.fn(), updateUser: vi.fn(), isLoadingAuth: false };
+const state = { user: null, logout: vi.fn(), login: vi.fn(), updateUser: vi.fn(), checkUserAuth: vi.fn(), isLoadingAuth: false };
 
 export const userWithRole = (role, overrides = {}) => {
   const definition = DEFAULT_ROLES.find((r) => r.name === role);
@@ -33,6 +33,7 @@ export const setAuthRole = (role, overrides) => {
   state.login = vi.fn();
   // Like the real one, replaces the signed-in user (visible on the next render).
   state.updateUser = vi.fn((next) => { state.user = next; });
+  state.checkUserAuth = vi.fn();
   state.isLoadingAuth = false;
   return state.user;
 };
@@ -52,6 +53,7 @@ export const authContextMock = {
     logout: state.logout,
     login: state.login,
     updateUser: state.updateUser,
+    checkUserAuth: state.checkUserAuth,
     can: (permission) => hasPermission(state.user, permission),
     canEditTransaction: (transaction) => canUpdateTransaction(state.user, transaction),
   }),

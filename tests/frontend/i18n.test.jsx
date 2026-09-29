@@ -320,7 +320,7 @@ describe("screens in English", () => {
     const { container } = inEnglish(
       <TransactionsList transactions={rows} allTransactions={rows} loading={false} search="" setSearch={noop} selectedDate="2026-09-23"
         setSelectedDate={noop} onToday={noop} onCashIn={noop} onCashOut={noop} onImportPDF={noop} onRefresh={noop}
-        onResetOpeningBalance={noop} onDeleteDailyBalanceForDate={noop} />
+        onDeleteDailyBalanceForDate={noop} />
     );
     expect(screen.getByText("2 transactions")).toBeInTheDocument();
     ["Sender report", "Receiver report", "Commission report", "Delete all", "Import PDF / CSV", "Today"].forEach((name) => {

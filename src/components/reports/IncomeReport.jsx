@@ -29,7 +29,7 @@ export default function IncomeReport({ storeId }) {
       .finally(() => { if (current) setLoading(false); });
     return () => { current = false; };
     // errorText only changes with the language; re-fetching for that isn't needed.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [year]);
 
   const monthLabels = useMemo(() => Array.from({ length: 12 }, (_, i) => t(`months.${i + 1}`)), [t]);

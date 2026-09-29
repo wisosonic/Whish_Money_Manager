@@ -124,7 +124,6 @@ describe("User role restrictions", () => {
     const balance = (await as("manager").post("/daily-balances/create", { date: "2026-09-11", opening_balance: 100 })).body;
     expect((await as("user").put(`/daily-balances/${balance.id}`, { opening_balance: 0 })).status).toBe(403);
     expect((await as("user").del(`/daily-balances/${balance.id}`)).status).toBe(403);
-    expect((await as("user").post("/daily-balances/bulk-create", { records: [{ date: "2026-09-12" }] })).status).toBe(403);
   });
 });
 

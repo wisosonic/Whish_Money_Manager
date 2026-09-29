@@ -90,7 +90,6 @@ const ENTITY_CONFIG = {
     ],
     readPermission: P.TRANSACTIONS_READ,
     createPermission: P.TRANSACTIONS_CREATE,
-    bulkCreatePermission: P.TRANSACTIONS_IMPORT,
     deletePermission: P.TRANSACTIONS_DELETE,
   },
   "daily-balances": {
@@ -98,7 +97,6 @@ const ENTITY_CONFIG = {
     mutableFields: ["date", "opening_balance"],
     readPermission: P.BALANCES_READ,
     createPermission: P.BALANCES_WRITE,
-    bulkCreatePermission: P.BALANCES_WRITE,
     updatePermission: P.BALANCES_WRITE,
     deletePermission: P.BALANCES_WRITE,
   }
@@ -660,6 +658,15 @@ const reconcileWithRounding = ({ opening, closing, rows }) => {
   };
 };
 
+// Why a statement row can't be read as one Cash In or Cash Out: "negative" (a debit or credit below
+// zero), "both" (a debit and a credit), "neither" (no amount in either column). null = clear.
+const ambiguityOf = (debit, credit) => {
+  if (debit < 0 || credit < 0) return "negative";
+  if (debit > 0 && credit > 0) return "both";
+  if (!(debit > 0) && !(credit > 0)) return "neither";
+  return null;
+};
+
 // rateFor(date) → the office commission rate on that day; accountName → the store's name, written on
 // the office's side of every row (see extractTransactionsFromRows).
 const extractTransactionsFromCsv = (text, { rateFor = () => 1, accountName = "" } = {}) => {
@@ -697,9 +704,13 @@ const extractTransactionsFromCsv = (text, { rateFor = () => 1, accountName = "" 
   // statement's full_name: that's the Whish account holder, who may be a person rather than the store.
   // full_name is still returned in `account` below.
 
-  const transactions = records.map((record, index) => {
+  // Every row of the statement. Ambiguous ones (user's request, 2026-09-29) are set aside instead of
+  // being saved as a guess: a negative debit or credit, both a debit and a credit, or neither (blank
+  // or zero). They still count in the checks below, so the file's totals and balances still add up.
+  const parsed = records.map((record, index) => {
     const debit = parseAmount(record.debit);
     const credit = parseAmount(record.credit);
+    const ambiguity = ambiguityOf(debit, credit);
     const isDebit = debit > 0;
     const amount = isDebit ? debit : credit;
     // Fee rule: every credit carries the office commission rate for its day (1% unless changed in
@@ -726,12 +737,20 @@ const extractTransactionsFromCsv = (text, { rateFor = () => 1, accountName = "" 
       credit,
       balance: record.balance ? parseAmount(record.balance) : null,
       commissionRate,
+      ambiguity,
+      raw: { debit: String(record.debit ?? ""), credit: String(record.credit ?? ""), balance: String(record.balance ?? ""), description },
     };
   });
+  const transactions = parsed.filter((row) => !row.ambiguity).map(({ ambiguity: _a, raw: _r, ...row }) => row);
+  // What the import screen shows and records with the import (never saved as transactions).
+  const ambiguous = parsed.filter((row) => row.ambiguity).map((row) => ({
+    line_no: row.line_no, date: row.date, reference_number: row.reference_number, service: row.service,
+    description: row.raw.description, debit: row.raw.debit, credit: row.raw.credit, balance: row.raw.balance, reason: row.ambiguity,
+  }));
 
   // Without a summary section, derive the balances from the first/last rows' BALANCE column.
-  const first = transactions[0];
-  const last = transactions[transactions.length - 1];
+  const first = parsed[0];
+  const last = parsed[parsed.length - 1];
   const openingBalance = summary.opening_balance
     ? parseAmount(summary.opening_balance)
     : first && first.balance != null ? roundCents(first.balance - first.credit + first.debit) : 0;
@@ -739,8 +758,11 @@ const extractTransactionsFromCsv = (text, { rateFor = () => 1, accountName = "" 
     ? parseAmount(summary.closing_balance)
     : last && last.balance != null ? last.balance : 0;
 
-  const totalDebit = roundCents(transactions.reduce((sum, t) => sum + t.debit, 0));
-  const totalCredit = roundCents(transactions.reduce((sum, t) => sum + t.credit, 0));
+  // The file's totals (every row, for the checks) and what will be saved (the clear rows).
+  const totalDebit = roundCents(parsed.reduce((sum, t) => sum + t.debit, 0));
+  const totalCredit = roundCents(parsed.reduce((sum, t) => sum + t.credit, 0));
+  const savedIn = roundCents(transactions.reduce((sum, t) => sum + t.credit, 0));
+  const savedOut = roundCents(transactions.reduce((sum, t) => sum + t.debit, 0));
   const totalCommission = Number(transactions.reduce((sum, t) => sum + t.commission, 0).toFixed(3));
 
   // The provider rounds the displayed BALANCE from more precise internal values, so a row's
@@ -748,7 +770,7 @@ const extractTransactionsFromCsv = (text, { rateFor = () => 1, accountName = "" 
   // against the previous stated balance with a one-cent tolerance, never used to rewrite amounts.
   const balanceMismatchLines = [];
   let previousBalance = openingBalance;
-  transactions.forEach((transaction) => {
+  parsed.forEach((transaction) => {
     if (transaction.balance == null) {
       return;
     }
@@ -763,7 +785,7 @@ const extractTransactionsFromCsv = (text, { rateFor = () => 1, accountName = "" 
   const totalCreditMatches = !summary.total_credit || Math.abs(parseAmount(summary.total_credit) - totalCredit) < 0.005;
   // Exact match, or a difference the provider's per-row rounding fully explains (see
   // reconcileWithRounding). Anything rounding can't explain still fails, with its line.
-  const rounding = reconcileWithRounding({ opening: openingBalance, closing: closingBalance, rows: transactions });
+  const rounding = reconcileWithRounding({ opening: openingBalance, closing: closingBalance, rows: parsed });
   const closingExact = Math.abs(openingBalance + totalCredit - totalDebit - closingBalance) < 0.005;
   const closingBalanceMatches = rounding.first_unexplained_line !== "closing" && (closingExact || rounding.consistent);
 
@@ -772,9 +794,9 @@ const extractTransactionsFromCsv = (text, { rateFor = () => 1, accountName = "" 
     statement_date: csvDateToIso(summary.period_from || "") || (first ? first.date : ""),
     opening_balance: openingBalance,
     closing_balance: closingBalance,
-    total_transactions_count: transactions.reduce((max, t) => Math.max(max, t.line_no), 0) || transactions.length,
-    total_cash_in: totalCredit,
-    total_cash_out: totalDebit,
+    total_transactions_count: parsed.reduce((max, t) => Math.max(max, t.line_no), 0) || parsed.length,
+    total_cash_in: savedIn,
+    total_cash_out: savedOut,
     total_commission: totalCommission,
     account: {
       full_name: summary.full_name || "",
@@ -795,6 +817,7 @@ const extractTransactionsFromCsv = (text, { rateFor = () => 1, accountName = "" 
       first_unexplained_line: rounding.first_unexplained_line,
     },
     transactions,
+    ambiguous,
   };
 };
 
@@ -879,7 +902,7 @@ app.post("/local-api/transactions/import", requirePermission(P.TRANSACTIONS_IMPO
     // The import history entry is written with the rows: both are saved, or neither.
     // body.statement = { file_name, source } from the import screen; the rest comes from the rows.
     const historyId = rows.length
-      ? recordImport({ storeId, rows, replaced, user: req.user, statement: req.body?.statement })
+      ? recordImport({ storeId, rows, replaced, user: req.user, statement: req.body?.statement, ambiguous: req.body?.ambiguous })
       : null;
     return { replaced, rows, historyId };
   });
@@ -1049,30 +1072,6 @@ app.post("/local-api/:entity/create", (req, res) => {
   res.status(201).json(db.prepare(`SELECT * FROM ${config.table} WHERE id = ?`).get(id));
 });
 
-app.post("/local-api/:entity/bulk-create", (req, res) => {
-  const config = entityOr404(req, res);
-  if (!config || !allow(req, res, config.bulkCreatePermission)) return;
-
-  const items = Array.isArray(req.body?.records) ? req.body.records : [];
-  if (!items.length) {
-    res.json([]);
-    return;
-  }
-
-  // Every record goes to one store: the one asked for (store_id in the body or on the records).
-  const storeId = targetStore(req, res, req.body?.store_id ?? items[0]?.store_id);
-  if (storeId === null) return;
-  const days = items.map((item) => (config.table === "daily_balances" ? item.date : transactionDay(item)));
-  if (refuseClosedDays(res, storeId, days)) return;
-
-  const insertOne = db.transaction((item) => insertEntityRecord(config, item, req.user.email, storeId));
-
-  const ids = items.map((item) => insertOne(item));
-  const rows = ids.map((id) => db.prepare(`SELECT * FROM ${config.table} WHERE id = ?`).get(id));
-
-  res.status(201).json(rows);
-});
-
 app.put("/local-api/:entity/:id", (req, res) => {
   const config = entityOr404(req, res);
   if (!config) return;
@@ -1160,6 +1159,31 @@ app.delete("/local-api/:entity/:id", (req, res) => {
   }
 
   res.json({ ok: true, id });
+});
+
+// ═══ Errors: always JSON, never Express's HTML pages (user's request, 2026-09-29) ═══
+// Registered after every route. The app shows its 404 page for unknown pages and its 500 page for
+// any 5xx answer (src/api/apiClient.js); these handlers make sure every API failure is JSON it can
+// read, and that no stack trace or file path reaches the browser.
+export const SERVER_ERROR = "Something went wrong on the server";
+
+app.use("/local-api", (req, res) => {
+  res.status(404).json({ error: "Not found" });
+});
+
+// Four arguments, `next` included: that's how Express recognises an error handler.
+app.use((err, req, res, next) => {
+  if (err?.type === "entity.parse.failed") {
+    res.status(400).json({ error: "Invalid JSON" });
+    return;
+  }
+  if (err?.type === "entity.too.large") {
+    res.status(413).json({ error: "The request is too large" });
+    return;
+  }
+  console.error(`[local-api] ${req.method} ${req.originalUrl} failed:`, err);
+  if (res.headersSent) return;
+  res.status(500).json({ error: SERVER_ERROR });
 });
 
 // Only listen when run directly (`node server/index.js`); tests import the app instead.

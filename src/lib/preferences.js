@@ -2,12 +2,10 @@
 // uses to validate and store each user's preferences.
 export {
   TABLE_COLUMNS,
-  PREFERENCE_LANGUAGES,
   DENSITIES,
   THEMES,
   START_ON,
   SEARCH_SCOPES,
-  SORT_DIRECTIONS,
   CLOCKS,
   NUMERALS,
   TOAST_DURATIONS,

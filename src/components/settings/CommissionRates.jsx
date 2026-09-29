@@ -38,7 +38,7 @@ export default function CommissionRates() {
       setLoadError(errorText(err?.message || ""));
     }
   };
-  useEffect(() => { if (loaded) load(); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [loaded, storeId]);
+  useEffect(() => { if (loaded) load();   }, [loaded, storeId]);
 
   const rateNumber = Number(rate);
   const rateValid = rate !== "" && Number.isFinite(rateNumber) && rateNumber >= 0 && rateNumber <= 100

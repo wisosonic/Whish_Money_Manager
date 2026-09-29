@@ -1,9 +1,11 @@
 // Authentication & session security: login, the session cookie, JWT validation, logout/revocation,
 // sessions that never expire, sliding cookie renewal, and brute-force protection.
+import fs from "node:fs";
+import path from "node:path";
 import jwt from "jsonwebtoken";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { db, initializeDb } from "../../server/db.js";
-import { SESSION_COOKIE, createUser, resetLoginRateLimit } from "../../server/auth.js";
+import { SESSION_COOKIE, createUser, loginFailureCount, resetLoginRateLimit, sweepLoginFailures } from "../../server/auth.js";
 import { PASSWORD, createTestUsers, makeClient, startServer } from "./helpers.js";
 
 const SECRET = process.env.JWT_SECRET;
@@ -82,6 +84,33 @@ describe("login", () => {
     expect(locked.status).toBe(429);
     // Other accounts are not affected.
     expect((await client.login("x", users.manager.email)).status).toBe(200);
+  });
+
+  it("failures whose 15 minutes have passed are swept from memory, even if nobody retries", async () => {
+    // Failures for addresses that are never tried again used to stay until a restart.
+    for (const email of ["a@nowhere.test", "b@nowhere.test", "c@nowhere.test"]) {
+      await client.login("x", email, "nope");
+    }
+    expect(loginFailureCount()).toBe(3);
+    expect(sweepLoginFailures(Date.now())).toBe(0); // still inside their window: kept
+    expect(loginFailureCount()).toBe(3);
+    expect(sweepLoginFailures(Date.now() + 15 * 60 * 1000 + 1)).toBe(3);
+    expect(loginFailureCount()).toBe(0);
+  });
+
+  it("a sweep lifts a lockout whose window has passed, and leaves a current one alone", async () => {
+    for (let i = 0; i < 10; i += 1) await client.login("x", users.user.email, "nope");
+    expect((await client.login("x", users.user.email, PASSWORD)).status).toBe(429);
+    sweepLoginFailures(Date.now());
+    expect((await client.login("x", users.user.email, PASSWORD)).status).toBe(429);
+    sweepLoginFailures(Date.now() + 15 * 60 * 1000 + 1);
+    expect((await client.login("x", users.user.email, PASSWORD)).status).toBe(200);
+  });
+
+  it("the sweep runs on its own every 15 minutes (a timer that doesn't keep the process alive)", () => {
+    const source = fs.readFileSync(path.join(__dirname, "../../server/auth.js"), "utf8");
+    expect(source).toMatch(/setInterval\(sweepLoginFailures, LOGIN_WINDOW_MS\)\.unref\(\)/);
+    expect(source).toMatch(/const LOGIN_WINDOW_MS = 15 \* 60 \* 1000;/);
   });
 });
 

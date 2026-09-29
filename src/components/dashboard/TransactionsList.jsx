@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from "react";
-import { Search, FileText, Trash2, Pencil, X, Loader2, UserSearch, UserCheck, Percent, ArrowDown, ArrowUp, ArrowUpDown, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Lock, LockOpen } from "lucide-react";
+import { Search, FileText, Trash2, Pencil, X, Loader2, UserSearch, UserCheck, Percent, ArrowDown, ArrowUp, ArrowUpDown, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Lock, LockOpen, AlertTriangle } from "lucide-react";
 import BulkEditModal from "@/components/transactions/BulkEditModal";
 import SenderReportModal from "@/components/transactions/SenderReportModal";
+import AmbiguousRowsModal from "@/components/transactions/AmbiguousRowsModal";
 import ReceiverReportModal from "@/components/transactions/ReceiverReportModal";
 import { format } from "date-fns";
 import { api } from "@/api/apiClient";
@@ -21,7 +22,7 @@ import { SEARCH_SCOPES, TABLE_COLUMNS } from "@/lib/preferences";
 // ═══ Type column: icon + sorting ═══
 // Cash In = green down-arrow, Cash Out = red up-arrow (same arrows as the Cash In / Cash Out buttons).
 // The name stays available to screen readers (role="img" + aria-label) and on hover (title).
-export function TypeIcon({ type }) {
+function TypeIcon({ type }) {
   const isIn = type === "cash_in";
   const label = isIn ? "Cash In" : "Cash Out";
   const Icon = isIn ? ArrowDown : ArrowUp;
@@ -81,7 +82,6 @@ export default function TransactionsList({
   onCashOut,
   onImportPDF,
   onRefresh,
-  onResetOpeningBalance,
   onDeleteDailyBalanceForDate,
   // Search scope (Dashboard): "all" days, the selected date's "month", or the selected "day";
   // searchingDays = the results come from the server and span days (all days or the month).
@@ -110,6 +110,7 @@ export default function TransactionsList({
   const [editingTransaction, setEditingTransaction] = useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [showSenderReport, setShowSenderReport] = useState(false);
+  const [showAmbiguous, setShowAmbiguous] = useState(false);
   const [showReceiverReport, setShowReceiverReport] = useState(false);
   const [showCommissionReport, setShowCommissionReport] = useState(false);
 
@@ -117,6 +118,21 @@ export default function TransactionsList({
   const { can, canEditTransaction } = useAuth();
   // Translation function is `tr` here: `t` is used throughout this file for a transaction.
   const { t: tr, dir, locale, errorText, num } = useI18n();
+  // How many rows past imports set aside (the badge on the button). Asked again when the store or the
+  // day's rows change (an import reloads them), or after the window's own discard / correct-and-add
+  // (ambiguousRefreshKey, bumped from AmbiguousRowsModal's onChanged) — and a failure just shows no badge.
+  const [ambiguousCount, setAmbiguousCount] = useState(0);
+  const [ambiguousRefreshKey, setAmbiguousRefreshKey] = useState(0);
+  const canImport = can(PERMISSIONS.TRANSACTIONS_IMPORT);
+  useEffect(() => {
+    if (!canImport) return undefined;
+    let current = true;
+    Promise.resolve()
+      .then(() => api.importHistory.ambiguousCount(storeId))
+      .then((answer) => { if (current) setAmbiguousCount(Number(answer?.total) || 0); })
+      .catch(() => { if (current) setAmbiguousCount(0); });
+    return () => { current = false; };
+  }, [canImport, storeId, dayTransactions, ambiguousRefreshKey]);
 
   // ═══ Display preferences (Settings page): visible columns and row density ═══
   const { preferences } = usePreferences();
@@ -188,6 +204,7 @@ export default function TransactionsList({
   const [bulkWorking, setBulkWorking] = useState(false);
   const [bulkError, setBulkError] = useState("");
   const selectAllRef = useRef(null);
+  const searchRef = useRef(null);
 
   // التحديد يشمل فقط العمليات الظاهرة: عند تغيير اليوم أو البحث تُزال المحددة غير الظاهرة،
   // حتى لا يُطبَّق إجراء على عمليات لا يراها المستخدم.
@@ -281,6 +298,10 @@ export default function TransactionsList({
     onRefresh();
   };
 
+  // "Delete all for this day" deletes the whole day, search or not, so the dialog counts exactly
+  // these rows (it used to count the rows the search showed; user-reported, 2026-09-29).
+  const wholeDay = dayTransactions.filter((t) => txDateOfRow(t) === selectedDate);
+
   const handleDeleteAll = async () => {
     setDeleting(true);
     setDeleteElapsed(0);
@@ -288,18 +309,14 @@ export default function TransactionsList({
     deleteTimerRef.current = setInterval(() => setDeleteElapsed((prev) => prev + 1), 1000);
     try {
       const dateToDelete = selectedDate;
-      const toDelete = dayTransactions.filter((t) => txDateOfRow(t) === dateToDelete);
+      const toDelete = wholeDay;
       let failed = 0;
       for (const t of toDelete) {
         try {await api.entities.Transaction.delete(t.id);} catch {failed += 1;}
       }
       if (failed) notify.error(tr("toast.tx.dayDeletePartial", { failed, count: toDelete.length }));
       else notify.success(tr("toast.tx.dayDeleted", { count: toDelete.length, date: dateToDelete }));
-      if (onDeleteDailyBalanceForDate) {
-        await onDeleteDailyBalanceForDate(dateToDelete);
-      } else if (onResetOpeningBalance) {
-        await onResetOpeningBalance();
-      }
+      if (onDeleteDailyBalanceForDate) await onDeleteDailyBalanceForDate(dateToDelete);
       onRefresh();
     } finally {
       clearInterval(deleteTimerRef.current);
@@ -331,12 +348,26 @@ export default function TransactionsList({
         <div className="flex items-center gap-2 flex-1 min-w-[200px] bg-gray-50 border rounded-lg px-3 py-2">
           <Search className="w-4 h-4 text-gray-400" />
           <input
+            ref={searchRef}
             type="text"
             placeholder={tr("list.searchPlaceholder")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Escape" && search) { e.preventDefault(); setSearch(""); } }}
+            data-testid="search-input"
             className="bg-transparent outline-none w-full text-start text-base font-normal" />
-          
+          {/* Clears the search (user's request), and keeps the cursor in the box to type again. */}
+          {search &&
+          <button
+            type="button"
+            onClick={() => { setSearch(""); searchRef.current?.focus(); }}
+            title={tr("list.clearSearch")}
+            aria-label={tr("list.clearSearch")}
+            data-testid="clear-search"
+            className="shrink-0 rounded-full p-0.5 text-gray-400 hover:text-gray-600 hover:bg-gray-200 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400">
+              <X className="w-4 h-4" aria-hidden="true" />
+            </button>
+          }
         </div>
 
         <div className="flex items-center gap-2 text-sm text-gray-600">
@@ -437,8 +468,14 @@ export default function TransactionsList({
               <h3 className="font-bold text-gray-800 text-lg">{tr("list.deleteAllTitle")}</h3>
             </div>
             <p className="text-gray-600 mb-1">
-              {tr("list.deleteAllBefore")}<span className="font-bold text-red-600">{tr("list.count", { count: transactions.length })}</span>{tr("list.deleteAllAfter")}
+              {tr("list.deleteAllBefore")}<span className="font-bold text-red-600" data-testid="delete-all-count">{tr("list.count", { count: wholeDay.length })}</span>{tr("list.deleteAllAfter")}
             </p>
+            {/* With a search, say plainly that the rows it hides go too. */}
+            {transactions.length !== wholeDay.length &&
+              <p className="text-sm text-amber-800 bg-amber-50 rounded-lg px-3 py-2 mb-2" data-testid="delete-all-search-note">
+                {tr("list.deleteAllSearchNote", { shown: transactions.length, count: wholeDay.length })}
+              </p>
+            }
             <p className="text-gray-500 text-sm mb-5 bg-gray-50 rounded-lg px-3 py-2">
               {selectedDate}
             </p>
@@ -517,6 +554,25 @@ export default function TransactionsList({
             <FileText className="w-4 h-4" />
             {tr("list.import")}
           </button>
+          {/* Statement rows past imports set aside as ambiguous (user's request): review them here. */}
+          {canImport &&
+          <button
+            type="button"
+            onClick={() => setShowAmbiguous(true)}
+            data-testid="ambiguous-button"
+            aria-label={ambiguousCount ? tr("ambiguous.buttonWithCount", { count: ambiguousCount }) : undefined}
+            className="relative flex items-center gap-1 border border-amber-300 rounded-lg px-3 py-1.5 text-sm text-amber-800 hover:bg-amber-50 transition">
+              <AlertTriangle className="w-4 h-4" aria-hidden="true" />
+              {tr("ambiguous.button")}
+              {/* The count (user's request), on the button's top corner; none when there are none. */}
+              {ambiguousCount > 0 &&
+              <span aria-hidden="true" data-testid="ambiguous-badge"
+                className="absolute -top-2 -end-2 min-w-[1.25rem] h-5 px-1 rounded-full bg-red-600 text-white text-[11px] font-bold leading-5 text-center shadow">
+                  {ambiguousCount > 99 ? "99+" : num(ambiguousCount)}
+                </span>
+              }
+            </button>
+          }
           <button
             onClick={onCashOut}
             disabled={todayClosed || allStores}
@@ -862,6 +918,18 @@ export default function TransactionsList({
         onClose={() => setEditingTransaction(null)}
         onSaved={() => {setEditingTransaction(null);onRefresh();}} />
 
+      }
+      {showAmbiguous &&
+      <AmbiguousRowsModal
+        storeId={storeId}
+        withStore={allStores}
+        onClose={() => setShowAmbiguous(false)}
+        // A discard changes only the badge; a correction adds a real transaction, which may belong
+        // to the day currently shown, so the table is refreshed too (like every other change here).
+        onChanged={({ createdTransaction } = {}) => {
+          setAmbiguousRefreshKey((k) => k + 1);
+          if (createdTransaction) onRefresh();
+        }} />
       }
       {showSenderReport &&
       <SenderReportModal

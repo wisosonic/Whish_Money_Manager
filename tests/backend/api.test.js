@@ -65,17 +65,16 @@ describe("transactions CRUD", () => {
     });
     expect(created.body.created_by).toBe(users.user.email);
 
-    const bulk = await request("POST", "/transactions/bulk-create", {
+    const imported = await request("POST", "/transactions/import", {
       body: { records: [tx({ reference_number: "tr:spoof2", created_by: "someone@else" })] },
     });
-    expect(bulk.body[0].created_by).toBe(users.admin.email);
+    expect(imported.body.records[0].created_by).toBe(users.admin.email);
   });
 
-  it("bulk-creates records in order", async () => {
-    const records = [tx({ reference_number: "tr:b1" }), tx({ reference_number: "tr:b2", type: "cash_out" })];
-    const { status, body } = await request("POST", "/transactions/bulk-create", { body: { records } });
-    expect(status).toBe(201);
-    expect(body.map((t) => t.reference_number)).toEqual(["tr:b1", "tr:b2"]);
+  it("the unused bulk-create route is gone (2026-09-29: nothing called it, and it wasn't atomic)", async () => {
+    const res = await request("POST", "/transactions/bulk-create", { body: { records: [tx({ reference_number: "tr:b1" })] } });
+    expect(res.status).toBe(404);
+    expect((await request("POST", "/transactions/filter", { body: { filter: { reference_number: "tr:b1" } } })).body).toEqual([]);
   });
 
   it("returns 404 for an unknown entity", async () => {

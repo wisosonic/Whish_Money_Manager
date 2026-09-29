@@ -45,7 +45,7 @@ const cookieOptions = () => ({
 
 // ═══ Helpers ═══
 
-export const hashPassword = (password) => bcrypt.hashSync(String(password), BCRYPT_ROUNDS);
+const hashPassword = (password) => bcrypt.hashSync(String(password), BCRYPT_ROUNDS);
 // Compared against when the email doesn't exist, so response time doesn't reveal valid emails.
 const DUMMY_HASH = bcrypt.hashSync("not-a-real-password", BCRYPT_ROUNDS);
 
@@ -59,7 +59,7 @@ const USER_WITH_ROLE_SQL = `
   FROM users u JOIN roles r ON r.id = u.role_id LEFT JOIN stores s ON s.id = u.store_id`;
 
 // What the API returns about a user (never the password hash).
-export const publicUser = (row) =>
+const publicUser = (row) =>
   row && {
     id: row.id,
     email: row.email,
@@ -109,7 +109,7 @@ const readSessionToken = (req) => {
 
 // ═══ Validation shared by user creation (API and seed script) ═══
 
-export class AuthError extends Error {
+class AuthError extends Error {
   constructor(status, message) {
     super(message);
     this.status = status;
@@ -154,6 +154,23 @@ const recordFailure = (key) => {
   if (!entry || Date.now() - entry.first > LOGIN_WINDOW_MS) loginFailures.set(key, { count: 1, first: Date.now() });
   else entry.count += 1;
 };
+
+// Entries are only checked (and dropped) when the same IP + email tries again, so failures for
+// addresses nobody retries would stay in memory until a restart. Every 15 minutes, drop the ones
+// whose window has passed (user's request, 2026-09-29). unref(): the timer never keeps the process
+// (or a test run) alive on its own.
+export const sweepLoginFailures = (now = Date.now()) => {
+  let removed = 0;
+  for (const [key, entry] of loginFailures) {
+    if (now - entry.first > LOGIN_WINDOW_MS) {
+      loginFailures.delete(key);
+      removed += 1;
+    }
+  }
+  return removed;
+};
+export const loginFailureCount = () => loginFailures.size;
+setInterval(sweepLoginFailures, LOGIN_WINDOW_MS).unref();
 
 // ═══ Middleware ═══
 

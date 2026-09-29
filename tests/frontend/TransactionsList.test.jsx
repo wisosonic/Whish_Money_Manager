@@ -44,7 +44,6 @@ const renderList = (props = {}) =>
       onCashOut={vi.fn()}
       onImportPDF={vi.fn()}
       onRefresh={vi.fn()}
-      onResetOpeningBalance={vi.fn()}
       onDeleteDailyBalanceForDate={vi.fn()}
       {...props}
     />
@@ -228,7 +227,7 @@ describe("TransactionsList — bulk actions", () => {
       <TransactionsList
         transactions={[transactions[1]]} dayTransactions={rows3} loading={false} search="mounir" setSearch={vi.fn()}
         selectedDate="2026-09-23" setSelectedDate={vi.fn()} onToday={vi.fn()} onCashIn={vi.fn()} onCashOut={vi.fn()}
-        onImportPDF={vi.fn()} onRefresh={vi.fn()} onResetOpeningBalance={vi.fn()} onDeleteDailyBalanceForDate={vi.fn()}
+        onImportPDF={vi.fn()} onRefresh={vi.fn()} onDeleteDailyBalanceForDate={vi.fn()}
       />
     );
     expect(screen.getByTestId("bulk-selected-count")).toHaveTextContent("1 عملية محددة($50.00)");

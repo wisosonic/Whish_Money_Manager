@@ -42,7 +42,8 @@ export default function AdminPage() {
   const { t, dir, errorText, num } = useI18n();
   const { can, user } = useAuth();
   const canPurge = can(PERMISSIONS.DATA_PURGE);
-  const canRestore = can(PERMISSIONS.DATA_RESTORE);
+  // Restoring replaces the file's days (it deletes them first), so it also needs the delete right.
+  const canRestore = can(PERMISSIONS.DATA_RESTORE) && can(PERMISSIONS.DATA_PURGE);
   // Whose data: a Manager's own store (the server applies it); the Admin picks one store or all.
   const { stores, multiStore } = useStoreList();
   const [dataStore, setDataStore] = useState("all");
@@ -81,7 +82,7 @@ export default function AdminPage() {
       .finally(() => { if (current) setLoadingSummary(false); });
     return () => { current = false; };
     // errorText only changes with the language; re-fetching for that isn't needed.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [from, to, rangeValid, refreshKey, storeId]);
 
   const setRange = (start, end) => {

@@ -36,7 +36,7 @@ export default function StoresPage() {
       setLoading(false);
     }
     // errorText only changes with the language.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [canManage]);
   useEffect(() => { load(); }, [load]);
 
@@ -200,7 +200,7 @@ function StoreMembers({ store, onChanged }) {
       notify.error(errorText(err?.message || ""));
       setMembers([]);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [store.id]);
   useEffect(() => { load(); }, [load]);
 

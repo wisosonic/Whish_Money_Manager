@@ -242,7 +242,7 @@ describe("transactions", () => {
     const renderTable = (props = {}) => render(withApp(
       <TransactionsList transactions={rows} allTransactions={rows} loading={false} search="" setSearch={vi.fn()}
         selectedDate="2026-09-23" setSelectedDate={vi.fn()} onToday={vi.fn()} onCashIn={vi.fn()} onCashOut={vi.fn()}
-        onImportPDF={vi.fn()} onRefresh={vi.fn()} onResetOpeningBalance={vi.fn()} onDeleteDailyBalanceForDate={vi.fn()} {...props} />
+        onImportPDF={vi.fn()} onRefresh={vi.fn()} onDeleteDailyBalanceForDate={vi.fn()} {...props} />
     ));
     const firstRow = (container) => container.querySelector("tbody tr");
 

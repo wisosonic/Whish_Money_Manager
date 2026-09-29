@@ -50,7 +50,6 @@ export default function Dashboard() {
   // What the store field lists: the Admin's stores, or the one store a Manager / User works in.
   const pickerStores = seesAll ? stores : user?.store_id != null ? [{ id: user.store_id, name: user.store_name }] : [];
   // The store is sent only when the Admin picked one of several; otherwise the server knows it.
-  const storeFilter = chosenStore ? { store_id: chosenStore } : {};
   const withStore = (...args) => (chosenStore ? [...args, chosenStore] : args);
   const storeKey = storesLoaded ? String(chosenStore ?? (allStoresView ? "all" : "own")) : null;
   const handleStoreChoice = (value) => {
@@ -68,7 +67,6 @@ export default function Dashboard() {
     const day = String(d.getDate()).padStart(2, "0");
     return `${y}-${m}-${day}`;
   };
-  const today = getToday();
   // Settings → General → Start on: the last day viewed (remembered in this browser, a cookie) or today.
   const [selectedDate, setSelectedDate] = useState(() => {
     if (preferences.startOn === "today") return getToday();
@@ -126,7 +124,6 @@ export default function Dashboard() {
   const [dayRows, setDayRows] = useState([]);
   const [dayInfo, setDayInfo] = useState({ total: 0, truncated: false });
   const [summary, setSummary] = useState(null);
-  const [dayBalance, setDayBalance] = useState(null); // the day's opening-balance record (to edit it)
   const latestDay = useRef("");
 
   // `loading` starts true and is only cleared here — it is NOT set back to true on later refreshes
@@ -138,16 +135,14 @@ export default function Dashboard() {
     const key = `${storeKey}|${selectedDate}`;
     latestDay.current = key;
     try {
-      const [day, totals, balances] = await Promise.all([
+      const [day, totals] = await Promise.all([
         api.dashboard.day(...withStore(selectedDate)),
         api.dashboard.summary(...withStore(selectedDate)),
-        api.entities.DailyBalance.filter({ ...storeFilter, date: selectedDate }),
       ]);
       if (latestDay.current !== key) return; // another day (or store) was chosen meanwhile
       setDayRows(day.transactions);
       setDayInfo({ total: day.total, truncated: day.truncated });
       setSummary(totals);
-      setDayBalance(allStoresView ? null : balances[0] ?? null);
     } catch (err) {
       if (latestDay.current === key) notify.error(errorText(err?.message || ""));
     } finally {
@@ -181,14 +176,14 @@ export default function Dashboard() {
     if (storeKey === null) return;
     loadClosedDays();
     if (!allStoresView) api.commissionRates.get(...withStore(getToday())).then((r) => setCommissionRate(r?.rate ?? 1)).catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [storeKey, noStore]);
 
   // A new query for every day (and store) shown.
   useEffect(() => {
     if (noStore || storeKey === null) return;
     fetchDay();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [storeKey, selectedDate, noStore]);
 
   // ═══ Search ═══
@@ -213,7 +208,7 @@ export default function Dashboard() {
     if (!searchingDays || noStore || storeKey === null) return undefined;
     const timer = setTimeout(fetchSearch, 250);
     return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [search, searchingDays, searchMonth, storeKey, noStore]);
 
   // After a change (edit, delete, bulk, cash in / out, import): the day, its totals, and the results.
@@ -252,13 +247,6 @@ export default function Dashboard() {
   const dailyNetBalance = effectiveOpeningBalance + totalDeposits - totalWithdrawals;
 
   const handleToday = () => handleSetSelectedDate(getToday());
-
-  const handleResetOpeningBalance = async () => {
-    if (dayBalance) {
-      await api.entities.DailyBalance.update(dayBalance.id, { opening_balance: 0 });
-      await fetchDay();
-    }
-  };
 
   // After deletes: a store's opening balance for the day goes when that store has no transactions
   // left on it. The server checks (it counts every row, the page only has one day).
@@ -327,7 +315,6 @@ export default function Dashboard() {
         
         <WalletSummary
           openingBalance={effectiveOpeningBalance}
-          openingBalanceDate={selectedDate}
           totalDeposits={totalDeposits}
           totalWithdrawals={totalWithdrawals}
           totalCommissions={totalCommissions}
@@ -358,7 +345,6 @@ export default function Dashboard() {
           onCashOut={() => setShowCashOut(true)}
           onImportPDF={() => setShowImportPDF(true)}
           onRefresh={refresh}
-          onResetOpeningBalance={handleResetOpeningBalance}
           onDeleteDailyBalanceForDate={handleDeleteDailyBalanceForDate}
           storeNames={storeNames}
           isRowClosed={isRowClosed} />

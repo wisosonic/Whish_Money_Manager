@@ -129,9 +129,11 @@ describe("Admin panel → restore from a backup", () => {
   const file = (text = "id,transaction_date\n1,2026-09-05") => new File([text], "transactions_2026-09-01_2026-09-30.csv", { type: "text/csv" });
   const choose = (f = file()) => fireEvent.change(screen.getByTestId("restore-file"), { target: { files: [f] } });
   const previewOf = (over = {}) => ({
-    kind: "transactions", rows: 128, to_add: 120, existing: 5, on_closed_days: 3, duplicates_in_file: 0, closed_days: ["2026-09-06"],
+    kind: "transactions", rows: 128, to_add: 120, to_delete: 95, deleted_elsewhere: 0, days: 30, duplicates_in_file: 0,
+    blocked: null, closed_days: [], in_other_stores: 0,
     first_date: "2026-09-01", last_date: "2026-09-30", total_in: 1000, total_out: 250.5, invalid_count: 0, invalid: [], ...over,
   });
+  const restored = { kind: "transactions", restored: 120, deleted: 95, days: 30 };
 
   it("choosing a file shows what restoring would do, before anything is written", async () => {
     api.admin.restorePreview.mockResolvedValue(previewOf());
@@ -140,24 +142,27 @@ describe("Admin panel → restore from a backup", () => {
     const preview = await screen.findByTestId("restore-preview");
     expect(api.admin.restorePreview).toHaveBeenCalledWith("id,transaction_date\n1,2026-09-05");
     expect(preview).toHaveTextContent("يحتوي الملف على 128 عملية.");
-    expect(preview).toHaveTextContent("ستتم إضافة 120");
+    expect(preview).toHaveTextContent("ستتم إعادة 120");
     expect(preview).toHaveTextContent("(من 2026-09-01 إلى 2026-09-30)");
-    expect(preview).toHaveTextContent("5 موجودة في قاعدة البيانات (تبقى كما هي)");
-    expect(preview).toHaveTextContent("3 في أيام مغلقة، تم تخطيها: 2026-09-06");
+    // Restoring replaces the file's days: what's there now is deleted first, and the screen says so.
+    expect(screen.getByTestId("restore-to-delete")).toHaveTextContent("سيُحذف أولاً 95 موجودة حالياً في تلك الأيام");
+    expect(screen.queryByTestId("restore-elsewhere")).not.toBeInTheDocument();
     expect(preview).toHaveTextContent("$1,000.00");
     expect(api.admin.restore).not.toHaveBeenCalled();
   });
 
-  it("restoring asks for confirmation, sends the previewed count, and confirms", async () => {
+  it("restoring asks for confirmation (saying what's deleted), sends both previewed counts, and confirms", async () => {
     api.admin.restorePreview.mockResolvedValue(previewOf());
-    api.admin.restore.mockResolvedValue({ kind: "transactions", restored: 120, skipped_existing: 5, skipped_closed: 3 });
+    api.admin.restore.mockResolvedValue(restored);
     openAdmin();
     choose();
     fireEvent.click(await screen.findByRole("button", { name: "استعادة 120 عملية" }));
-    const dialog = screen.getByRole("alertdialog", { name: "إعادة 120 عملية؟" });
+    const dialog = screen.getByRole("alertdialog", { name: "استبدال أيام الملف بـ 120 عملية؟" });
+    expect(dialog).toHaveAccessibleDescription(/أولاً يُحذف 95 صفاً: كل ما هو موجود حالياً في أيام النسخة الاحتياطية/);
+    expect(dialog).toHaveAccessibleDescription(/لا يمكن التراجع عن ذلك/);
     fireEvent.click(within(dialog).getByTestId("restore-confirm"));
-    await waitFor(() => expect(api.admin.restore).toHaveBeenCalledWith("id,transaction_date\n1,2026-09-05", 120));
-    expect(await findToast("تمت استعادة 120 عملية.")).toHaveAttribute("data-type", "success");
+    await waitFor(() => expect(api.admin.restore).toHaveBeenCalledWith("id,transaction_date\n1,2026-09-05", 120, 95));
+    expect(await findToast("تمت استعادة 120 عملية (استُبدلت 95).")).toHaveAttribute("data-type", "success");
     expect(screen.queryByTestId("restore-preview")).not.toBeInTheDocument();
   });
 
@@ -172,11 +177,29 @@ describe("Admin panel → restore from a backup", () => {
     expect(screen.getByTestId("restore-start")).toBeDisabled();
   });
 
-  it("nothing to add: says so, and the button is off", async () => {
-    api.admin.restorePreview.mockResolvedValue(previewOf({ to_add: 0, existing: 128, on_closed_days: 0 }));
+  it("an empty file: says so, and the button is off", async () => {
+    api.admin.restorePreview.mockResolvedValue(previewOf({ rows: 0, to_add: 0, to_delete: 0 }));
     openAdmin();
     choose();
-    expect(await screen.findByText("لا شيء للاستعادة: كل ما في الملف موجود مسبقاً.")).toBeInTheDocument();
+    expect(await screen.findByText("لا شيء للاستعادة: الملف لا يحتوي على صفوف.")).toBeInTheDocument();
+    expect(screen.getByTestId("restore-start")).toBeDisabled();
+  });
+
+  it("the same transactions on other days (moved or re-imported since) are named", async () => {
+    api.admin.restorePreview.mockResolvedValue(previewOf({ deleted_elsewhere: 4 }));
+    openAdmin();
+    choose();
+    expect(await screen.findByTestId("restore-elsewhere")).toHaveTextContent("منها 4 في أيام أخرى: العمليات نفسها، نُقلت أو أعيد استيرادها");
+  });
+
+  it.each([
+    ["a closed day", { blocked: "closed", closed_days: ["2026-09-06", "2026-09-07"] }, "لا يمكن الاستعادة: الملف يشمل أياماً مغلقة (2026-09-06، 2026-09-07). أعد فتحها أولاً."],
+    ["another store's reference", { blocked: "other_stores", in_other_stores: 2 }, "لا يمكن الاستعادة: 2 من أرقام العمليات مستخدمة لعمليات في متجر آخر."],
+  ])("%s blocks it: says why, and the button is off", async (_label, over, text) => {
+    api.admin.restorePreview.mockResolvedValue(previewOf(over));
+    openAdmin();
+    choose();
+    expect(await screen.findByTestId("restore-blocked")).toHaveTextContent(text);
     expect(screen.getByTestId("restore-start")).toBeDisabled();
   });
 
@@ -223,15 +246,22 @@ describe("Admin panel → restore from a backup", () => {
     expect(screen.getByTestId("admin-delete")).toBeInTheDocument();
   });
 
+  it("…and to delete data (restoring deletes the file's days first)", async () => {
+    setAuthRole("manager", { permissions: ["data:export", "data:restore", "transactions:read"] });
+    openAdmin();
+    await waitFor(() => expect(api.admin.summary).toHaveBeenCalled());
+    expect(screen.queryByTestId("admin-restore")).not.toBeInTheDocument();
+  });
+
   it("after a restore, the panel's range summary is refreshed (the counts changed)", async () => {
     api.admin.restorePreview.mockResolvedValue(previewOf());
-    api.admin.restore.mockResolvedValue({ kind: "transactions", restored: 120, skipped_existing: 5, skipped_closed: 3 });
+    api.admin.restore.mockResolvedValue(restored);
     openAdmin();
     await waitFor(() => expect(api.admin.summary).toHaveBeenCalledTimes(1));
     choose();
     fireEvent.click(await screen.findByTestId("restore-start"));
     fireEvent.click(screen.getByTestId("restore-confirm"));
-    await findToast("تمت استعادة 120 عملية.");
+    await findToast("تمت استعادة 120 عملية (استُبدلت 95).");
     await waitFor(() => expect(api.admin.summary).toHaveBeenCalledTimes(2));
   });
 });

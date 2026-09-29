@@ -154,7 +154,7 @@ describe("ImportPDFModal", () => {
     await waitFor(() => expect(api.entities.Transaction.importRecords).toHaveBeenCalledTimes(1));
     const [records, options] = api.entities.Transaction.importRecords.mock.calls[0];
     // The file's name and type go with the rows, for the import history.
-    expect(options).toEqual({ overwrite: false, statement: { file_name: "statement.csv", source: "csv" } });
+    expect(options).toEqual({ overwrite: false, statement: { file_name: "statement.csv", source: "csv" }, ambiguous: [] });
     expect(records[0]).toMatchObject({
       type: "cash_in", amount: 75, commission: 0.75, sender_name: "MOUNIR TOSKA",
       phone: "96171588017", customer_number: "71588017", reference_number: "tr:1",
@@ -197,7 +197,7 @@ describe("ImportPDFModal", () => {
 
       fireEvent.click(screen.getByText("حفظ الكل (2)"));
       await waitFor(() => expect(api.entities.Transaction.importRecords).toHaveBeenCalledTimes(1));
-      expect(api.entities.Transaction.importRecords.mock.calls[0][1]).toEqual({ overwrite: true, statement: { file_name: "statement.csv", source: "csv" } });
+      expect(api.entities.Transaction.importRecords.mock.calls[0][1]).toEqual({ overwrite: true, statement: { file_name: "statement.csv", source: "csv" }, ambiguous: [] });
     });
   });
 
@@ -238,6 +238,48 @@ describe("ImportPDFModal — re-import as a User", () => {
     const { container } = renderModal();
     upload(container, csvFile());
     fireEvent.click(await screen.findByText("حفظ الكل (2)"));
-    await waitFor(() => expect(api.entities.Transaction.importRecords).toHaveBeenCalledWith(expect.any(Array), { overwrite: false, statement: { file_name: "statement.csv", source: "csv" } }));
+    await waitFor(() => expect(api.entities.Transaction.importRecords).toHaveBeenCalledWith(expect.any(Array), { overwrite: false, statement: { file_name: "statement.csv", source: "csv" }, ambiguous: [] }));
+  });
+});
+
+describe("ImportPDFModal — ambiguous rows (user's request, 2026-09-29)", () => {
+  const AMBIGUOUS = [
+    { line_no: 3, date: "2026-09-23", reference_number: "tr:3", service: "W2W", description: "REFUND", debit: "-5.00", credit: "0.00", balance: "160.00", reason: "negative" },
+    { line_no: 4, date: "2026-09-23", reference_number: "tr:4", service: "W2W", description: "SPLIT", debit: "3.00", credit: "2.00", balance: "159.00", reason: "both" },
+  ];
+
+  it("lists the rows set aside, with why, and says they won't be saved", async () => {
+    api.integrations.Core.ExtractCsv.mockResolvedValue(extraction({ ambiguous: AMBIGUOUS, total_transactions_count: 4 }));
+    const { container } = renderModal();
+    upload(container, csvFile());
+    const box = await screen.findByTestId("import-ambiguous");
+    expect(box).toHaveTextContent("2 صفاً لا يمكن قراءتها كعملية Cash In أو Cash Out واحدة ولن تُحفظ");
+    const reasons = [...box.querySelectorAll('[data-testid="ambiguous-reason"]')].map((el) => el.textContent);
+    expect(reasons).toEqual(["مبلغ سالب", "مدين ودائن معاً"]);
+    expect(box).toHaveTextContent("-5.00");
+    expect(box).toHaveTextContent("REFUND");
+    // 2 saved + 2 set aside = the file's 4 lines: no "fewer rows" warning.
+    expect(screen.queryByText(/قد يكون هناك نقص/)).not.toBeInTheDocument();
+    expect(screen.getByText("حفظ الكل (2)")).toBeInTheDocument();
+  });
+
+  it("sends them with the save, next to (not among) the transactions", async () => {
+    api.integrations.Core.ExtractCsv.mockResolvedValue(extraction({ ambiguous: AMBIGUOUS, total_transactions_count: 4 }));
+    const { container } = renderModal();
+    upload(container, csvFile());
+    fireEvent.click(await screen.findByText("حفظ الكل (2)"));
+    await waitFor(() => expect(api.entities.Transaction.importRecords).toHaveBeenCalledTimes(1));
+    const [records, options] = api.entities.Transaction.importRecords.mock.calls[0];
+    expect(records).toHaveLength(2);
+    expect(options.ambiguous).toEqual(AMBIGUOUS);
+  });
+
+  it("none: no box, and an empty list is sent", async () => {
+    const { container } = renderModal();
+    upload(container, csvFile());
+    fireEvent.click(await screen.findByText("حفظ الكل (2)"));
+    await waitFor(() => expect(api.entities.Transaction.importRecords).toHaveBeenCalledTimes(1));
+    expect(screen.queryByTestId("import-ambiguous")).not.toBeInTheDocument();
+    expect(api.entities.Transaction.importRecords.mock.calls[0][1].ambiguous).toEqual([]);
   });
 });

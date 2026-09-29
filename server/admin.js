@@ -6,8 +6,10 @@
 //   POST /local-api/admin/purge { from, to, expected_count }
 //                                                     deletes the range's transactions AND opening
 //                                                     balances, in one database transaction
-//   POST /local-api/admin/restore/preview { csv }     what restoring a backup CSV would add (data:restore)
-//   POST /local-api/admin/restore { csv, expected_count }   add those rows back
+//   POST /local-api/admin/restore/preview { csv }     what restoring a backup CSV would do (data:restore)
+//   POST /local-api/admin/restore { csv, expected_count, expected_delete }
+//                                                     replace the file's days with the file's rows
+//                                                     (data:restore + data:purge)
 //
 // A transaction's day is transaction_date, or the date part of created_date when it has none —
 // the same rule the dashboard uses. Ranges are inclusive, as YYYY-MM-DD.
@@ -200,13 +202,22 @@ export const registerAdminRoutes = (app) => {
 };
 
 // ═══ Restore from a backup ═══
-// Adds back rows from a CSV this panel exported (transactions or opening balances). Rows are matched
-// by their original id: ids are never reused (AUTOINCREMENT), so a row whose id still exists is
-// already there and is skipped, and a missing one is re-inserted exactly as it was (same id, dates,
-// "entered by", store). Opening balances are matched by store and date. Rows on closed days are skipped.
-// Any invalid row rejects the whole file — a damaged or hand-edited backup is never half-restored.
-// A row's store is its store_id column; backups from before stores go to the store chosen for the
-// restore. Without stores:all, every row must be for your own store.
+// Puts back a CSV this panel exported (transactions or opening balances) by REPLACING the days it
+// covers (user's decision, 2026-09-29): for each store in the file, that store's rows on the file's
+// days are deleted, then every row in the file is inserted exactly as it was (same id, dates,
+// "entered by", store) — in one database transaction. Before, it only added the rows whose id was
+// missing, so a statement re-imported with "replace" since the backup (new ids) came back twice.
+//
+// Transactions: besides the file's days, the same transactions are removed wherever they are now —
+// a row with one of the file's ids (moved to another day since), and a row of the same store with
+// one of the file's reference numbers (re-imported since) — so nothing ends up counted twice.
+// Opening balances: the store's balance on each of the file's dates is replaced.
+//
+// Refused as a whole: any invalid row (a damaged or hand-edited backup is never half-restored); a
+// closed day among the days written or cleared (423); a reference already used by another
+// transaction in another store (409, the import rule). A row's store is its store_id column;
+// backups from before stores go to the store chosen for the restore. Without stores:all, every row
+// must be for your own store.
 
 // Undo csvCell's spreadsheet guard: a leading ' is removed only where csvCell would have added it.
 const unguard = (text) => (text.startsWith("'") && needsGuard(text.slice(1)) ? text.slice(1) : text);
@@ -252,6 +263,7 @@ const validateBalance = (r) => {
 
 // What restoring the file would do, without changing anything. `user` decides which stores rows
 // may go to; `defaultStore` receives rows without a store_id (null: such rows are invalid).
+// plan: { toAdd, deleteIds (transactions) | deleteKeys (balances), duplicatesInFile, blocked }.
 const planRestore = (csv, user, defaultStore) => {
   const parsed = parseBackup(csv);
   if (parsed.error) return parsed;
@@ -263,28 +275,80 @@ const planRestore = (csv, user, defaultStore) => {
   // Each invalid row is reported as { line, field } — the first column whose value isn't valid.
   const invalid = records.map((r) => ({ line: r.line, field: validate(r) || storeProblem(r) })).filter((x) => x.field);
   const dayOf = (r) => (kind === "transactions" ? transactionDay(r) : r.date);
-  const closedKeys = new Set();
-  if (!invalid.length) {
-    [...new Set(records.map((r) => r.store_id))].forEach((storeId) =>
-      closedAmong(storeId, records.filter((r) => r.store_id === storeId).map(dayOf)).forEach((date) => closedKeys.add(`${storeId}|${date}`)));
-  }
+  const key = (storeId, day) => `${storeId}|${day}`;
 
-  const existsById = db.prepare("SELECT 1 FROM transactions WHERE id = ?");
-  const existsByDate = db.prepare("SELECT 1 FROM daily_balances WHERE store_id = ? AND date = ?");
+  // The file's rows, once each (the same id — or store and date — twice counts once).
+  const plan = { toAdd: [], deleteIds: [], deleteKeys: [], duplicatesInFile: 0, blocked: null };
   const seen = new Set();
-  const plan = { toAdd: [], existing: 0, onClosedDays: 0, duplicatesInFile: 0 };
   if (!invalid.length) {
     for (const r of records) {
-      const key = kind === "transactions" ? Number(r.id) : `${r.store_id}|${r.date}`;
-      if (seen.has(key)) { plan.duplicatesInFile += 1; continue; }
-      seen.add(key);
-      if (closedKeys.has(`${r.store_id}|${dayOf(r)}`)) plan.onClosedDays += 1;
-      else if (kind === "transactions" ? existsById.get(key) : existsByDate.get(r.store_id, r.date)) plan.existing += 1;
-      else plan.toAdd.push(r);
+      const id = kind === "transactions" ? Number(r.id) : key(r.store_id, r.date);
+      if (seen.has(id)) { plan.duplicatesInFile += 1; continue; }
+      seen.add(id);
+      plan.toAdd.push(r);
     }
   }
+  const fileDays = new Set(plan.toAdd.map((r) => key(r.store_id, dayOf(r))));
+  // Every store-day written or cleared, for the closed-day check.
+  const touched = new Set(fileDays);
+  let deletedElsewhere = 0;
+  let inOtherStores = 0;
+
+  if (!invalid.length && kind === "transactions") {
+    const toDelete = new Map(); // id → its store-day
+    const onDay = db.prepare(`SELECT id FROM transactions WHERE store_id = ? AND ${TX_DAY} = ?`);
+    const byId = db.prepare(`SELECT id, store_id, ${TX_DAY} AS day FROM transactions WHERE id = ?`);
+    const byReference = db.prepare(`SELECT id, store_id, ${TX_DAY} AS day FROM transactions WHERE reference_number = ?`);
+    for (const storeDay of fileDays) {
+      const [storeId, day] = storeDay.split("|");
+      onDay.all(Number(storeId), day).forEach((row) => toDelete.set(row.id, storeDay));
+    }
+    // The same transaction elsewhere: its id on another day, or its reference re-imported since.
+    const fileIds = new Set(plan.toAdd.map((r) => Number(r.id)));
+    for (const r of plan.toAdd) {
+      const current = byId.get(Number(r.id));
+      if (current && !toDelete.has(current.id)) {
+        if (!inScope(user, current)) { invalid.push({ line: r.line, field: "id" }); continue; }
+        toDelete.set(current.id, key(current.store_id, current.day));
+      }
+      const reference = String(r.reference_number || "").trim();
+      if (!reference) continue;
+      for (const other of byReference.all(reference)) {
+        if (toDelete.has(other.id) || fileIds.has(other.id)) continue;
+        if (other.store_id === r.store_id) toDelete.set(other.id, key(other.store_id, other.day));
+        else inOtherStores += 1; // another store's transaction: the same money can't be in two stores
+      }
+    }
+    plan.deleteIds = [...toDelete.keys()];
+    for (const storeDay of toDelete.values()) {
+      touched.add(storeDay);
+      if (!fileDays.has(storeDay)) deletedElsewhere += 1;
+    }
+  } else if (!invalid.length) {
+    const existing = db.prepare("SELECT 1 FROM daily_balances WHERE store_id = ? AND date = ?");
+    plan.deleteKeys = [...fileDays].filter((storeDay) => {
+      const [storeId, date] = storeDay.split("|");
+      return Boolean(existing.get(Number(storeId), date));
+    });
+  }
+
+  const closedKeys = new Set();
+  if (!invalid.length) {
+    const byStore = new Map();
+    for (const storeDay of touched) {
+      const [storeId, day] = storeDay.split("|");
+      byStore.set(storeId, [...(byStore.get(storeId) ?? []), day]);
+    }
+    for (const [storeId, days] of byStore) {
+      closedAmong(Number(storeId), days).forEach((date) => closedKeys.add(key(storeId, date)));
+    }
+  }
+  if (closedKeys.size) plan.blocked = "closed";
+  else if (inOtherStores) plan.blocked = "other_stores";
+
   const days = plan.toAdd.map(dayOf).sort();
   const sum = (type) => Math.round(plan.toAdd.filter((r) => r.type === type).reduce((s, r) => s + number(r.amount), 0) * 100) / 100;
+  const toDelete = kind === "transactions" ? plan.deleteIds.length : plan.deleteKeys.length;
   return {
     kind,
     records,
@@ -293,10 +357,13 @@ const planRestore = (csv, user, defaultStore) => {
       kind,
       rows: records.length,
       to_add: plan.toAdd.length,
-      existing: plan.existing,
-      on_closed_days: plan.onClosedDays,
+      to_delete: toDelete,
+      deleted_elsewhere: deletedElsewhere,
+      days: fileDays.size,
       duplicates_in_file: plan.duplicatesInFile,
+      blocked: plan.blocked,
       closed_days: [...new Set([...closedKeys].map((k) => k.split("|")[1]))].sort(),
+      in_other_stores: inOtherStores,
       first_date: days[0] ?? null,
       last_date: days.at(-1) ?? null,
       total_in: kind === "transactions" ? sum("cash_in") : null,
@@ -328,6 +395,8 @@ const insertBackupBalance = (r) =>
 
 export const registerRestoreRoutes = (app) => {
   const canRestore = requirePermission(P.DATA_RESTORE);
+  // Restoring deletes the file's days first, so it also needs the right to delete data.
+  const canReplace = requirePermission(P.DATA_PURGE);
 
   // The store that receives rows without a store_id (backups from before stores): the one asked
   // for, your own, or the only store. With several stores and none chosen, such rows are invalid.
@@ -343,12 +412,13 @@ export const registerRestoreRoutes = (app) => {
     res.json(result.summary);
   });
 
-  // `expected_count` is the number of rows the preview said would be added. The plan is recomputed
-  // inside the database transaction; if it changed (someone added or deleted meanwhile), nothing
-  // is written and the fresh summary is returned.
-  app.post("/local-api/admin/restore", canRestore, (req, res) => {
+  // `expected_count` / `expected_delete`: the rows the preview said would be added and deleted. The
+  // plan is recomputed inside the database transaction; if either changed (someone added or deleted
+  // meanwhile), nothing is written and the fresh summary is returned.
+  app.post("/local-api/admin/restore", canRestore, canReplace, (req, res) => {
     const expected = req.body?.expected_count;
-    if (!Number.isInteger(expected) || expected < 0) {
+    const expectedDelete = req.body?.expected_delete;
+    if (!Number.isInteger(expected) || expected < 0 || !Number.isInteger(expectedDelete) || expectedDelete < 0) {
       res.status(400).json({ error: "expected_count is required" });
       return;
     }
@@ -359,15 +429,31 @@ export const registerRestoreRoutes = (app) => {
       const result = planRestore(req.body?.csv, req.user, defaultStore);
       if (result.error) { outcome = { status: 400, body: { error: result.error } }; return; }
       if (result.summary.invalid_count) { outcome = { status: 400, body: { error: "The backup has invalid rows", ...result.summary } }; return; }
-      if (result.plan.toAdd.length !== expected) {
+      if (result.plan.blocked === "closed") {
+        outcome = { status: 423, body: { error: "The backup's days include closed days. Reopen them first.", ...result.summary } };
+        return;
+      }
+      if (result.plan.blocked === "other_stores") {
+        outcome = { status: 409, body: { error: "Some of these transactions are already recorded in another store", ...result.summary } };
+        return;
+      }
+      if (result.summary.to_add !== expected || result.summary.to_delete !== expectedDelete) {
         outcome = { status: 409, body: { error: "The data changed since the preview. Check the counts and try again.", ...result.summary } };
         return;
       }
-      result.plan.toAdd.forEach(result.kind === "transactions" ? insertBackupTransaction : insertBackupBalance);
-      outcome = { status: 200, body: { kind: result.kind, restored: result.plan.toAdd.length, skipped_existing: result.plan.existing, skipped_closed: result.plan.onClosedDays } };
+      const { plan } = result;
+      if (result.kind === "transactions") {
+        const remove = db.prepare("DELETE FROM transactions WHERE id = ?");
+        plan.deleteIds.forEach((id) => remove.run(id));
+      } else {
+        const remove = db.prepare("DELETE FROM daily_balances WHERE store_id = ? AND date = ?");
+        plan.deleteKeys.forEach((storeDay) => { const [storeId, date] = storeDay.split("|"); remove.run(Number(storeId), date); });
+      }
+      plan.toAdd.forEach(result.kind === "transactions" ? insertBackupTransaction : insertBackupBalance);
+      outcome = { status: 200, body: { kind: result.kind, restored: plan.toAdd.length, deleted: result.summary.to_delete, days: result.summary.days } };
     })();
     if (outcome.status === 200) {
-      console.log(`[admin] ${req.user.email} restored ${outcome.body.restored} ${outcome.body.kind} from a backup`);
+      console.log(`[admin] ${req.user.email} restored ${outcome.body.restored} ${outcome.body.kind} from a backup, replacing ${outcome.body.deleted} on ${outcome.body.days} day(s)`);
     }
     res.status(outcome.status).json(outcome.body);
   });

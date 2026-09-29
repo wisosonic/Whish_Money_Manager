@@ -131,7 +131,7 @@ const canManageMembers = (user, store) =>
   hasPermission(user, P.STORES_MANAGE) || (hasPermission(user, P.STORES_MEMBERS) && store.manager_id === user.id);
 
 // Clears a user's store: their membership and, if they manage one, that store's Manager.
-export const clearStoreAssignment = (userId) => {
+const clearStoreAssignment = (userId) => {
   db.prepare("UPDATE stores SET manager_id = NULL, updated_date = ? WHERE manager_id = ?").run(nowIso(), userId);
   db.prepare("UPDATE users SET store_id = NULL, updated_date = ? WHERE id = ?").run(nowIso(), userId);
 };

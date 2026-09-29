@@ -22,12 +22,12 @@ export const TABLE_COLUMNS = [
   "commission", "reference", "service", "note", "date",
 ];
 
-export const PREFERENCE_LANGUAGES = ["ar", "en"];
+const PREFERENCE_LANGUAGES = ["ar", "en"];
 export const DENSITIES = ["comfortable", "compact"];
 export const THEMES = ["light", "dark", "system"];
 export const START_ON = ["last", "today"];
 export const SEARCH_SCOPES = ["all", "month", "day"];
-export const SORT_DIRECTIONS = ["asc", "desc"];
+const SORT_DIRECTIONS = ["asc", "desc"];
 export const CLOCKS = ["12h", "24h"];
 // Before Appearance → "Show the clock" (2026-09-28), hiding it was a third clock format.
 const LEGACY_HIDDEN_CLOCK = "hidden";

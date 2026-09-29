@@ -10,14 +10,14 @@
 // cash in minus cash out on a day.
 
 // DD-MM-YYYY → YYYY-MM-DD (older rows); YYYY-MM-DD is kept.
-export const normalizeDate = (dateStr) => {
+const normalizeDate = (dateStr) => {
   if (!dateStr) return "";
   const parts = String(dateStr).split("-");
   if (parts.length === 3 && parts[0].length === 2) return `${parts[2]}-${parts[1]}-${parts[0]}`;
   return String(dateStr);
 };
 
-export const previousDay = (date) => {
+const previousDay = (date) => {
   const [y, m, d] = String(date).split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, d) - 86400000).toISOString().slice(0, 10);
 };

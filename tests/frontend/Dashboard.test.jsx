@@ -346,7 +346,6 @@ describe("Dashboard — roles", () => {
     await waitFor(() => expect(rowCount(container)).toBe(2));
     expect(api.dashboard.day).toHaveBeenCalledWith("2026-09-23");
     expect(api.dashboard.summary).toHaveBeenCalledWith("2026-09-23");
-    expect(api.entities.DailyBalance.filter).toHaveBeenCalledWith({ date: "2026-09-23" });
     // The browser no longer downloads every transaction.
     expect(api.entities.Transaction.filter).not.toHaveBeenCalled();
   });
@@ -634,5 +633,73 @@ describe("Dashboard — sticky table header (user's request)", () => {
     await waitFor(() => expect(rowCount(container)).toBe(2));
     expect(screen.getByTestId("table-scroll")).toBe(box); // the same element, never swapped for "loading"
     expect(box.scrollTop).toBe(300);
+  });
+});
+
+describe("Dashboard — delete all for this day during a search (user-reported)", () => {
+  it("the dialog counts the whole day, which is what gets deleted, and says the search hides some", async () => {
+    api.entities.Transaction.delete.mockReset();
+    api.entities.Transaction.delete.mockResolvedValue({ ok: true });
+    const { container } = render(<Dashboard />);
+    await waitFor(() => expect(rowCount(container)).toBe(2));
+    thisDayOnly();
+    search("mounir");
+    await waitFor(() => expect(rowCount(container)).toBe(1)); // the search shows 1 of the day's 2
+    fireEvent.click(screen.getByRole("button", { name: /مسح الكل/ }));
+    expect(screen.getByTestId("delete-all-count")).toHaveTextContent("2 عملية");
+    expect(screen.getByTestId("delete-all-search-note")).toHaveTextContent("البحث يعرض 1 منها فقط: سيتم حذف كل عمليات اليوم (2)");
+    fireEvent.click(within(screen.getByTestId("delete-all-count").closest(".rounded-2xl")).getByRole("button", { name: /مسح الكل/ }));
+    await waitFor(() => expect(api.entities.Transaction.delete).toHaveBeenCalledTimes(2));
+    expect(api.entities.Transaction.delete.mock.calls.map(([id]) => id).sort()).toEqual([1, 2]);
+  });
+
+  it("without a search there is no note, and the count is the day's", async () => {
+    const { container } = render(<Dashboard />);
+    await waitFor(() => expect(rowCount(container)).toBe(2));
+    fireEvent.click(screen.getByRole("button", { name: /مسح الكل/ }));
+    expect(screen.getByTestId("delete-all-count")).toHaveTextContent("2 عملية");
+    expect(screen.queryByTestId("delete-all-search-note")).not.toBeInTheDocument();
+  });
+});
+
+describe("Dashboard — clearing the search (user's request)", () => {
+  it("an ✕ appears once something is typed; it clears the search, shows the day again and keeps the cursor in the box", async () => {
+    const { container } = render(<Dashboard />);
+    await waitFor(() => expect(rowCount(container)).toBe(2));
+    expect(screen.queryByTestId("clear-search")).not.toBeInTheDocument(); // nothing to clear yet
+    thisDayOnly();
+    search("mounir");
+    await waitFor(() => expect(rowCount(container)).toBe(1));
+    const clear = screen.getByRole("button", { name: "مسح البحث" });
+    expect(clear).toHaveAttribute("title", "مسح البحث");
+    fireEvent.click(clear);
+    expect(screen.getByTestId("search-input")).toHaveValue("");
+    expect(screen.getByTestId("search-input")).toHaveFocus();
+    expect(screen.queryByTestId("clear-search")).not.toBeInTheDocument();
+    await waitFor(() => expect(rowCount(container)).toBe(2));
+  });
+
+  it("clears an all-days search too (back to the selected day)", async () => {
+    const { container } = render(<Dashboard />);
+    await waitFor(() => expect(rowCount(container)).toBe(2));
+    search("vicario");
+    await waitFor(() => expect(screen.getByTestId("all-days-results")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("clear-search"));
+    await waitFor(() => expect(screen.queryByTestId("all-days-results")).not.toBeInTheDocument());
+    expect(rowCount(container)).toBe(2);
+  });
+
+  it("Escape in the box clears it as well", async () => {
+    render(<Dashboard />);
+    search("mounir");
+    fireEvent.keyDown(screen.getByTestId("search-input"), { key: "Escape" });
+    expect(screen.getByTestId("search-input")).toHaveValue("");
+  });
+
+  it("in English", async () => {
+    const { LanguageProvider } = await import("@/lib/i18n");
+    render(<LanguageProvider initialLang="en"><Dashboard /></LanguageProvider>);
+    fireEvent.change(await screen.findByTestId("search-input"), { target: { value: "x" } });
+    expect(screen.getByRole("button", { name: "Clear the search" })).toBeInTheDocument();
   });
 });

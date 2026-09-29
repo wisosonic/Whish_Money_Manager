@@ -56,6 +56,30 @@ describe("unused packages", () => {
       expect(fs.existsSync(path.join(root, "src/components/ui", file))).toBe(false));
     expect(deps).toHaveProperty("sonner");
   });
+
+  // Dead code removed on 2026-09-29 (user's request), found with knip: the Base44 template's unused
+  // packages and shadcn files. Nothing imported them.
+  it.each([
+    "@hello-pangea/dnd", "@hookform/resolvers", "@stripe/react-stripe-js", "@stripe/stripe-js", "@tanstack/react-query",
+    "canvas-confetti", "cmdk", "cors", "embla-carousel-react", "framer-motion", "html2canvas", "input-otp", "lodash",
+    "moment", "next-themes", "react-hook-form", "react-leaflet", "react-markdown", "react-quill", "react-resizable-panels",
+    "three", "vaul", "zod", "@radix-ui/react-dialog", "@radix-ui/react-dropdown-menu", "@radix-ui/react-slot",
+  ])("%s stays uninstalled", (name) => {
+    expect(deps).not.toHaveProperty(name);
+  });
+
+  it("jspdf is only a development dependency (the tests build sample PDFs with it)", () => {
+    expect(pkg.dependencies).not.toHaveProperty("jspdf");
+    expect(pkg.devDependencies).toHaveProperty("jspdf");
+    const appUsers = [...filesUnder("src", /\.jsx?$/), ...filesUnder("server", /\.js$/)].filter((f) => /from ["']jspdf["']/.test(fs.readFileSync(f, "utf8")));
+    expect(appUsers).toEqual([]);
+  });
+
+  it("only the shadcn ui files the app uses are kept (the calendar popup's)", () => {
+    expect(fs.readdirSync(path.join(root, "src/components/ui")).sort()).toEqual(["button.jsx", "calendar.jsx", "popover.jsx"]);
+    ["src/components/ProtectedRoute.jsx", "src/components/UserNotRegisteredError.jsx", "src/lib/query-client.js", "src/lib/PageNotFound.jsx", "src/utils/index.ts"]
+      .forEach((file) => expect(fs.existsSync(path.join(root, file))).toBe(false));
+  });
 });
 
 describe("browser storage", () => {
@@ -75,9 +99,9 @@ describe("bundle split", () => {
   const importsStatically = (source, target) =>
     new RegExp(`^import[^;]*from ["']${target.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")}["']`, "m").test(source);
 
-  it("only the shared chart imports Recharts (ui/chart.jsx is an unused shadcn file)", () => {
+  it("only the shared chart imports Recharts", () => {
     const users = appSources.filter((f) => /from ["']recharts["']/.test(fs.readFileSync(f, "utf8"))).map(relative);
-    expect(users.sort()).toEqual(["src/components/reports/IncomeChart.jsx", "src/components/ui/chart.jsx"]);
+    expect(users).toEqual(["src/components/reports/IncomeChart.jsx"]);
     expect(appSources.filter((f) => /components\/ui\/chart["']/.test(fs.readFileSync(f, "utf8")))).toEqual([]);
   });
 

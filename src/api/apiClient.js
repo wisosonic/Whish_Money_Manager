@@ -8,18 +8,33 @@ const LEGACY_LOCAL_STORAGE_USER_KEY = 'hawalaflow_local_user';
 // AuthContext listens and shows the login screen.
 export const SESSION_ENDED_EVENT = 'auth:session-ended';
 
+// Fired when the server answers with an error (any 5xx) or can't be reached at all (user's request,
+// 2026-09-29): App.jsx opens the 500 page. detail: { status, path } (status 0 = no answer).
+export const SERVER_ERROR_EVENT = 'app:server-error';
+export const SERVER_UNREACHABLE = "The server can't be reached";
+const reportServerError = (status, path) => {
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(SERVER_ERROR_EVENT, { detail: { status, path } }));
+};
+
 // The session lives in an HTTP-only cookie set by the server: the browser sends it automatically
 // with same-origin requests, and page scripts can't read it.
 // `download: true` returns { blob, filename } (from Content-Disposition) instead of parsed JSON.
 const apiRequest = async (path, { download = false, ...options } = {}) => {
-  const response = await fetch(`${LOCAL_API_PREFIX}${path}`, {
-    credentials: 'same-origin',
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(options.headers || {}),
-    },
-  });
+  let response;
+  try {
+    response = await fetch(`${LOCAL_API_PREFIX}${path}`, {
+      credentials: 'same-origin',
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(options.headers || {}),
+      },
+    });
+  } catch (error) {
+    // No answer at all (server stopped, network down).
+    reportServerError(0, path);
+    throw Object.assign(new Error(SERVER_UNREACHABLE), { status: 0, cause: error });
+  }
 
   if (!response.ok) {
     const text = await response.text();
@@ -32,6 +47,7 @@ const apiRequest = async (path, { download = false, ...options } = {}) => {
     if (response.status === 401 && !path.startsWith('/auth/') && typeof window !== 'undefined') {
       window.dispatchEvent(new Event(SESSION_ENDED_EVENT));
     }
+    if (response.status >= 500) reportServerError(response.status, path);
     throw Object.assign(new Error(message || `Request failed: ${response.status}`), { status: response.status });
   }
 
@@ -68,12 +84,6 @@ const makeEntityClient = (entityPath) => ({
     apiRequest(`/${entityPath}/create`, {
       method: 'POST',
       body: JSON.stringify(payload),
-    }),
-
-  bulkCreate: async (records) =>
-    apiRequest(`/${entityPath}/bulk-create`, {
-      method: 'POST',
-      body: JSON.stringify({ records }),
     }),
 
   update: async (id, payload) =>
@@ -152,6 +162,15 @@ export const api = {
   // The import history: { total, truncated, imports } (the Admin can ask for one store).
   importHistory: {
     list: async (storeId) => apiRequest(`/import-history${query({ store_id: storeId })}`, { method: 'GET' }),
+    // The statement rows set aside as ambiguous: { total, truncated, rows }.
+    ambiguous: async (storeId) => apiRequest(`/ambiguous-rows${query({ store_id: storeId })}`, { method: 'GET' }),
+    // Just how many (the dashboard button's badge): { total }.
+    ambiguousCount: async (storeId) => apiRequest(`/ambiguous-rows${query({ count: 1, store_id: storeId })}`, { method: 'GET' }),
+    // Discard one ambiguous row for good.
+    discardAmbiguous: async (id) => apiRequest(`/ambiguous-rows/${id}`, { method: 'DELETE' }),
+    // Correct one ambiguous row into a real transaction (commission is computed by the server —
+    // never sent from here); returns { transaction, discarded_id }.
+    convert: async (id, payload) => apiRequest(`/ambiguous-rows/${id}/convert`, { method: 'POST', body: JSON.stringify(payload) }),
   },
   dashboard: {
     day: async (date, storeId) => apiRequest(`/dashboard/day${query({ date, store_id: storeId })}`, { method: 'GET' }),
@@ -234,8 +253,10 @@ export const api = {
     // the number of rows the preview showed; the server refuses (409) if that changed.
     // Rows keep the store named in the file; backups from before stores go to storeId.
     restorePreview: async (csv, storeId) => apiRequest('/admin/restore/preview', { method: 'POST', body: JSON.stringify({ csv, store_id: storeId }) }),
-    restore: async (csv, expectedCount, storeId) =>
-      apiRequest('/admin/restore', { method: 'POST', body: JSON.stringify({ csv, expected_count: expectedCount, store_id: storeId }) }),
+    // Restoring replaces the file's days: expectedDelete is the number of rows the preview said would
+    // be deleted first (the server refuses with 409 if either count changed).
+    restore: async (csv, expectedCount, expectedDelete, storeId) =>
+      apiRequest('/admin/restore', { method: 'POST', body: JSON.stringify({ csv, expected_count: expectedCount, expected_delete: expectedDelete, store_id: storeId }) }),
   },
   entities: {
     Transaction: {
@@ -262,13 +283,14 @@ export const api = {
           body: JSON.stringify({ ids }),
         }),
 
-      // Like bulkCreate, but with overwrite=true it first deletes the store's entries with the same
+      // Saves a statement's rows in one database transaction; with overwrite=true it first deletes the store's entries with the same
       // references. storeId: the store the statement is imported into.
-      // statement: { file_name, source } for the import history (the server adds the rest).
-      importRecords: async (records, { overwrite = false, storeId, statement } = {}) =>
+      // statement: { file_name, source } for the import history (the server adds the rest);
+      // ambiguous: the rows the engine set aside, kept with the import (never saved as transactions).
+      importRecords: async (records, { overwrite = false, storeId, statement, ambiguous } = {}) =>
         apiRequest('/transactions/import', {
           method: 'POST',
-          body: JSON.stringify({ records, overwrite, store_id: storeId, statement }),
+          body: JSON.stringify({ records, overwrite, store_id: storeId, statement, ambiguous }),
         }),
     },
     DailyBalance: makeEntityClient('daily-balances'),

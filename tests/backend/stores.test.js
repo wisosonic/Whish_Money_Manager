@@ -384,14 +384,14 @@ describe("admin panel and reports follow the store", () => {
     expect((await as("manager").post("/admin/restore/preview", { csv })).body).toMatchObject({ invalid_count: 1, invalid: [{ field: "store_id" }] });
     const preview = (await as("admin").post("/admin/restore/preview", { csv })).body;
     expect(preview.to_add).toBe(1);
-    await as("admin").post("/admin/restore", { csv, expected_count: 1 });
+    expect((await as("admin").post("/admin/restore", { csv, expected_count: 1, expected_delete: 0 })).status).toBe(200);
     expect(db.prepare("SELECT store_id FROM transactions WHERE id = ?").get(id).store_id).toBe(store2);
 
     // A backup from before stores (no store_id column).
     const legacy = csv.split("\r\n").map((line) => line.split(",").slice(0, -1).join(",")).join("\r\n");
     db.prepare("DELETE FROM transactions WHERE id = ?").run(id);
     expect((await as("admin").post("/admin/restore/preview", { csv: legacy })).body.invalid_count).toBe(1); // several stores, none chosen
-    await as("admin").post("/admin/restore", { csv: legacy, store_id: store1, expected_count: 1 });
+    expect((await as("admin").post("/admin/restore", { csv: legacy, store_id: store1, expected_count: 1, expected_delete: 0 })).status).toBe(200);
     expect(db.prepare("SELECT store_id FROM transactions WHERE id = ?").get(id).store_id).toBe(store1);
   });
 });
