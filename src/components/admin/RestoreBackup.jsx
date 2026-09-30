@@ -83,6 +83,16 @@ export default function RestoreBackup({ onRestored, storeId }) {
 
   return (
     <Section id="admin-restore" icon={DatabaseBackup} title={t("restore.title")} description={t("restore.description")}>
+      {/* Unlike Backup and Delete data above it, this doesn't use the picked date range or store at
+          all (user-reported, 2026-09-30: nothing made clear which sections the range applied to, and
+          later, why Restore alone asks for neither) — a modern backup's rows carry their own
+          store_id column, restored to exactly that store; only a legacy backup made before stores
+          existed falls back to the store picked above, and only for the rows missing that column
+          (planRestore in server/admin.js). Said plainly here rather than folding this section into
+          that group, which would misstate what it actually does. */}
+      <p className="text-xs text-gray-500 bg-gray-50 border rounded-lg px-3 py-2 mb-4" data-testid="restore-not-range-scoped">
+        {t("restore.notRangeScoped")}
+      </p>
       <div className="flex flex-wrap items-center gap-3">
         <label className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-4 py-2 text-sm font-semibold transition cursor-pointer focus-within:ring-2 focus-within:ring-blue-300">
           <Upload className="w-4 h-4" aria-hidden="true" />

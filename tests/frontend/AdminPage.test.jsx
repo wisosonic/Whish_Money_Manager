@@ -123,6 +123,19 @@ describe("Admin panel — layout and preview", () => {
     renderPage();
     await waitFor(() => expect(summaryBox()).toHaveTextContent("يلزم تحديد فترة صحيحة"));
   });
+
+  it("Date range, Backup and Delete data are one visually connected group, with a note saying so (user-reported, 2026-09-30)", async () => {
+    renderPage();
+    await loaded();
+    const group = screen.getByTestId("admin-range-group");
+    expect(group).toHaveTextContent("النسخ الاحتياطي وحذف البيانات أدناه يعملان على هذا النطاق الزمني.");
+    // Date range, Backup and Delete data are inside the same visual group…
+    expect(group).toContainElement(screen.getByTestId("admin-range"));
+    expect(group).toContainElement(screen.getByTestId("admin-backup"));
+    expect(group).toContainElement(screen.getByTestId("admin-delete"));
+    // …Restore is deliberately not, since it doesn't use the picked range at all.
+    expect(group).not.toContainElement(screen.getByTestId("admin-restore"));
+  });
 });
 
 describe("Admin panel — backup", () => {

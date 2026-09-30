@@ -270,8 +270,8 @@ Every transaction belongs to a **store** (a branch, physical or online). Each st
 - **Dashboard:** a **Store** field above the summaries is always shown. Managers and Users see their store there, greyed out (they can't switch). With one store, the Admin sees that store, greyed out. With several stores, the Admin can pick (remembered in this browser, in a cookie): one store, or **All stores**, which shows every store's rows with a **Store** column. Adding transactions, importing into a store, closing a day and setting the opening balance need one store, so in All stores Cash In / Cash Out, closing the day and the opening-balance pencil are off (the import asks which store). The opening balance and wallet figures add up the stores'.
 - **Importing:** the import screen always shows a **store** field. With several stores (the Admin), the store is **picked by hand** before the file is read, because commissions use that store's rate; it starts on the store shown on the dashboard, if one is. With one store, and for Managers and Users (who always import into their own store), the field shows that store, greyed out. A statement line already imported into **another** store blocks the import, so the same money is never counted twice.
 - **Header:** your store's name next to your role, in the account menu.
-- **Admin panel:** the date range, backup, restore and delete work on the chosen store (the Admin can choose All stores; a Manager always gets their own). Reports can be filtered by store, and the Admin has a **Compare stores** report.
-- **Backups** include each row's store; older backups without it are restored into the store chosen at the top of the panel.
+- **Admin panel:** the date range, backup and delete work on the chosen store (the Admin can choose All stores; a Manager always gets their own). Reports can be filtered by store, and the Admin has a **Compare stores** report. **Restore doesn't use that store picker** (or the date range): a backup's rows carry their own store and days, and are restored to exactly those.
+- **Backups** include each row's store; older backups without it (made before stores existed) are restored into the store chosen at the top of the panel — the only case where that picker matters for a restore.
 - **With only one store,** everything works as before stores: the store field just shows that store, and everything goes to it.
 
 ### My profile
@@ -367,7 +367,7 @@ Admins and Managers can **close** a day once it's been checked, for example afte
 
 Open **لوحة الإدارة** (Admin panel) in the header. Users don't see the link, and opening `/admin` directly shows a "no permission" page.
 
-**Layout:** on wide screens (1280px and up) the panel has two columns: **reports** on one side (the wider one) and **your office's data** (date range, backup, restore, delete) on the other. On smaller screens they stack, reports first.
+**Layout:** on wide screens (1280px and up) the panel has two columns: **reports** on one side (the wider one) and **your office's data** on the other. On smaller screens they stack, reports first. Within that second column, **Date range, Backup and Delete data are one connected card** (with a note saying so): all three act on the range and store picked at the top. **Restore** sits below them as its own separate card, since it doesn't use that range or store at all — a backup carries its own days and store with every row.
 
 **Reports** (التقارير) have three tabs. They only read data; nothing here changes anything. Only the open tab is loaded.
 - **Income** (الدخل): the monthly chart (see [Features](#features)): commissions as bars (left axis), cash in and cash out as lines (right axis), the year's totals, the year selector (every year with data) and the table view. The figures are added up by the server, so the report covers every transaction without loading them all in the browser. It's the only place the chart appears: the dashboard's chart button was removed.
@@ -399,7 +399,7 @@ Open **لوحة الإدارة** (Admin panel) in the header. Users don't see th
    - **If the data changed:** if someone added or deleted transactions in that range after you opened the confirmation, nothing is deleted. You're asked to check the new counts first.
    - **Afterwards:** a message confirms how many transactions and opening balances were deleted. The server also logs who deleted what.
    - **It can't be undone.** Keep the CSV backup if you might need the data again.
-4. **Restore from a backup** (between Backup and Delete data): puts back a CSV made with **Backup** above, **replacing the file's days**. It needs the right to delete data as well as to restore.
+4. **Restore from a backup** (its own card, after Delete data — not part of the grouped card above, since it isn't scoped by the picked date range or store): puts back a CSV made with **Backup** above, **replacing the file's days**. It needs the right to delete data as well as to restore.
    1. **Choose a backup file:** transactions or opening balances; the type is detected automatically.
    2. **Check the preview.** Nothing is changed yet. It shows:
       - How many rows the file holds and will be put back (with their dates and totals).

@@ -98,8 +98,10 @@ describe("reports section", () => {
     expect(reports.parentElement).toHaveClass("grid", "xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]");
     expect(reports.nextElementSibling).toBe(data); // reports first (also when stacked on small screens)
     expect([...reports.querySelectorAll("section[data-testid]")].map((el) => el.dataset.testid)).toEqual(["admin-reports"]);
+    // Date range / Backup / Delete data are one connected group (they share the picked range and
+    // store); Restore sits after it, separately, since it doesn't use that range at all.
     expect([...data.querySelectorAll("section[data-testid]")].map((el) => el.dataset.testid))
-      .toEqual(["admin-range", "admin-backup", "admin-restore", "admin-delete"]);
+      .toEqual(["admin-range", "admin-backup", "admin-delete", "admin-restore"]);
     [reports, data].forEach((column) => expect(column).toHaveClass("min-w-0")); // wide tables scroll inside
     await screen.findByTestId("chart-total-profit");
   });

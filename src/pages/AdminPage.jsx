@@ -20,10 +20,13 @@ import { useStoreList, withStoreArg } from "@/lib/useStores";
 // server refuses if the data changed in between (see server/admin.js).
 const money = (n) => `$${Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+// Plain (no card chrome of its own): used inside the range-scoped group below, whose *outer* div
+// supplies the shared card background, shadow and rounding, with a divider between each section —
+// one connected box, instead of three separate floating cards, so it reads as one linked unit.
 function Card({ id, icon: Icon, title, description, tone = "blue", children }) {
   const tones = { blue: "bg-blue-50 text-blue-700", red: "bg-red-50 text-red-600" };
   return (
-    <section className="bg-white rounded-xl shadow p-4 md:p-6 min-w-0" aria-labelledby={id} data-testid={id}>
+    <section className="p-4 md:p-6 min-w-0" aria-labelledby={id} data-testid={id}>
       <div className="flex items-start gap-3 mb-4">
         <div className={`${tones[tone]} rounded-lg p-2 shrink-0`}>
           <Icon className="w-5 h-5" aria-hidden="true" />
@@ -153,6 +156,17 @@ export default function AdminPage() {
           </div>
 
           <div className="space-y-4 min-w-0" data-testid="admin-data-column">
+            {/* Date range, Backup and Delete data act on the same picked range and store, so they're
+                one connected card (one shadow, dividers instead of gaps) instead of three separate
+                floating ones — user-reported, 2026-09-30: nothing showed that Backup/Delete used the
+                range above. Restore is deliberately outside this group and sits after it: it replaces
+                whichever days the uploaded file itself covers, not the range picked here (see its own
+                note below), so grouping it with the range card would be misleading. */}
+            <div className="bg-white rounded-xl shadow divide-y divide-gray-100 min-w-0 overflow-hidden" data-testid="admin-range-group">
+              <div className="px-4 md:px-6 py-2 bg-blue-50 text-blue-800 text-xs font-semibold flex items-center gap-1.5 rounded-t-xl">
+                <CalendarRange className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                {t("admin.rangeGroup.hint")}
+              </div>
             <Card id="admin-range" icon={CalendarRange} title={t("admin.range.title")} description={t("admin.range.description")}>
               {multiStore ?
                 <div className="mb-4" data-testid="data-store">
@@ -201,8 +215,6 @@ export default function AdminPage() {
               <p className="text-xs text-gray-500 mt-3">{t("admin.backup.format")}</p>
             </Card>
 
-            {canRestore && <RestoreBackup storeId={storeId} onRestored={() => setRefreshKey((k) => k + 1)} />}
-
             {canPurge &&
               <Card id="admin-delete" icon={Trash2} tone="red" title={t("admin.delete.title")} description={t("admin.delete.description")}>
                 <button type="button" onClick={openConfirm} disabled={!rangeValid || nothingToDelete || loadingSummary}
@@ -213,6 +225,9 @@ export default function AdminPage() {
                 </button>
               </Card>
             }
+            </div>
+
+            {canRestore && <RestoreBackup storeId={storeId} onRestored={() => setRefreshKey((k) => k + 1)} />}
           </div>
         </div>
       </main>

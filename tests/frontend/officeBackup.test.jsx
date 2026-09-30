@@ -229,11 +229,12 @@ describe("Admin panel → restore from a backup", () => {
     expect(screen.getByRole("button", { name: "استعادة 2 رصيد بداية" })).toBeInTheDocument();
   });
 
-  it("sits in the admin panel, after Backup and before Delete data, and points to the Backup section", async () => {
+  it("sits in the admin panel, after the range-scoped group (Date range/Backup/Delete data), and points to the Backup section", async () => {
     openAdmin();
     const sections = [...document.querySelectorAll("main section[data-testid]")].map((el) => el.dataset.testid);
-    expect(sections).toEqual(["admin-reports", "admin-range", "admin-backup", "admin-restore", "admin-delete"]);
+    expect(sections).toEqual(["admin-reports", "admin-range", "admin-backup", "admin-delete", "admin-restore"]);
     expect(screen.getByRole("region", { name: "الاستعادة من نسخة احتياطية" })).toHaveTextContent("استخدم ملفاً تم تنزيله من قسم النسخة الاحتياطية أعلاه");
+    expect(screen.getByTestId("restore-not-range-scoped")).toHaveTextContent("لا يعتمد هذا القسم على النطاق الزمني أو المتجر أعلاه");
     expect(screen.queryByRole("link", { name: "تنزيل نسخة احتياطية" })).not.toBeInTheDocument();
     await screen.findByTestId("range-summary");
   });
