@@ -185,7 +185,7 @@ describe("row actions: accept as is, discard, or correct and add (user's request
     expect(within(modal).getByTestId("convert-credit")).toHaveValue(2);
     expect(within(modal).getByTestId("convert-date")).toHaveValue("2026-09-23");
     expect(within(modal).getByTestId("convert-original")).toHaveTextContent("SPLIT");
-    expect(within(modal).getByTestId("convert-debit-credit-error")).toHaveTextContent("أدخل مبلغاً مديناً أو دائناً");
+    expect(within(modal).getByTestId("convert-debit-credit-error")).toHaveTextContent("أدخل مبلغاً موجباً مديناً أو دائناً");
     expect(within(modal).getByTestId("convert-save")).toBeDisabled();
   });
 
@@ -215,13 +215,39 @@ describe("row actions: accept as is, discard, or correct and add (user's request
     await waitFor(() => expect(api.importHistory.convert).toHaveBeenCalledWith(2, expect.objectContaining({ type: "cash_in", amount: 2 })));
   });
 
-  it("correct and add: a negative value is accepted — its absolute value becomes the amount", async () => {
+  it("correct and add: a negative debit is rejected — an inline error, Save disabled, nothing sent", async () => {
+    await openRow();
+    fireEvent.click(within(splitRow()).getByTestId("ambiguous-convert"));
+    const modal = await screen.findByTestId("convert-ambiguous-modal");
+    fireEvent.change(within(modal).getByTestId("convert-credit"), { target: { value: "" } });
+    fireEvent.change(within(modal).getByTestId("convert-debit"), { target: { value: "-7.5" } });
+    expect(within(modal).getByTestId("convert-debit-credit-negative")).toHaveTextContent("يجب أن يكون المبلغ المدين والدائن موجباً");
+    expect(within(modal).getByTestId("convert-save")).toBeDisabled();
+    fireEvent.click(within(modal).getByTestId("convert-save"));
+    expect(api.importHistory.convert).not.toHaveBeenCalled();
+  });
+
+  it("correct and add: a negative credit is rejected the same way", async () => {
+    await openRow();
+    fireEvent.click(within(splitRow()).getByTestId("ambiguous-convert"));
+    const modal = await screen.findByTestId("convert-ambiguous-modal");
+    fireEvent.change(within(modal).getByTestId("convert-debit"), { target: { value: "" } });
+    fireEvent.change(within(modal).getByTestId("convert-credit"), { target: { value: "-4" } });
+    expect(within(modal).getByTestId("convert-debit-credit-negative")).toBeInTheDocument();
+    expect(within(modal).getByTestId("convert-save")).toBeDisabled();
+  });
+
+  it("correct and add: fixing a negative row's own printed value (positive) lets it save", async () => {
     api.importHistory.convert.mockResolvedValue({ transaction: { id: 99 }, discarded_id: 2 });
     await openRow();
     fireEvent.click(within(splitRow()).getByTestId("ambiguous-convert"));
     const modal = await screen.findByTestId("convert-ambiguous-modal");
     fireEvent.change(within(modal).getByTestId("convert-credit"), { target: { value: "" } });
     fireEvent.change(within(modal).getByTestId("convert-debit"), { target: { value: "-7.5" } });
+    expect(within(modal).getByTestId("convert-save")).toBeDisabled();
+    fireEvent.change(within(modal).getByTestId("convert-debit"), { target: { value: "7.5" } });
+    expect(within(modal).queryByTestId("convert-debit-credit-negative")).not.toBeInTheDocument();
+    expect(within(modal).getByTestId("convert-save")).not.toBeDisabled();
     fireEvent.click(within(modal).getByTestId("convert-save"));
     await waitFor(() => expect(api.importHistory.convert).toHaveBeenCalledWith(2, expect.objectContaining({ type: "cash_out", amount: 7.5 })));
   });

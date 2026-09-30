@@ -12,10 +12,11 @@ import { notify } from "@/lib/notify";
 // Debit and credit are two separate inputs, mirroring the statement's own columns (and the row's
 // original ambiguity: a negative one, both filled, or neither) — not a single "type + amount" choice,
 // since the whole reason the row is here is that those columns couldn't be trusted as one or the
-// other. Exactly one must end up with a non-zero value: whichever it is decides the transaction's
-// type (debit → Cash Out, credit → Cash In), and its absolute value is the amount (a transaction's
-// stored amount is always positive; the sign is only ever the statement's own printed sign, kept
-// editable here since it's part of what needs correcting).
+// other. Exactly one must end up with a positive value: whichever it is decides the transaction's
+// type (debit → Cash Out, credit → Cash In), and it is the amount (a transaction's stored amount is
+// always positive). A printed negative (often exactly why the row was ambiguous) is shown as it was
+// printed, but is never accepted as-is here: the office worker must correct it to what the amount
+// actually was, not just resave its sign (user's request, 2026-09-29: no negative values on save).
 const numberOrNull = (text) => {
   const trimmed = text.trim();
   if (trimmed === "") return null;
@@ -53,11 +54,14 @@ export default function ConvertAmbiguousRowModal({ row, onClose, onSaved }) {
 
   const debitValue = numberOrNull(form.debit);
   const creditValue = numberOrNull(form.credit);
-  const debitOk = Number.isFinite(debitValue) && debitValue !== 0;
-  const creditOk = Number.isFinite(creditValue) && creditValue !== 0;
+  const debitNegative = Number.isFinite(debitValue) && debitValue < 0;
+  const creditNegative = Number.isFinite(creditValue) && creditValue < 0;
+  const hasNegative = debitNegative || creditNegative;
+  const debitOk = Number.isFinite(debitValue) && debitValue > 0;
+  const creditOk = Number.isFinite(creditValue) && creditValue > 0;
   const bothFilled = debitOk && creditOk;
   const exactlyOne = debitOk !== creditOk; // true xor true is false: exactly one, never both, never neither
-  const canSave = exactlyOne && !!form.transaction_date;
+  const canSave = exactlyOne && !hasNegative && !!form.transaction_date;
 
   const handleSave = async () => {
     setSaving(true);
@@ -65,7 +69,7 @@ export default function ConvertAmbiguousRowModal({ row, onClose, onSaved }) {
     try {
       await api.importHistory.convert(row.id, {
         type: debitOk ? "cash_out" : "cash_in",
-        amount: Math.abs(debitOk ? debitValue : creditValue),
+        amount: debitOk ? debitValue : creditValue,
         sender_name: form.sender_name,
         receiver_name: form.receiver_name,
         phone: form.phone,
@@ -114,6 +118,7 @@ export default function ConvertAmbiguousRowModal({ row, onClose, onSaved }) {
               <input
                 type="number"
                 step="any"
+                min="0"
                 value={form.debit}
                 onChange={(e) => setForm({ ...form, debit: e.target.value })}
                 data-testid="convert-debit"
@@ -124,13 +129,16 @@ export default function ConvertAmbiguousRowModal({ row, onClose, onSaved }) {
               <input
                 type="number"
                 step="any"
+                min="0"
                 value={form.credit}
                 onChange={(e) => setForm({ ...form, credit: e.target.value })}
                 data-testid="convert-credit"
                 className="border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-300 text-start" />
             </div>
           </div>
-          {bothFilled ?
+          {hasNegative ?
+            <p role="alert" data-testid="convert-debit-credit-negative" className="text-xs text-red-700">{t("ambiguous.debitCreditNegative")}</p> :
+          bothFilled ?
             <p role="alert" data-testid="convert-debit-credit-error" className="text-xs text-red-700">{t("ambiguous.debitCreditBoth")}</p> :
             <p className="text-xs text-gray-500">{t("ambiguous.debitCreditHint")}</p>
           }
