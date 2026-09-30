@@ -388,14 +388,12 @@ export default function Dashboard() {
         stores={pickerStores}
         defaultStoreId={chosenStore}
         onClose={() => setShowImportPDF(false)}
-        onSaved={(ob, obDate, importStore) => {
+        onSaved={(obDate) => {
           setShowImportPDF(false);
           setSearch(""); // clear the search
-          const targetDate = obDate || selectedDate;
-          if (ob !== null && ob !== undefined && targetDate) {
-            handleSetOpeningBalance(ob, targetDate, importStore ?? chosenStore);
-          }
-          // Showing the statement's day loads it; otherwise refresh the day shown.
+          // The opening balance(s) are written server-side, in the same transaction as the import
+          // (user's request, 2026-09-30 — every day the statement covers, not just this one); this
+          // only needs to show the statement's day, or refresh the one already shown.
           if (obDate && obDate !== selectedDate) handleSetSelectedDate(obDate);
           else refresh();
         }} />

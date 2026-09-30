@@ -292,10 +292,12 @@ export const api = {
       // references. storeId: the store the statement is imported into.
       // statement: { file_name, source } for the import history (the server adds the rest);
       // ambiguous: the rows the engine set aside, kept with the import (never saved as transactions).
-      importRecords: async (records, { overwrite = false, storeId, statement, ambiguous } = {}) =>
+      // openingBalances: [{ date, opening_balance }] for every day the engine could tell one for —
+      // written alongside the transactions, in the same database transaction (never just the first day).
+      importRecords: async (records, { overwrite = false, storeId, statement, ambiguous, openingBalances } = {}) =>
         apiRequest('/transactions/import', {
           method: 'POST',
-          body: JSON.stringify({ records, overwrite, store_id: storeId, statement, ambiguous }),
+          body: JSON.stringify({ records, overwrite, store_id: storeId, statement, ambiguous, opening_balances: openingBalances }),
         }),
     },
     DailyBalance: makeEntityClient('daily-balances'),

@@ -18,7 +18,7 @@ vi.mock("@/components/layout/Header", () => ({ default: () => null }));
 // "an import to a different day" below) without going through the real upload / preview steps.
 vi.mock("@/components/transactions/ImportPDFModal", () => ({
   default: ({ onSaved }) => (
-    <button data-testid="fake-import-saved" onClick={() => onSaved(500, "2026-01-01", null)}>fake import saved</button>
+    <button data-testid="fake-import-saved" onClick={() => onSaved("2026-01-01")}>fake import saved</button>
   ),
 }));
 vi.mock("@/api/apiClient", () => ({
@@ -482,42 +482,68 @@ describe("Dashboard — keeps the user's place after saving", () => {
 });
 
 describe("Dashboard — an import to a different day (user-reported, 2026-09-30)", () => {
-  // The bug: after clearing every transaction and importing a fresh statement (for a different day
-  // than the one shown), the table flickered and then went blank until the page was reloaded.
-  // Cause: onSaved both moves the selected day to the statement's own day (which fetches it — a good
-  // fetch) *and* calls handleSetOpeningBalance, whose own trailing refresh used to close over the
-  // *old* selectedDate. Once the balance write's round trip finished, that stale refresh could fire
-  // after the good one and win the "keep only the latest request's answer" race — showing the old
-  // (now empty) day again. Fixed by only refreshing there when the day (and store) it just wrote a
-  // balance for is still the one on screen (server/pages/Dashboard.jsx's selectedDateRef).
-  it("doesn't go blank once the balance write's own delayed refresh catches up", async () => {
+  // The original bug: after clearing every transaction and importing a fresh statement (for a
+  // different day than the one shown), the table flickered and then went blank until the page was
+  // reloaded. Cause: onSaved both moved the selected day to the statement's own day (a good fetch)
+  // *and* called handleSetOpeningBalance, whose own trailing refresh closed over the *old*
+  // selectedDate; once that balance write's round trip finished, the stale refresh could fire after
+  // the good one and win the race — showing the old (now empty) day again.
+  //
+  // Fixed two ways: the guard below (still exercised by the opening-balance pencil, the only
+  // remaining caller of handleSetOpeningBalance), and — since this specific report — the import flow
+  // no longer writes any opening balance client-side at all: every day the statement covers is now
+  // saved atomically on the server, in the same transaction as the import itself (user's request,
+  // 2026-09-30). So the race this section is named for can no longer happen *through an import*.
+  it("importing never touches DailyBalance itself — every day's balance is saved server-side, with the transactions", async () => {
     const reimported = [{
       id: 10, type: "cash_in", amount: 77, commission: 0, sender_name: "REIMPORTED", receiver_name: "Office",
       reference_number: "tr:10", transaction_date: "2026-01-01", sort_order: 0, created_date: "2026-01-01T09:00:00Z",
     }];
-    installFakeDashboard(api, () => reimported); // as if every transaction was cleared, then this was imported
+    installFakeDashboard(api, () => [...stored, ...reimported]);
 
+    const { container } = render(<Dashboard />);
+    await waitFor(() => expect(rowCount(container)).toBe(2));
+    // Mock call counts aren't reset between tests in this file; count from here, since something
+    // else (the opening-balance pencil, exercised by an earlier test) may already have called these.
+    const before = {
+      filter: api.entities.DailyBalance.filter.mock.calls.length,
+      create: api.entities.DailyBalance.create.mock.calls.length,
+      update: api.entities.DailyBalance.update.mock.calls.length,
+    };
+    fireEvent.click(screen.getByText("استيراد PDF / CSV"));
+    fireEvent.click(screen.getByTestId("fake-import-saved"));
+    await screen.findByText("REIMPORTED");
+    expect(api.entities.DailyBalance.filter.mock.calls.length).toBe(before.filter);
+    expect(api.entities.DailyBalance.create.mock.calls.length).toBe(before.create);
+    expect(api.entities.DailyBalance.update.mock.calls.length).toBe(before.update);
+  });
+
+  // The guard itself (selectedDateRef / fetchDayRef in Dashboard.jsx) is still real and still needed:
+  // the opening-balance pencil calls the very same handleSetOpeningBalance, and its own round trip
+  // can just as easily outlast a day change that happens to land while it's in flight.
+  it("the opening-balance pencil's own slow save doesn't blank a day navigated to while it was pending", async () => {
     let resolveFilter;
     api.entities.DailyBalance.filter.mockReturnValue(new Promise((resolve) => { resolveFilter = resolve; }));
     api.entities.DailyBalance.create.mockResolvedValue({ id: 99 });
 
-    render(<Dashboard />);
-    // 2026-09-23 (the day shown on load) now has nothing.
-    expect(await screen.findByText("لا توجد معاملات")).toBeInTheDocument();
+    const { container } = render(<Dashboard />);
+    await waitFor(() => expect(rowCount(container)).toBe(2)); // 2026-09-23
 
-    fireEvent.click(screen.getByText("استيراد PDF / CSV"));
-    fireEvent.click(screen.getByTestId("fake-import-saved"));
+    fireEvent.click(screen.getByLabelText("تعديل رصيد البداية"));
+    const input = container.querySelector('input[type="number"]');
+    fireEvent.change(input, { target: { value: "250" } });
+    fireEvent.keyDown(input, { key: "Enter" }); // starts the (held-open) save for 2026-09-23
 
-    // The day changes to the statement's own day, and that fetch (unrelated to the balance write) shows it.
-    expect(await screen.findByText("REIMPORTED")).toBeInTheDocument();
+    // Meanwhile, before that save's own round trip finishes, the day is changed.
+    fireEvent.click(screen.getByTestId("previous-day")); // 2026-09-22 (row 3, "OTHER DAY")
+    await screen.findByText("OTHER DAY");
 
-    // Only now does the opening-balance save's own round trip finish.
     resolveFilter([]);
     await waitFor(() => expect(api.entities.DailyBalance.create).toHaveBeenCalled());
 
-    // It must not blank the table by refreshing the day it started with, which no longer applies.
-    expect(screen.getByText("REIMPORTED")).toBeInTheDocument();
-    expect(screen.queryByText("لا توجد معاملات")).not.toBeInTheDocument();
+    // The stale save (for a day no longer shown) must not refresh the table back to it.
+    expect(screen.getByText("OTHER DAY")).toBeInTheDocument();
+    expect(screen.queryByText("MOUNIR TOSKA")).not.toBeInTheDocument();
   });
 });
 

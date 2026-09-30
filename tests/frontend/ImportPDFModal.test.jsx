@@ -18,6 +18,7 @@ vi.mock("@/api/apiClient", () => ({
 const extraction = (overrides = {}) => ({
   statement_date: "2026-09-23",
   opening_balance: 100,
+  opening_balances: [{ date: "2026-09-23", opening_balance: 100 }],
   closing_balance: 165,
   total_transactions_count: 2,
   validation: { is_valid: true, total_debit_matches: true, total_credit_matches: true, closing_balance_matches: true, balance_mismatch_lines: [] },
@@ -154,7 +155,10 @@ describe("ImportPDFModal", () => {
     await waitFor(() => expect(api.entities.Transaction.importRecords).toHaveBeenCalledTimes(1));
     const [records, options] = api.entities.Transaction.importRecords.mock.calls[0];
     // The file's name and type go with the rows, for the import history.
-    expect(options).toEqual({ overwrite: false, statement: { file_name: "statement.csv", source: "csv" }, ambiguous: [] });
+    expect(options).toEqual({
+      overwrite: false, statement: { file_name: "statement.csv", source: "csv" }, ambiguous: [],
+      openingBalances: [{ date: "2026-09-23", opening_balance: 100 }],
+    });
     expect(records[0]).toMatchObject({
       type: "cash_in", amount: 75, commission: 0.75, sender_name: "MOUNIR TOSKA",
       phone: "96171588017", customer_number: "71588017", reference_number: "tr:1",
@@ -163,7 +167,9 @@ describe("ImportPDFModal", () => {
     // A bare phone number in receiver_name is moved to phone / customer_number.
     expect(records[1]).toMatchObject({ receiver_name: "", phone: "+9613915112", customer_number: "3915112", sort_order: 1 });
 
-    await waitFor(() => expect(onSaved).toHaveBeenCalledWith(100, "2026-09-23", undefined), { timeout: 3000 });
+    // The opening balance is now written server-side, atomically with the import; onSaved only
+    // needs to say which day to show.
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith("2026-09-23"), { timeout: 3000 });
   });
 
   describe("when the statement was already imported", () => {
@@ -197,7 +203,10 @@ describe("ImportPDFModal", () => {
 
       fireEvent.click(screen.getByText("حفظ الكل (2)"));
       await waitFor(() => expect(api.entities.Transaction.importRecords).toHaveBeenCalledTimes(1));
-      expect(api.entities.Transaction.importRecords.mock.calls[0][1]).toEqual({ overwrite: true, statement: { file_name: "statement.csv", source: "csv" }, ambiguous: [] });
+      expect(api.entities.Transaction.importRecords.mock.calls[0][1]).toEqual({
+        overwrite: true, statement: { file_name: "statement.csv", source: "csv" }, ambiguous: [],
+        openingBalances: [{ date: "2026-09-23", opening_balance: 100 }],
+      });
     });
   });
 
@@ -238,7 +247,10 @@ describe("ImportPDFModal — re-import as a User", () => {
     const { container } = renderModal();
     upload(container, csvFile());
     fireEvent.click(await screen.findByText("حفظ الكل (2)"));
-    await waitFor(() => expect(api.entities.Transaction.importRecords).toHaveBeenCalledWith(expect.any(Array), { overwrite: false, statement: { file_name: "statement.csv", source: "csv" }, ambiguous: [] }));
+    await waitFor(() => expect(api.entities.Transaction.importRecords).toHaveBeenCalledWith(expect.any(Array), {
+      overwrite: false, statement: { file_name: "statement.csv", source: "csv" }, ambiguous: [],
+      openingBalances: [{ date: "2026-09-23", opening_balance: 100 }],
+    }));
   });
 });
 

@@ -442,7 +442,7 @@ Safety rules: there must always be at least one active Admin, and an Admin can't
    - **استبدال العمليات الموجودة** (replace): the existing entries are deleted and replaced when you save.
    - **إلغاء الرفع** (cancel): nothing is saved.
 3. Review the rows. For CSV files, a banner shows whether the file reconciles: debit total, credit total, closing balance, and each row's balance. Fix or remove rows if needed. Rows that can't be read as one Cash In or Cash Out are listed separately as **ambiguous**: they aren't saved, and stay reviewable from **عمليات غير واضحة** on the dashboard, where each can be **discarded** or **corrected and added** as a real transaction.
-4. Click **حفظ الكل**. The statement's opening balance is stored for that day, and the dashboard jumps to it. The import is added to **سجل الاستيراد** (Import history), with the file's name.
+4. Click **حفظ الكل**. For CSV, an opening balance is stored for **every day the statement covers** (not just its first — read from the file's own running balance, the same figure it prints after each row), all saved together with the transactions. The dashboard jumps to the statement's day. The import is added to **سجل الاستيراد** (Import history), with the file's name.
 
 ### Import rules
 
@@ -525,7 +525,8 @@ tests/
 │   │                         # all-days / this-month search, sender / receiver reports, opening-balance
 │   │                         # cleanup, the date picker's days per month
 │   ├── api.test.js           # HTTP API (as Admin): CRUD, shared store data, created_by, filter safety,
-│   │                         # balances, import, duplicates/overwrite, bulk update/delete
+│   │                         # balances, import, duplicates/overwrite, bulk update/delete, an opening
+│   │                         # balance for every day an import covers (atomic, upserted, skips bad entries)
 │   ├── auth.test.js          # login, cookie flags, JWT (no expiry), tampered/forged tokens, 401 on
 │   │                         # every route, logout revocation, never-expiring + sliding sessions, lockout,
 │   │                         # previous-login tracking + schema upgrade
@@ -545,7 +546,9 @@ tests/
 │   │                         # (other sessions revoked, this one kept), rate limit
 │   ├── seed.test.js          # default roles, first Admin, generated password, idempotency, data migration
 │   ├── startup.test.js       # auto-seed on server start when no users exist (runs the real server twice)
-│   ├── csvEngine.test.js     # CSV parser, fee rule, name/phone split, validation, format variations
+│   ├── csvEngine.test.js     # CSV parser, fee rule, name/phone split, validation, format variations,
+│   │                         # ambiguous rows (including an unreadable date/amount), an opening balance
+│   │                         # per day (a gap, an invalid-date row, an unreadable balance)
 │   └── pdfEngine.test.js     # PDF engine on generated PDFs, balance-based direction correction
 └── frontend/
     ├── authMock.js           # simulated signed-in user per role for component tests
@@ -697,7 +700,7 @@ All routes are under `/local-api`. Every failure is JSON `{ error }`: an unknown
 | PUT | `/users/:id` | `users:manage` | `{ full_name?, role?, is_active?, password? }`. Deactivation and password reset end the user's sessions |
 | POST | `/pdf/extract` · `/csv/extract` | `transactions:import` | Extract a statement |
 | POST | `/transactions/find-duplicates` | `transactions:import` | `{ references, store_id }` → the store's transactions with those references |
-| POST | `/transactions/import` | `transactions:import` (+ `transactions:delete` when `overwrite`) | `{ records, overwrite, store_id, statement: { file_name, source }, ambiguous }` (`ambiguous`: the rows the engine set aside, stored with the import). 409 if a reference is already in another store. Records an import-history entry (period, count, store, user and time worked out by the server) in the same database transaction; returns `import_id` |
+| POST | `/transactions/import` | `transactions:import` (+ `transactions:delete` when `overwrite`) | `{ records, overwrite, store_id, statement: { file_name, source }, ambiguous, opening_balances }` (`ambiguous`: the rows the engine set aside, stored with the import; `opening_balances`: `[{ date, opening_balance }]`, one per day the statement covers — a malformed entry is skipped, not refused). 409 if a reference is already in another store. Records an import-history entry and upserts every opening balance (period, count, store, user and time worked out by the server) in the same database transaction; nothing is written if no records are saved. Returns `import_id` and the balances actually written |
 | GET | `/ambiguous-rows` | `transactions:read` | `?store_id=` (Admin); `?count=1` answers just `{ total }` (the button's badge). The statement rows past imports set aside as ambiguous, with the same visibility as the import history: `{ total, truncated, rows }`, each with its import's `file_name`, `imported_at`, `imported_by(_name)` and `store_name` |
 | DELETE | `/ambiguous-rows/:id` | `transactions:import` | Discard one ambiguous row for good. 404 if it's out of the caller's scope (same rule as the list above, row by row) |
 | POST | `/ambiguous-rows/:id/convert` | `transactions:import` + `transactions:create` | `{ type, amount, transaction_date, sender_name?, receiver_name?, phone?, customer_number?, service?, note?, reference_number? }` → corrects the row into a real transaction (commission computed server-side, the CSV rule) and discards the row, in one database transaction. 404 out of scope; 400 on a bad type/amount/date; 423 on a closed day; 409 if the reference is already used in another store, or if the row's store no longer exists |

@@ -40,6 +40,9 @@ export default function ImportPDFModal({ onClose, onSaved, stores = [], defaultS
   const [editRows, setEditRows] = useState([]);
   const [detectedDate, setDetectedDate] = useState("");
   const [openingBalance, setOpeningBalance] = useState(null);
+  // Every day the engine could tell an opening balance for (user's request, 2026-09-30), not just
+  // the statement's first day (which the field above lets you correct before saving).
+  const [openingBalances, setOpeningBalances] = useState([]);
   // The statement's file name and type, recorded in the import history when saved.
   const [statement, setStatement] = useState(null);
   const fileRef = useRef(null);
@@ -92,6 +95,7 @@ export default function ImportPDFModal({ onClose, onSaved, stores = [], defaultS
       setDetectedDate(stmtDate);
       const ob = result?.opening_balance ?? 0;
       setOpeningBalance(ob);
+      setOpeningBalances(Array.isArray(result?.opening_balances) ? result.opening_balances : []);
 
     // ═══ التحقق من صحة اتجاه العمليات (cash_in / cash_out) ═══
     // منطق: opening_balance + cash_in - cash_out = closing_balance
@@ -173,14 +177,25 @@ export default function ImportPDFModal({ onClose, onSaved, stores = [], defaultS
         };
       });
 
-      await api.entities.Transaction.importRecords(records, { overwrite, storeId: target, statement, ambiguous });
+      // The per-day balances the engine detected, with the first day's replaced by whatever is
+      // shown in the (editable) Opening Balance field above — the user may have corrected it.
+      const balancesToSave = (() => {
+        const list = [...openingBalances];
+        const value = Number(openingBalance) || 0;
+        const index = list.findIndex((b) => b.date === finalDate);
+        if (index >= 0) list[index] = { ...list[index], opening_balance: value };
+        else if (finalDate) list.push({ date: finalDate, opening_balance: value });
+        return list;
+      })();
+
+      await api.entities.Transaction.importRecords(records, { overwrite, storeId: target, statement, ambiguous, openingBalances: balancesToSave });
 
       notify.success(overwrite && duplicates.length > 0
         ? t("toast.import.savedReplaced", { count: records.length, replaced: duplicates.length })
         : t("toast.import.saved", { count: records.length }));
       setStep("done");
-      setTimeout(() => { 
-        onSaved(openingBalance, finalDate, target); 
+      setTimeout(() => {
+        onSaved(finalDate);
       }, 1500);
     } catch (error) {
       // The import is one database transaction on the server: on failure nothing was saved.

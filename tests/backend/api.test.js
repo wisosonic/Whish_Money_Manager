@@ -132,6 +132,75 @@ describe("statement import endpoints", () => {
   });
 });
 
+describe("statement import: an opening balance for every day (user's request, 2026-09-30)", () => {
+  const balanceOn = async (date) => {
+    const { body } = await request("POST", "/daily-balances/filter", { body: { filter: { date } } });
+    return body[0]?.opening_balance;
+  };
+
+  it("saves one per day, atomically with the transactions, and updates a day that already has one", async () => {
+    const records = [
+      tx({ reference_number: "tr:ob1", transaction_date: "2026-08-01" }),
+      tx({ reference_number: "tr:ob2", transaction_date: "2026-08-02" }),
+    ];
+    const opening_balances = [{ date: "2026-08-01", opening_balance: 500 }, { date: "2026-08-02", opening_balance: 600 }];
+    const res = await request("POST", "/transactions/import", { body: { records, opening_balances } });
+    expect(res.status).toBe(201);
+    expect(res.body.opening_balances).toEqual(opening_balances);
+    expect(await balanceOn("2026-08-01")).toBe(500);
+    expect(await balanceOn("2026-08-02")).toBe(600);
+
+    // Re-importing (e.g. the same statement, replaced) updates the existing rows rather than erroring.
+    const again = await request("POST", "/transactions/import", {
+      body: { records: [tx({ reference_number: "tr:ob3", transaction_date: "2026-08-01" })], opening_balances: [{ date: "2026-08-01", opening_balance: 550 }] },
+    });
+    expect(again.status).toBe(201);
+    expect(await balanceOn("2026-08-01")).toBe(550);
+  });
+
+  it("a malformed entry (bad date, or an amount that isn't a number) is skipped, not refused — the rest still saves", async () => {
+    const records = [tx({ reference_number: "tr:ob4", transaction_date: "2026-08-04" })];
+    const opening_balances = [
+      { date: "not-a-date", opening_balance: 10 },
+      { date: "2026-08-03", opening_balance: "not-a-number" },
+      { date: "2026-08-04", opening_balance: 700 },
+    ];
+    const res = await request("POST", "/transactions/import", { body: { records, opening_balances } });
+    expect(res.status).toBe(201);
+    expect(res.body.opening_balances).toEqual([{ date: "2026-08-04", opening_balance: 700 }]);
+    expect(await balanceOn("2026-08-03")).toBeUndefined();
+    expect(await balanceOn("2026-08-04")).toBe(700);
+  });
+
+  it("a duplicate date in the list keeps only the last value given", async () => {
+    const records = [tx({ reference_number: "tr:ob5", transaction_date: "2026-08-05" })];
+    const opening_balances = [{ date: "2026-08-05", opening_balance: 1 }, { date: "2026-08-05", opening_balance: 2 }];
+    await request("POST", "/transactions/import", { body: { records, opening_balances } });
+    expect(await balanceOn("2026-08-05")).toBe(2);
+  });
+
+  it("nothing is written when the import itself saves nothing", async () => {
+    const res = await request("POST", "/transactions/import", {
+      body: { records: [], opening_balances: [{ date: "2026-08-06", opening_balance: 900 }] },
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.opening_balances).toEqual([]);
+    expect(await balanceOn("2026-08-06")).toBeUndefined();
+  });
+
+  it("refuses the whole import if a balance-only day (no transaction of its own) is closed", async () => {
+    await client.request("POST", "/closed-days", { as: "manager", body: { date: "2026-08-07" } });
+    const res = await request("POST", "/transactions/import", {
+      body: {
+        records: [tx({ reference_number: "tr:ob6", transaction_date: "2026-08-08" })],
+        opening_balances: [{ date: "2026-08-07", opening_balance: 10 }, { date: "2026-08-08", opening_balance: 20 }],
+      },
+    });
+    expect(res.status).toBe(423);
+    expect(await balanceOn("2026-08-08")).toBeUndefined();
+  });
+});
+
 describe("duplicate detection and overwrite", () => {
   const records = [
     tx({ reference_number: "tr:100", amount: 10 }),

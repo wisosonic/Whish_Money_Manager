@@ -6,7 +6,7 @@ import { registerAdminRoutes, registerRestoreRoutes } from "./admin.js";
 import { authenticate, registerAuthRoutes, requirePermission } from "./auth.js";
 import { parseCsvText } from "./csv.js";
 import { db, dbPath, ensureDefaultRoles, initializeDb, nowIso } from "./db.js";
-import { commissionRateOn, refuseClosedDays, refuseClosedRows, registerOfficeRoutes, transactionDay } from "./office.js";
+import { commissionRateOn, isIsoDate, refuseClosedDays, refuseClosedRows, registerOfficeRoutes, transactionDay } from "./office.js";
 import { PERMISSIONS as P, canUpdateTransaction, hasPermission } from "./permissions.js";
 import { registerDashboardRoutes } from "./dashboard.js";
 import { recordImport, registerImportHistoryRoutes } from "./imports.js";
@@ -787,6 +787,28 @@ const extractTransactionsFromCsv = (text, { rateFor = () => 1, accountName = "" 
     ? parseAmount(summary.closing_balance)
     : last && last.balance != null ? last.balance : 0;
 
+  // Every day the statement covers gets its own opening balance (user's request, 2026-09-30) — not
+  // just the first, which used to be the only one stored; every other day's was only ever guessed at
+  // display time (server/wallet.js), one calendar day back, so a gap of two or more days with no
+  // transactions left later days showing 0. The file already carries the truth for every day: each
+  // row prints the balance right after it, so the balance carried into a day is simply whatever the
+  // running balance was just before that day's first row. A row's own printed balance is trusted
+  // completely when there is one (resetting any drift, exactly like the check above); otherwise the
+  // running balance advances by that row's debit/credit, same as `openingBalance` itself is derived
+  // when there's no summary section. Rows with an unparseable date (`ambiguity === "invalid_date"`)
+  // don't have a day to attach a balance to, so they don't start a new entry, but they still move the
+  // running balance forward in file order like any other row.
+  const openingBalancesByDay = [];
+  const seenDays = new Set();
+  let runningBalance = openingBalance;
+  parsed.forEach((row) => {
+    if (row.date && !seenDays.has(row.date)) {
+      seenDays.add(row.date);
+      openingBalancesByDay.push({ date: row.date, opening_balance: roundCents(runningBalance) });
+    }
+    runningBalance = row.balance != null ? row.balance : runningBalance + row.credit - row.debit;
+  });
+
   // The file's totals (every row, for the checks) and what will be saved (the clear rows).
   const totalDebit = roundCents(parsed.reduce((sum, t) => sum + t.debit, 0));
   const totalCredit = roundCents(parsed.reduce((sum, t) => sum + t.credit, 0));
@@ -823,6 +845,9 @@ const extractTransactionsFromCsv = (text, { rateFor = () => 1, accountName = "" 
     statement_date: csvDateToIso(summary.period_from || "") || (first ? first.date : ""),
     opening_balance: openingBalance,
     closing_balance: closingBalance,
+    // One entry per day the statement covers (the first day's matches opening_balance above); saved
+    // alongside the transactions so every day gets its own stored balance, not just the first.
+    opening_balances: openingBalancesByDay,
     total_transactions_count: parsed.reduce((max, t) => Math.max(max, t.line_no), 0) || parsed.length,
     total_cash_in: savedIn,
     total_cash_out: savedOut,
@@ -897,10 +922,40 @@ app.post("/local-api/transactions/find-duplicates", requirePermission(P.TRANSACT
   res.json(findTransactionsByReference(uniqueReferences(req.body?.references), storeId));
 });
 
+// A store has one opening balance per day: setting one for a date that already has one updates it
+// (same rule as the generic entity route below, factored out so the import route can write several
+// in the same transaction).
+const upsertDailyBalance = (storeId, date, opening_balance, userEmail) => {
+  const now = nowIso();
+  const existing = db.prepare("SELECT id FROM daily_balances WHERE store_id = ? AND date = ?").get(storeId, date);
+  if (existing) {
+    db.prepare("UPDATE daily_balances SET opening_balance = ?, updated_date = ? WHERE id = ?").run(opening_balance, now, existing.id);
+    return existing.id;
+  }
+  return db.prepare(
+    "INSERT INTO daily_balances (store_id, date, opening_balance, created_by, created_date, updated_date) VALUES (?, ?, ?, ?, ?, ?)"
+  ).run(storeId, date, opening_balance, userEmail, now, now).lastInsertRowid;
+};
+
+// Only well-formed entries are kept (a bad one is simply skipped, not guessed at or refused as a
+// whole — the rest of the import must not fail over one stray opening balance), at most one per date.
+const cleanOpeningBalances = (list) => {
+  const byDate = new Map();
+  (Array.isArray(list) ? list : []).forEach((entry) => {
+    const date = entry?.date;
+    const amount = Number(entry?.opening_balance);
+    if (isIsoDate(date) && Number.isFinite(amount)) byDate.set(date, amount);
+  });
+  return [...byDate.entries()].map(([date, opening_balance]) => ({ date, opening_balance }));
+};
+
 app.post("/local-api/transactions/import", requirePermission(P.TRANSACTIONS_IMPORT), (req, res) => {
   const config = ENTITY_CONFIG.transactions;
   const items = Array.isArray(req.body?.records) ? req.body.records : [];
   const overwrite = req.body?.overwrite === true;
+  // Every day the CSV engine could tell an opening balance for (user's request, 2026-09-30) — not
+  // just the statement's first day, which used to be the only one saved.
+  const openingBalances = cleanOpeningBalances(req.body?.opening_balances);
 
   const storeId = targetStore(req, res, req.body?.store_id);
   if (storeId === null) return;
@@ -916,7 +971,9 @@ app.post("/local-api/transactions/import", requirePermission(P.TRANSACTIONS_IMPO
   }
 
   const replacedDays = overwrite ? findTransactionsByReference(references, storeId).map(transactionDay) : [];
-  if (refuseClosedDays(res, storeId, [...items.map(transactionDay), ...replacedDays])) return;
+  // The opening-balance days too: an ambiguous-only day (kept in review, never saved as a
+  // transaction) could otherwise get a balance written on a closed day with no check at all.
+  if (refuseClosedDays(res, storeId, [...items.map(transactionDay), ...replacedDays, ...openingBalances.map((b) => b.date)])) return;
 
   const runImport = db.transaction(() => {
     let replaced = 0;
@@ -928,16 +985,19 @@ app.post("/local-api/transactions/import", requirePermission(P.TRANSACTIONS_IMPO
     }
     const ids = items.map((item) => insertEntityRecord(config, item, req.user.email, storeId));
     const rows = ids.map((id) => db.prepare(`SELECT * FROM ${config.table} WHERE id = ?`).get(id));
-    // The import history entry is written with the rows: both are saved, or neither.
+    // Nothing is written for an empty import (no rows saved): the history entry, the ambiguous rows
+    // and now the opening balances all rise or fall together, same as before.
     // body.statement = { file_name, source } from the import screen; the rest comes from the rows.
     const historyId = rows.length
       ? recordImport({ storeId, rows, replaced, user: req.user, statement: req.body?.statement, ambiguous: req.body?.ambiguous })
       : null;
-    return { replaced, rows, historyId };
+    const savedBalances = rows.length ? openingBalances : [];
+    savedBalances.forEach((b) => upsertDailyBalance(storeId, b.date, b.opening_balance, req.user.email));
+    return { replaced, rows, historyId, savedBalances };
   });
 
-  const { replaced, rows, historyId } = runImport();
-  res.status(201).json({ replaced, records: rows, import_id: historyId });
+  const { replaced, rows, historyId, savedBalances } = runImport();
+  res.status(201).json({ replaced, records: rows, import_id: historyId, opening_balances: savedBalances });
 });
 
 // ═══ Bulk actions on selected transactions ═══

@@ -368,3 +368,42 @@ describe("extractTransactionsFromCsv — an abnormal date or amount cell is ambi
     expect(parsed.ambiguous.map((r) => r.reason)).toEqual(["invalid_date", "unreadable", "unreadable"]);
   });
 });
+
+describe("extractTransactionsFromCsv — an opening balance for every day, not just the first (user's request, 2026-09-30)", () => {
+  // Every day the file touches gets the balance that was in effect right before its first row —
+  // read from the previous day's printed balance whenever there is one (rows 1, 2, 4, 7), or, when a
+  // row's own balance is unreadable (row 6), projected from its debit/credit instead (never guessed
+  // from nothing), which then reconciles again against the very next printed balance (row 7: 108 + 5
+  // = 113, proving the projection wasn't corrupted). A row whose date can't be parsed (row 3) still
+  // moves the running balance forward in file order, but — having no day of its own — doesn't get an
+  // entry, and isn't why the day after it (2026-09-08) starts one late: there's simply no row on
+  // 2026-09-07 at all, a gap the running balance carries straight through.
+  const csv = [
+    "line_no,date,reference,service,description,debit,credit,balance",
+    "1,2026-09-05,tr:1,W2W,DAY1,0.00,10.00,110.00",       // 2026-09-05 opens at 100 (the statement's own opening)
+    "2,2026-09-06,tr:2,W2W,DAY2,5.00,0.00,105.00",         // 2026-09-06 opens at 110
+    "3,not-a-date,tr:3,W2W,BAD DATE,0.00,3.00,108.00",     // no day of its own, but still moves the balance to 108
+    "4,2026-09-08,tr:4,W2W,DAY3 MORNING,0.00,20.00,128.00", // 2026-09-08 opens at 108 (2026-09-07 is simply absent)
+    "5,2026-09-08,tr:5,W2W,DAY3 AFTERNOON,25.00,0.00,103.00", // same day: no new entry
+    "6,2026-09-09,tr:6,W2W,DAY4,0.00,5.00,????",           // 2026-09-09 opens at 103; its own balance is unreadable
+    "7,2026-09-10,tr:7,W2W,DAY5,0.00,5.00,113.00",         // 2026-09-10 opens at 108 (103 + row 6's credit, projected)
+  ].join("\n");
+  const result = extractTransactionsFromCsv(csv, { accountName: "Vicario" });
+
+  it("one entry per day, in file order, each the balance carried into it", () => {
+    expect(result.opening_balances).toEqual([
+      { date: "2026-09-05", opening_balance: 100 },
+      { date: "2026-09-06", opening_balance: 110 },
+      { date: "2026-09-08", opening_balance: 108 },
+      { date: "2026-09-09", opening_balance: 103 },
+      { date: "2026-09-10", opening_balance: 108 },
+    ]);
+    // The first entry always matches the statement's own single opening_balance (unchanged meaning).
+    expect(result.opening_balances[0].opening_balance).toBe(result.opening_balance);
+  });
+
+  it("a single-day statement still gets exactly the one entry it always did", () => {
+    const oneDay = extractTransactionsFromCsv(statementCsv);
+    expect(oneDay.opening_balances).toEqual([{ date: oneDay.statement_date, opening_balance: oneDay.opening_balance }]);
+  });
+});

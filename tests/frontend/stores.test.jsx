@@ -318,8 +318,11 @@ describe("import into a store", () => {
     expect(api.entities.Transaction.findDuplicates).toHaveBeenCalledWith(["tr:1"], 2);
     expect(await screen.findByTestId("import-store-name")).toHaveTextContent("الاستيراد إلى Tripoli Branch");
     fireEvent.click(await screen.findByRole("button", { name: /حفظ الكل/ }));
-    await waitFor(() => expect(api.entities.Transaction.importRecords).toHaveBeenCalledWith(expect.any(Array), { overwrite: false, storeId: 2, statement: { file_name: "statement.csv", source: "csv" }, ambiguous: [] }));
-    await waitFor(() => expect(onSaved).toHaveBeenCalledWith(10, "2026-09-23", 2), { timeout: 3000 });
+    await waitFor(() => expect(api.entities.Transaction.importRecords).toHaveBeenCalledWith(expect.any(Array), {
+      overwrite: false, storeId: 2, statement: { file_name: "statement.csv", source: "csv" }, ambiguous: [],
+      openingBalances: [{ date: "2026-09-23", opening_balance: 10 }],
+    }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith("2026-09-23"), { timeout: 3000 });
   });
 
   it("a Manager or User sees the store field with their own store, greyed out", async () => {
