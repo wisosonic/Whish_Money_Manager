@@ -332,3 +332,39 @@ describe("extractTransactionsFromCsv — ambiguous rows are set aside (user's re
     expect(extractTransactionsFromCsv(statementCsv).ambiguous).toEqual([]);
   });
 });
+
+describe("extractTransactionsFromCsv — an abnormal date or amount cell is ambiguous, not dropped (user's request, 2026-09-30)", () => {
+  // Opening 100; the balances that are printed follow the signed amounts, so the checks below still
+  // pass — an unreadable balance is simply never checked against (the same as a blank one), rather
+  // than corrupting every row that follows it (the bug: it used to parse to a literal 0).
+  const csv = [
+    "line_no,date,reference,service,description,debit,credit,balance",
+    "1,2026-09-05,tr:1,W2W,RAMI - 96171000001,0.00,10.00,110.00",   // clear Cash In
+    "2,not-a-date,tr:2,W2W,BAD DATE,0.00,5.00,115.00",              // date doesn't parse at all
+    "3,2026-09-05,tr:3,W2W,BAD DEBIT,N/A,0.00,115.00",              // debit isn't blank, isn't a number
+    "4,2026-09-05,tr:4,W2W,BAD BALANCE,0.00,5.00,????",             // balance isn't blank, isn't a number
+  ].join("\n");
+  const result = extractTransactionsFromCsv(csv, { accountName: "Vicario" });
+
+  it("used to vanish entirely (a bad date) or be silently read as zero (a bad amount): both are kept and set aside instead", () => {
+    expect(result.ambiguous.map((r) => [r.line_no, r.reason])).toEqual([[2, "invalid_date"], [3, "unreadable"], [4, "unreadable"]]);
+    expect(result.transactions.map((t) => t.line_no)).toEqual([1]);
+    // As printed, including the raw (unparseable) date and amount — there's something for the
+    // reviewer to actually see and correct, not silently emptied.
+    expect(result.ambiguous[0]).toMatchObject({ date: "not-a-date", credit: "5.00" });
+    expect(result.ambiguous[1]).toMatchObject({ date: "2026-09-05", debit: "N/A" });
+    expect(result.ambiguous[2]).toMatchObject({ date: "2026-09-05", balance: "????" });
+  });
+
+  it("still count in the checks (line 2's credit, line 4's, once each), and an unreadable balance doesn't falsely flag anything as mismatched", () => {
+    expect(result.total_transactions_count).toBe(4);
+    expect(result.validation.balance_mismatch_lines).toEqual([]);
+    expect(result.opening_balance).toBe(100);
+  });
+
+  it("a genuinely blank line (no column at all) is still skipped, not turned into a spurious ambiguous row", () => {
+    const withBlankLine = csv.replace("\n4,", "\n,,,,,,,\n4,");
+    const parsed = extractTransactionsFromCsv(withBlankLine, { accountName: "Vicario" });
+    expect(parsed.ambiguous.map((r) => r.reason)).toEqual(["invalid_date", "unreadable", "unreadable"]);
+  });
+});

@@ -160,6 +160,8 @@ const en = {
   "ambiguous.reason.negative": "Negative amount",
   "ambiguous.reason.both": "Both debit and credit",
   "ambiguous.reason.neither": "No debit or credit",
+  "ambiguous.reason.invalid_date": "Unreadable date",
+  "ambiguous.reason.unreadable": "Unreadable amount",
   "ambiguous.col.actions": "Actions",
   "ambiguous.action.accept": "Accept as printed",
   "ambiguous.action.discard": "Discard",

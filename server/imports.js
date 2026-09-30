@@ -27,7 +27,7 @@ import { PERMISSIONS as P, hasPermission } from "./permissions.js";
 import { readStore, seesAllStores } from "./stores.js";
 
 const IMPORT_SOURCES = ["csv", "pdf"];
-const AMBIGUITY_REASONS = ["negative", "both", "neither"];
+const AMBIGUITY_REASONS = ["negative", "both", "neither", "invalid_date", "unreadable"];
 const MAX_FILE_NAME = 255;
 const MAX_TEXT = 500;
 
@@ -62,7 +62,9 @@ const cleanAmbiguousRows = (list) => (Array.isArray(list) ? list : [])
   .slice(0, MAX_ROWS)
   .map((row) => ({
     line_no: Number.isInteger(row.line_no) && row.line_no > 0 ? row.line_no : null,
-    date: /^\d{4}-\d{2}-\d{2}$/.test(String(row.date ?? "")) ? row.date : null,
+    // As printed, like debit/credit/balance below — not required to be a valid date, since an
+    // "invalid_date" row's whole point is that its date column couldn't be parsed as one.
+    date: text(row.date),
     reference_number: text(row.reference_number),
     service: text(row.service),
     description: text(row.description),

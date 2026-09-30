@@ -658,9 +658,23 @@ const reconcileWithRounding = ({ opening, closing, rows }) => {
   };
 };
 
-// Why a statement row can't be read as one Cash In or Cash Out: "negative" (a debit or credit below
-// zero), "both" (a debit and a credit), "neither" (no amount in either column). null = clear.
-const ambiguityOf = (debit, credit) => {
+// A cell that's blank is fine (most rows have an empty debit or credit); one that has *something* in
+// it but isn't a number is what's abnormal — the printed figure can't be trusted as zero, it's simply
+// unreadable (user's request, 2026-09-30).
+const isUnreadableAmount = (value) => {
+  const trimmed = String(value ?? "").trim();
+  if (trimmed === "") return false;
+  return !Number.isFinite(Number(trimmed.replace(/,/g, "")));
+};
+
+// Why a statement row can't be read as one Cash In or Cash Out, in priority order: "invalid_date"
+// (the date column doesn't parse at all — the row used to be silently dropped instead of set aside,
+// user-reported, 2026-09-30), "unreadable" (the debit, credit or balance column has something in it
+// that isn't a number), "negative" (a debit or credit below zero), "both" (a debit and a credit),
+// "neither" (no amount in either column). null = clear.
+const ambiguityOf = ({ dateOk, debitRaw, creditRaw, balanceRaw, debit, credit }) => {
+  if (!dateOk) return "invalid_date";
+  if (isUnreadableAmount(debitRaw) || isUnreadableAmount(creditRaw) || isUnreadableAmount(balanceRaw)) return "unreadable";
   if (debit < 0 || credit < 0) return "negative";
   if (debit > 0 && credit > 0) return "both";
   if (!(debit > 0) && !(credit > 0)) return "neither";
@@ -694,28 +708,38 @@ const extractTransactionsFromCsv = (text, { rateFor = () => 1, accountName = "" 
     ? toRecord(rows[summaryHeaderIndex], summaryRow)
     : {};
 
+  // A row with nothing in any column at all (a blank line in the file) is skipped outright, same as
+  // before; anything else is kept, even a row whose date can't be parsed — it's set aside as
+  // ambiguous instead (below), rather than silently vanishing (user-reported, 2026-09-30).
+  const isBlankRow = (record) => Object.values(record).every((value) => String(value ?? "").trim() === "");
+
   const transactionHeader = rows[transactionHeaderIndex];
   const records = rows
     .slice(transactionHeaderIndex + 1)
     .map((row) => toRecord(transactionHeader, row))
-    .filter((record) => csvDateToIso(record.date));
+    .filter((record) => !isBlankRow(record));
 
   // The office's side of each row is always the store's name (user's decision, 2026-09-28), never the
   // statement's full_name: that's the Whish account holder, who may be a person rather than the store.
   // full_name is still returned in `account` below.
 
-  // Every row of the statement. Ambiguous ones (user's request, 2026-09-29) are set aside instead of
-  // being saved as a guess: a negative debit or credit, both a debit and a credit, or neither (blank
-  // or zero). They still count in the checks below, so the file's totals and balances still add up.
+  // Every row of the statement. Ambiguous ones (user's request, 2026-09-29, extended 2026-09-30) are
+  // set aside instead of being saved as a guess: an unparseable date, an unreadable debit/credit/
+  // balance cell, a negative debit or credit, both a debit and a credit, or neither (blank or zero).
+  // They still count in the checks below, so the file's totals and balances still add up.
   const parsed = records.map((record, index) => {
+    const isoDate = csvDateToIso(record.date);
     const debit = parseAmount(record.debit);
     const credit = parseAmount(record.credit);
-    const ambiguity = ambiguityOf(debit, credit);
+    const ambiguity = ambiguityOf({
+      dateOk: Boolean(isoDate), debitRaw: record.debit, creditRaw: record.credit, balanceRaw: record.balance, debit, credit,
+    });
     const isDebit = debit > 0;
     const amount = isDebit ? debit : credit;
     // Fee rule: every credit carries the office commission rate for its day (1% unless changed in
-    // Settings → Office), debits carry none.
-    const commissionRate = isDebit ? 0 : rateFor(csvDateToIso(record.date));
+    // Settings → Office), debits carry none. A row whose date couldn't be parsed (kept only as an
+    // ambiguous row, never saved as a transaction) gets no rate looked up for it.
+    const commissionRate = isDebit ? 0 : isoDate ? rateFor(isoDate) : 0;
     const description = String(record.description || "").replace(/\s+/g, " ").trim();
     const namePhone = splitNamePhone(description);
     const counterparty = namePhone ? namePhone.name : description;
@@ -731,20 +755,25 @@ const extractTransactionsFromCsv = (text, { rateFor = () => 1, accountName = "" 
       service: record.service || "",
       note: "",
       reference_number: record.reference || "",
-      date: csvDateToIso(record.date),
+      date: isoDate,
       line_no: Number(record.line_no) || index + 1,
       debit,
       credit,
-      balance: record.balance ? parseAmount(record.balance) : null,
+      // A blank balance cell means "not printed" (null: skipped by the checks below); a non-blank one
+      // that isn't a number is unreadable, not a real zero, so it's treated the same way — never used
+      // to (wrongly) reset the running balance the per-row check walks.
+      balance: isUnreadableAmount(record.balance) ? null : record.balance ? parseAmount(record.balance) : null,
       commissionRate,
       ambiguity,
-      raw: { debit: String(record.debit ?? ""), credit: String(record.credit ?? ""), balance: String(record.balance ?? ""), description },
+      raw: { date: String(record.date ?? ""), debit: String(record.debit ?? ""), credit: String(record.credit ?? ""), balance: String(record.balance ?? ""), description },
     };
   });
   const transactions = parsed.filter((row) => !row.ambiguity).map(({ ambiguity: _a, raw: _r, ...row }) => row);
-  // What the import screen shows and records with the import (never saved as transactions).
+  // What the import screen shows and records with the import (never saved as transactions). The date
+  // shown is the row's own printed text, not the parsed ISO value — for an "invalid_date" row that
+  // value is empty, and even for a clear row it's what the reviewer should see, as printed.
   const ambiguous = parsed.filter((row) => row.ambiguity).map((row) => ({
-    line_no: row.line_no, date: row.date, reference_number: row.reference_number, service: row.service,
+    line_no: row.line_no, date: row.raw.date, reference_number: row.reference_number, service: row.service,
     description: row.raw.description, debit: row.raw.debit, credit: row.raw.credit, balance: row.raw.balance, reason: row.ambiguity,
   }));
 

@@ -155,6 +155,8 @@ const ar = {
   "ambiguous.reason.negative": "مبلغ سالب",
   "ambiguous.reason.both": "مدين ودائن معاً",
   "ambiguous.reason.neither": "بلا مدين ولا دائن",
+  "ambiguous.reason.invalid_date": "تاريخ غير مقروء",
+  "ambiguous.reason.unreadable": "مبلغ غير مقروء",
   "ambiguous.col.actions": "إجراءات",
   "ambiguous.action.accept": "قبول كما هو مطبوع",
   "ambiguous.action.discard": "تجاهل",

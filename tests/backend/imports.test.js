@@ -183,13 +183,15 @@ describe("ambiguous rows kept with the import (user's request, 2026-09-29)", () 
     expect(body.rows[0]).toMatchObject({ import_id: res.body.import_id, file_name: "statement.csv", imported_by: "user@test.local", imported_by_name: "Test User", store_id: store1, description: "ROW 2" });
   });
 
-  it("only known reasons are kept, texts are cut short and cleaned, and bad lines / dates become empty", async () => {
+  it("only known reasons are kept, texts are cut short and cleaned, and a bad line number becomes empty", async () => {
     await importAs("user", [row("2026-09-06")], { ambiguous: [
       set(2, "made-up"), { reason: "both", line_no: -1, date: "yesterday", description: "x".repeat(600) + "\u0007", debit: { a: 1 } }, "junk", null,
     ] });
     const { rows } = await ambiguousAs("user");
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ reason: "both", line_no: null, date: null, debit: "[object Object]" });
+    // date and debit are free text, as printed — even an unparseable one (that's the whole point of
+    // the "invalid_date" / "unreadable" reasons) is kept for the reviewer to see and correct.
+    expect(rows[0]).toMatchObject({ reason: "both", line_no: null, date: "yesterday", debit: "[object Object]" });
     expect(rows[0].description).toHaveLength(500);
     expect(rows[0].description).not.toMatch(/\u0007/);
   });
