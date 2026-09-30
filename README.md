@@ -92,7 +92,7 @@ It runs entirely on your machine: a React frontend and a small Node.js/Express A
   - **Admin panel and Users page:** backup downloaded, data deleted (kept on screen longer), user added, role changed, user deactivated or reactivated, password reset.
     - A delete refused because the data changed is a warning, not an error.
     - Errors inside a form (e.g. a duplicate email) also stay next to the form.
-- **Manual entry (fallback)**: Cash In / Cash Out forms, for the rare row the CSV parser missed, plus edit, delete, and "delete all for this day". Deleting a row happens as soon as you confirm it ("تأكيد"); there is no undo.
+- **Manual entry (fallback)**: Cash In / Cash Out forms, for the rare row the CSV parser missed, plus edit, delete, and "delete all for this day". Deleting a row happens as soon as you confirm it ("تأكيد"); there is no undo. "Delete all for this day" deletes more than one row at once, so it also asks you to type the day's transaction count to confirm, like bulk delete.
 - **Bulk actions (multi-select)**: tick the checkbox on any rows, or use the header checkbox to select every visible row. A partly-selected header shows a dash.
   - A blue bar appears above the table with the selection count and total amount, plus:
     - **تعديل المحدد** (edit selected): set the same values on every selected transaction. Tick "تغيير" next to each field you want to change; unticked fields stay as they are on every row, and a ticked field left empty clears it (e.g. remove all notes). Editable fields:
@@ -103,7 +103,7 @@ It runs entirely on your machine: a React frontend and a small Node.js/Express A
       - date (moves the transactions to another day)
       - commission rate: each row's commission is recalculated from its own amount, e.g. 1.5% of $250 = $3.750
     - Amount, reference number and phone differ per transaction, so they stay in the single-row editor.
-    - **حذف المحدد** (delete selected): deletes all selected transactions after a confirmation, in one request. It can't be undone.
+    - **حذف المحدد** (delete selected): deletes all selected transactions after a confirmation, in one request. It can't be undone. The confirmation asks you to type the number of transactions shown, like "delete all for this day" and the admin panel's other bulk deletes.
     - **إلغاء التحديد** (clear selection).
   - **Only visible rows can be selected.** When you change the day or search, selected rows that are no longer shown are dropped from the selection, so an action never hits rows you can't see.
   - **Opening balances:** when a bulk delete or date change leaves a day with no transactions, that day's opening balance is removed, the same as a single delete.

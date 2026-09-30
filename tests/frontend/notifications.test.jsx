@@ -267,6 +267,7 @@ describe("transactions", () => {
       renderTable();
       fireEvent.click(screen.getByLabelText("تحديد كل العمليات الظاهرة"));
       fireEvent.click(screen.getByRole("button", { name: /حذف المحدد/ }));
+      fireEvent.change(screen.getByTestId("bulk-delete-confirm-input"), { target: { value: "2" } });
       fireEvent.click(screen.getByRole("button", { name: "حذف 2 عملية" }));
       expect(await findToast("تم حذف 2 عملية.")).toHaveAttribute("data-type", "success");
     });
@@ -276,6 +277,7 @@ describe("transactions", () => {
       renderTable();
       fireEvent.click(screen.getByRole("button", { name: /مسح الكل/ }));
       const dialog = screen.getByRole("heading", { name: "تأكيد المسح" }).closest(".rounded-2xl");
+      fireEvent.change(within(dialog).getByTestId("delete-all-confirm-input"), { target: { value: "2" } });
       fireEvent.click(within(dialog).getByRole("button", { name: /مسح الكل/ }));
       expect(await findToast("تم حذف 2 عملية بتاريخ 2026-09-23.")).toHaveAttribute("data-type", "success");
     });

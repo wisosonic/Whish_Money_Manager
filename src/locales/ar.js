@@ -222,6 +222,7 @@ const ar = {
   "list.deleteAllBefore": "هل أنت متأكد من مسح ",
   "list.deleteAllAfter": " للفترة:",
   "list.deleteAllSearchNote": "البحث يعرض {shown} منها فقط: سيتم حذف كل عمليات اليوم ({count})، وليس المعروضة فقط.",
+  "list.typeToConfirm": "اكتب {count} للتأكيد",
   "list.import": "استيراد PDF / CSV",
   "list.bulkRegion": "إجراءات جماعية",
   "list.selectedCount": "{count} عملية محددة",

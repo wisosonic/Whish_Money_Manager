@@ -696,7 +696,11 @@ describe("Dashboard — delete all for this day during a search (user-reported)"
     fireEvent.click(screen.getByRole("button", { name: /مسح الكل/ }));
     expect(screen.getByTestId("delete-all-count")).toHaveTextContent("2 عملية");
     expect(screen.getByTestId("delete-all-search-note")).toHaveTextContent("البحث يعرض 1 منها فقط: سيتم حذف كل عمليات اليوم (2)");
-    fireEvent.click(within(screen.getByTestId("delete-all-count").closest(".rounded-2xl")).getByRole("button", { name: /مسح الكل/ }));
+    const confirmButton = within(screen.getByTestId("delete-all-count").closest(".rounded-2xl")).getByRole("button", { name: /مسح الكل/ });
+    expect(confirmButton).toBeDisabled(); // requires the shown count typed first
+    fireEvent.change(screen.getByTestId("delete-all-confirm-input"), { target: { value: "2" } });
+    expect(confirmButton).not.toBeDisabled();
+    fireEvent.click(confirmButton);
     await waitFor(() => expect(api.entities.Transaction.delete).toHaveBeenCalledTimes(2));
     expect(api.entities.Transaction.delete.mock.calls.map(([id]) => id).sort()).toEqual([1, 2]);
   });

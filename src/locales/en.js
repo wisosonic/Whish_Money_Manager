@@ -227,6 +227,7 @@ const en = {
   "list.deleteAllBefore": "Are you sure you want to delete ",
   "list.deleteAllAfter": " for:",
   "list.deleteAllSearchNote": "Your search shows {shown} of them: all {count} of the day are deleted, not only those.",
+  "list.typeToConfirm": "Type {count} to confirm",
   "list.import": "Import PDF / CSV",
   "list.bulkRegion": "Bulk actions",
   "list.selectedCount": { one: "{count} transaction selected", other: "{count} transactions selected" },

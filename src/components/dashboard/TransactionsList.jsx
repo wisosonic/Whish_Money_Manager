@@ -107,6 +107,7 @@ export default function TransactionsList({
   const [deleteElapsed, setDeleteElapsed] = useState(0);
   const deleteTimerRef = useRef(null);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [typedDeleteAll, setTypedDeleteAll] = useState("");
   const [editingTransaction, setEditingTransaction] = useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [showSenderReport, setShowSenderReport] = useState(false);
@@ -201,6 +202,7 @@ export default function TransactionsList({
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [showBulkEdit, setShowBulkEdit] = useState(false);
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+  const [typedBulkDelete, setTypedBulkDelete] = useState("");
   const [bulkWorking, setBulkWorking] = useState(false);
   const [bulkError, setBulkError] = useState("");
   const selectAllRef = useRef(null);
@@ -457,15 +459,20 @@ export default function TransactionsList({
         </div>
       }
 
-      {/* Confirm Delete Dialog */}
+      {/* Confirm Delete Dialog — typed-count confirmation (user's request, 2026-09-30), like the
+          admin panel's delete-by-range and the import history's Clear history. */}
       {showConfirm &&
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" dir={dir}>
-          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full mx-4">
+          <form
+            role="alertdialog"
+            aria-labelledby="delete-all-title"
+            onSubmit={(e) => { e.preventDefault(); if (typedDeleteAll.trim() === String(wholeDay.length) && !deleting) handleDeleteAll(); }}
+            className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full mx-4">
             <div className="flex items-center gap-3 mb-3">
               <div className="bg-red-100 rounded-full p-2">
                 <Trash2 className="w-5 h-5 text-red-600" />
               </div>
-              <h3 className="font-bold text-gray-800 text-lg">{tr("list.deleteAllTitle")}</h3>
+              <h3 id="delete-all-title" className="font-bold text-gray-800 text-lg">{tr("list.deleteAllTitle")}</h3>
             </div>
             <p className="text-gray-600 mb-1">
               {tr("list.deleteAllBefore")}<span className="font-bold text-red-600" data-testid="delete-all-count">{tr("list.count", { count: wholeDay.length })}</span>{tr("list.deleteAllAfter")}
@@ -479,22 +486,36 @@ export default function TransactionsList({
             <p className="text-gray-500 text-sm mb-5 bg-gray-50 rounded-lg px-3 py-2">
               {selectedDate}
             </p>
-            <p className="text-xs text-red-500 mb-5">⚠️ {tr("common.cannotUndo")}</p>
+            <p className="text-xs text-red-500 mb-3">⚠️ {tr("common.cannotUndo")}</p>
+            <label className="block mb-4 text-sm font-medium text-gray-700">
+              {tr("list.typeToConfirm", { count: wholeDay.length })}
+              <input
+                value={typedDeleteAll}
+                onChange={(e) => setTypedDeleteAll(e.target.value)}
+                inputMode="numeric"
+                autoFocus
+                data-testid="delete-all-confirm-input"
+                className="mt-1 w-full border rounded-lg px-3 py-2 font-bold focus:outline-none focus:ring-2 focus:ring-red-300"
+                dir="ltr" />
+            </label>
             <div className="flex gap-3">
               <button
+              type="button"
               onClick={() => setShowConfirm(false)}
               className="flex-1 border rounded-lg py-2 text-gray-600 hover:bg-gray-50">
-              
+
                 {tr("common.cancel")}
               </button>
               <button
-              onClick={handleDeleteAll}
-              className="flex-1 bg-red-600 hover:bg-red-700 text-white rounded-lg py-2 font-semibold transition">
-              
+              type="submit"
+              disabled={typedDeleteAll.trim() !== String(wholeDay.length) || deleting}
+              data-testid="delete-all-confirm"
+              className="flex-1 bg-red-600 hover:bg-red-700 text-white rounded-lg py-2 font-semibold transition disabled:opacity-50">
+
                 {tr("list.deleteAll")}
               </button>
             </div>
-          </div>
+          </form>
         </div>
       }
 
@@ -539,7 +560,7 @@ export default function TransactionsList({
           </button>
           {canDelete && transactions.length > 0 && !searchingDays && !closedDay && !allStores &&
           <button
-            onClick={() => setShowConfirm(true)}
+            onClick={() => { setTypedDeleteAll(""); setShowConfirm(true); }}
             disabled={deleting}
             className="flex items-center gap-1 border border-red-200 rounded-lg px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 transition disabled:opacity-50">
             
@@ -621,7 +642,7 @@ export default function TransactionsList({
             }
             {canDelete &&
             <button
-            onClick={() => setShowBulkDeleteConfirm(true)}
+            onClick={() => { setTypedBulkDelete(""); setShowBulkDeleteConfirm(true); }}
             disabled={bulkWorking || selectionHasClosedDay}
             className="flex items-center gap-1 bg-white border border-red-200 rounded-lg px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 transition disabled:opacity-50">
               {bulkWorking ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
@@ -642,10 +663,15 @@ export default function TransactionsList({
         </div>
       }
 
-      {/* Bulk delete confirmation */}
+      {/* Bulk delete confirmation — typed-count confirmation (user's request, 2026-09-30), like the
+          admin panel's delete-by-range and the import history's Clear history. */}
       {showBulkDeleteConfirm &&
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" dir={dir}>
-          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full mx-4" role="alertdialog" aria-label={tr("list.bulkDeleteDialog")}>
+          <form
+            role="alertdialog"
+            aria-label={tr("list.bulkDeleteDialog")}
+            onSubmit={(e) => { e.preventDefault(); if (typedBulkDelete.trim() === String(selectedTransactions.length) && !bulkWorking) handleBulkDelete(); }}
+            className="bg-white rounded-2xl shadow-2xl p-6 max-w-sm w-full mx-4">
             <div className="flex items-center gap-3 mb-3">
               <div className="bg-red-100 rounded-full p-2">
                 <Trash2 className="w-5 h-5 text-red-600" />
@@ -655,20 +681,33 @@ export default function TransactionsList({
             <p className="text-gray-600 mb-1">
               {tr("list.bulkDeleteBefore")}<span className="font-bold text-red-600">{tr("list.count", { count: selectedTransactions.length })}</span>{tr("list.bulkDeleteAfter")}
             </p>
-            <p className="text-xs text-red-500 mb-5">⚠️ {tr("common.cannotUndo")}</p>
+            <p className="text-xs text-red-500 mb-3">⚠️ {tr("common.cannotUndo")}</p>
+            <label className="block mb-4 text-sm font-medium text-gray-700">
+              {tr("list.typeToConfirm", { count: selectedTransactions.length })}
+              <input
+                value={typedBulkDelete}
+                onChange={(e) => setTypedBulkDelete(e.target.value)}
+                inputMode="numeric"
+                autoFocus
+                data-testid="bulk-delete-confirm-input"
+                className="mt-1 w-full border rounded-lg px-3 py-2 font-bold focus:outline-none focus:ring-2 focus:ring-red-300"
+                dir="ltr" />
+            </label>
             <div className="flex gap-3">
               <button
+              type="button"
               onClick={() => setShowBulkDeleteConfirm(false)}
               className="flex-1 border rounded-lg py-2 text-gray-600 hover:bg-gray-50">
                 {tr("common.cancel")}
               </button>
               <button
-              onClick={handleBulkDelete}
-              className="flex-1 bg-red-600 hover:bg-red-700 text-white rounded-lg py-2 font-semibold transition">
+              type="submit"
+              disabled={typedBulkDelete.trim() !== String(selectedTransactions.length) || bulkWorking}
+              className="flex-1 bg-red-600 hover:bg-red-700 text-white rounded-lg py-2 font-semibold transition disabled:opacity-50">
                 {tr("list.bulkDeleteConfirm", { count: selectedTransactions.length })}
               </button>
             </div>
-          </div>
+          </form>
         </div>
       }
 

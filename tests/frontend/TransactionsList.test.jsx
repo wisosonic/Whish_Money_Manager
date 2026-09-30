@@ -246,7 +246,15 @@ describe("TransactionsList — bulk actions", () => {
     expect(dialog).toHaveTextContent("هل أنت متأكد من حذف 2 عملية؟");
     expect(api.entities.Transaction.bulkDelete).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: "حذف 2 عملية" }));
+    const confirmButton = screen.getByRole("button", { name: "حذف 2 عملية" });
+    expect(confirmButton).toBeDisabled();
+    fireEvent.click(confirmButton); // disabled: nothing happens without typing the count first
+    expect(api.entities.Transaction.bulkDelete).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByTestId("bulk-delete-confirm-input"), { target: { value: "1" } }); // wrong count
+    expect(confirmButton).toBeDisabled();
+    fireEvent.change(screen.getByTestId("bulk-delete-confirm-input"), { target: { value: "2" } });
+    expect(confirmButton).not.toBeDisabled();
+    fireEvent.click(confirmButton);
     await waitFor(() => expect(onRefresh).toHaveBeenCalledTimes(1));
     expect(api.entities.Transaction.bulkDelete).toHaveBeenCalledWith([1, 3]);
     // Opening balances are cleaned up once for each affected day.
@@ -270,6 +278,7 @@ describe("TransactionsList — bulk actions", () => {
     renderList({ onRefresh });
     fireEvent.click(selectAll());
     fireEvent.click(screen.getByRole("button", { name: /حذف المحدد/ }));
+    fireEvent.change(screen.getByTestId("bulk-delete-confirm-input"), { target: { value: "2" } });
     fireEvent.click(screen.getByRole("button", { name: "حذف 2 عملية" }));
     expect(await screen.findByText("boom")).toBeInTheDocument();
     expect(onRefresh).not.toHaveBeenCalled();
