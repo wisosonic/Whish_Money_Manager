@@ -13,6 +13,14 @@ vi.mock("@/lib/AuthContext", async () => (await import("./authMock")).authContex
 beforeEach(() => setAuthRole("admin"));
 
 vi.mock("@/components/layout/Header", () => ({ default: () => null }));
+// A stand-in for the real import screen: a button that fires onSaved with args the test controls,
+// so the race between the import flow and the opening-balance save can be driven directly (see
+// "an import to a different day" below) without going through the real upload / preview steps.
+vi.mock("@/components/transactions/ImportPDFModal", () => ({
+  default: ({ onSaved }) => (
+    <button data-testid="fake-import-saved" onClick={() => onSaved(500, "2026-01-01", null)}>fake import saved</button>
+  ),
+}));
 vi.mock("@/api/apiClient", () => ({
   api: {
     auth: { me: vi.fn() },
@@ -470,6 +478,46 @@ describe("Dashboard — keeps the user's place after saving", () => {
     } finally {
       scrollSpy.mockRestore();
     }
+  });
+});
+
+describe("Dashboard — an import to a different day (user-reported, 2026-09-30)", () => {
+  // The bug: after clearing every transaction and importing a fresh statement (for a different day
+  // than the one shown), the table flickered and then went blank until the page was reloaded.
+  // Cause: onSaved both moves the selected day to the statement's own day (which fetches it — a good
+  // fetch) *and* calls handleSetOpeningBalance, whose own trailing refresh used to close over the
+  // *old* selectedDate. Once the balance write's round trip finished, that stale refresh could fire
+  // after the good one and win the "keep only the latest request's answer" race — showing the old
+  // (now empty) day again. Fixed by only refreshing there when the day (and store) it just wrote a
+  // balance for is still the one on screen (server/pages/Dashboard.jsx's selectedDateRef).
+  it("doesn't go blank once the balance write's own delayed refresh catches up", async () => {
+    const reimported = [{
+      id: 10, type: "cash_in", amount: 77, commission: 0, sender_name: "REIMPORTED", receiver_name: "Office",
+      reference_number: "tr:10", transaction_date: "2026-01-01", sort_order: 0, created_date: "2026-01-01T09:00:00Z",
+    }];
+    installFakeDashboard(api, () => reimported); // as if every transaction was cleared, then this was imported
+
+    let resolveFilter;
+    api.entities.DailyBalance.filter.mockReturnValue(new Promise((resolve) => { resolveFilter = resolve; }));
+    api.entities.DailyBalance.create.mockResolvedValue({ id: 99 });
+
+    render(<Dashboard />);
+    // 2026-09-23 (the day shown on load) now has nothing.
+    expect(await screen.findByText("لا توجد معاملات")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("استيراد PDF / CSV"));
+    fireEvent.click(screen.getByTestId("fake-import-saved"));
+
+    // The day changes to the statement's own day, and that fetch (unrelated to the balance write) shows it.
+    expect(await screen.findByText("REIMPORTED")).toBeInTheDocument();
+
+    // Only now does the opening-balance save's own round trip finish.
+    resolveFilter([]);
+    await waitFor(() => expect(api.entities.DailyBalance.create).toHaveBeenCalled());
+
+    // It must not blank the table by refreshing the day it started with, which no longer applies.
+    expect(screen.getByText("REIMPORTED")).toBeInTheDocument();
+    expect(screen.queryByText("لا توجد معاملات")).not.toBeInTheDocument();
   });
 });
 

@@ -77,6 +77,12 @@ export default function Dashboard() {
     writeCookie(COOKIES.selectedDate, date);
     setSelectedDate(date);
   };
+  // Kept current on every render, so an async callback that started earlier (e.g. handleSetOpeningBalance,
+  // below) can tell whether the day or store it started with is still the one on screen by the time it
+  // finishes, instead of trusting its own stale closure over selectedDate / chosenStore.
+  const selectedDateRef = useRef(selectedDate);
+  const chosenStoreRef = useRef(chosenStore);
+  useEffect(() => { selectedDateRef.current = selectedDate; chosenStoreRef.current = chosenStore; });
   const [search, setSearch] = useState("");
   // Where a search looks: "all" days or only the selected "day" — starts from Settings → Transactions table.
   const [searchScope, setSearchScope] = useState(preferences.searchScope);
@@ -149,6 +155,14 @@ export default function Dashboard() {
       if (latestDay.current === key) setLoading(false);
     }
   };
+  // `fetchDay` itself closes over this render's `selectedDate` / `storeKey`, same as everything else
+  // in the component — fine for the effect below (a fresh closure every render), but wrong for a
+  // *longer-running* async caller such as `handleSetOpeningBalance`: by the time such a caller reaches
+  // its own trailing refresh, newer renders (and newer `fetchDay` closures) may already exist. Calling
+  // through this ref (kept current every render) always runs the latest one, so it always reads the
+  // day/store actually on screen — never whatever they were when the caller started.
+  const fetchDayRef = useRef(fetchDay);
+  useEffect(() => { fetchDayRef.current = fetchDay; });
 
   // storeId: the store the balance is for (after an import into a store the Admin picked there).
   const handleSetOpeningBalance = async (val, date = null, storeId = chosenStore) => {
@@ -164,7 +178,17 @@ export default function Dashboard() {
     } catch (err) {
       notify.error(err?.message ? errorText(err.message) : t("toast.balance.failed"));
     }
-    await fetchDay();
+    // Skipped once the day (or store) this was for is no longer the one on screen — the import flow
+    // changes the selection itself right after calling this, which already fetches the new day; doing
+    // it here too would just be redundant. When it *is* still current (the opening-balance pencil
+    // always edits the day already shown, so this is the only refresh that day gets), go through
+    // `fetchDayRef` rather than calling `fetchDay` directly: this function's own closure over
+    // `selectedDate` / `chosenStore` can itself be the stale one by the time the write above finishes
+    // (a slow network round trip), and calling it directly re-fetched *that* stale day — which, after
+    // the import already moved the page on, was a day whose data no longer belonged there (often now
+    // empty), blanking the table until a reload started over cleanly. (user-reported, 2026-09-30: after
+    // clearing all transactions and importing a new file, the table went blank until reloaded.)
+    if (date === selectedDateRef.current && storeId === chosenStoreRef.current) await fetchDayRef.current();
   };
 
   // Load (again) whenever the store shown changes. Someone with no store has nothing to load.
