@@ -24,7 +24,7 @@ It runs entirely on your machine: a React frontend and a small Node.js/Express A
 - **Ambiguous rows** (**عمليات غير واضحة**, beside the import button): statement rows the CSV import couldn't read as one Cash In or Cash Out, a negative debit or credit, both a debit and a credit, or neither, are set aside instead of being saved as a guess. A red badge on the button shows how many there are (none: no badge; over 99: "99+"). The import screen lists them before you save; this window lists every set-aside row from past imports (line, date, description, debit and credit as printed, why, and the import it came from). Three actions per row, wherever you could import that statement: **accept as is** (with an inline confirmation) saves it exactly as printed — no review, the larger of debit/credit decides the type and the amount, same as the file's own numbers; **discard** it for good (with an inline confirmation); or **correct and add**, which opens a small form — separate **debit** and **credit** amount fields (mirroring the statement's own columns, prefilled from the row), plus names, phone, date, and so on — and saves it as a real transaction. Exactly one of debit/credit must end up filled with a positive number — the field may show the row's own printed negative value (often exactly what made it ambiguous), but a negative number is refused on save, with an inline message, so it has to be corrected to what the amount actually was, not just resaved with its sign. Whichever field it is decides Cash Out or Cash In, and its value is the amount. The commission is worked out the same way as any other CSV credit (the store's office rate on the date, nothing on debits), never typed by hand. Who sees, discards or corrects a row follows the import history.
 - **Error pages**: an address that isn't a page shows a 404 page with a link home. Any server error, or a server that can't be reached, opens a 500 page that can try the page again or go back to the dashboard; a screen that crashes shows it too, instead of a blank page.
 - **Sticky table header**: the column names stay visible while you scroll through a long day. The table scrolls inside its own box, one screen tall, so on a phone it still scrolls sideways too.
-- **Import history** (**سجل الاستيراد** in the header): every statement saved from the import screen, newest first: when, the file name and type, the days it covers, the store, how many transactions were added (and replaced), and who imported it. The Admin sees every store's imports (and can pick one store), a Manager their store's, and a User only their own. The history is a log: deleting the imported transactions later doesn't remove its entries.
+- **Import history** (**سجل الاستيراد** in the header): every statement saved from the import screen, newest first: when, the file name and type, the days it covers, the store, how many transactions were added (and replaced), and who imported it. The Admin sees every store's imports (and can pick one store), a Manager their store's, and a User only their own. The history is a log: deleting the imported transactions later doesn't remove its entries. Admin and Manager can also **clear** it (a typed-count confirmation, like the admin panel's delete-by-range), which never touches the transactions themselves — but any ambiguous row still waiting for review under a cleared import is discarded with it, and the confirmation says so.
 - **Date picker that marks days with data**: click the day shown next to "اليومية" to open a calendar. Every day that has transactions is highlighted in one blue, however many it has, and closed days show a 🔒. The month and year lists (or the arrows) move to another month; each day's tooltip and screen-reader name give its count ("2026-09-22 · 3 عملية"). The counts are fetched each time the calendar opens or changes month, so they're current after an import or a delete. In "All stores" a day is highlighted if any store has transactions on it, and closed days aren't marked (days are closed per store).
 - **Monthly and yearly summaries**: two collapsible blocks at the top of the dashboard. Both follow the month and year of the date selected in the date picker.
   - **ملخص الشهر** (open by default): wallet net balance, number of transactions, commissions, withdrawals and deposits for the month.
@@ -208,6 +208,7 @@ Everyone signs in with their own email and password. There are three roles:
 | Add transactions by hand (Cash In / Cash Out, for rows the import missed) | ✓ | ✓ | ✓ |
 | Import PDF / CSV statements | ✓ | ✓ | ✓ |
 | Import history (سجل الاستيراد) | all stores | their store | their own imports |
+| Clear the import history | any store, or every store | their store | — |
 | Edit transactions **they entered** (single and bulk) | ✓ | ✓ | ✓ |
 | Edit **anyone's** transactions | ✓ | ✓ | — |
 | Delete transactions (single, bulk, "delete all for this day") | ✓ | ✓ | — |
@@ -517,7 +518,8 @@ tests/
 │   ├── imports.test.js       # import history: recorded with the import (server-side period / count / user),
 │   │                         # file-name cleaning, nothing on a refused import, who sees what, email change,
 │   │                         # ambiguous rows kept with the import (cleaned, same visibility),
-│   │                         # discarding one and correcting one into a real transaction
+│   │                         # discarding one and correcting one into a real transaction,
+│   │                         # clearing the log (scope, cascading to pending ambiguous rows, race check)
 │   ├── errors.test.js        # every API failure is JSON: 404, malformed JSON, too large, an unexpected 500
 │   ├── dashboard.test.js     # per-day queries (100 vs 1,000 rows), the 10,000 cap, server totals and wallet,
 │   │                         # all-days / this-month search, sender / receiver reports, opening-balance
@@ -554,7 +556,8 @@ tests/
     ├── fileType.test.js      # PDF/CSV detection
     ├── transactionSearch.test.js
     ├── ImportPDFModal.test.jsx   # PDF/CSV routing, preview, duplicate prompt, save payload (with the file's name)
-    ├── ImportHistoryPage.test.jsx # the history table, the Admin's store filter, each role's scope, empty / capped
+    ├── ImportHistoryPage.test.jsx # the history table, the Admin's store filter, each role's scope, empty / capped,
+    │                               # and clearing it (data:purge, typed-count confirm, the ambiguous-rows warning)
     ├── AmbiguousRowsModal.test.jsx # the dashboard's ambiguous-rows window, its button beside Import, and the
     │                               # per-row actions: accept-as-is and discard (both inline confirm), and
     │                               # correct-and-add (separate debit/credit fields: exactly one filled,
@@ -610,7 +613,9 @@ server/permissions.js         Permission names and the three default roles (shar
 server/db.js                  SQLite connection and schema (transactions, daily_balances, roles, users, sessions)
 server/stores.js              Stores API (manage, Manager, members) and the store-scope helpers every route uses
 server/reports.js             Admin panel reports API: income by month, top senders / recipients (grouping and ranking)
-server/imports.js             Import history: recorded with each import; GET /import-history (Admin / Manager / own)
+server/imports.js             Import history: recorded with each import; GET /import-history (Admin / Manager / own);
+                              DELETE /import-history clears it (data:purge, typed-count confirmed);
+                              ambiguous-row actions: accept as is, discard, correct and add
 server/dashboard.js           Dashboard API: one day at a time, its totals, month / year / wallet, all-days search,
                               sender / receiver reports (lists capped at 10,000), opening-balance cleanup
 server/wallet.js              The wallet rule (opening balance of a day, net balance)
@@ -697,6 +702,7 @@ All routes are under `/local-api`. Every failure is JSON `{ error }`: an unknown
 | DELETE | `/ambiguous-rows/:id` | `transactions:import` | Discard one ambiguous row for good. 404 if it's out of the caller's scope (same rule as the list above, row by row) |
 | POST | `/ambiguous-rows/:id/convert` | `transactions:import` + `transactions:create` | `{ type, amount, transaction_date, sender_name?, receiver_name?, phone?, customer_number?, service?, note?, reference_number? }` → corrects the row into a real transaction (commission computed server-side, the CSV rule) and discards the row, in one database transaction. 404 out of scope; 400 on a bad type/amount/date; 423 on a closed day; 409 if the reference is already used in another store, or if the row's store no longer exists |
 | GET | `/import-history` | `transactions:read` | `?store_id=` (Admin). The Admin: every store; a Manager: their store (`imports:read:any`); a User: their own imports. Newest first, at most 10,000: `{ total, truncated, imports }`, each with `store_name` and `imported_by_name` |
+| DELETE | `/import-history` | `data:purge` | `?store_id=` (Admin: one store or every store; a Manager always their own). `{ expected_count }` — the total the user was shown; 409 (nothing cleared) if it changed since. Clears every matching log entry and cascades to any ambiguous row still pending review under one of them; returns `{ cleared, discarded_ambiguous }` |
 | POST | `/transactions/bulk-update` | `transactions:update:any`, or `:own` if every selected row is theirs | `{ ids, changes }` |
 | POST | `/transactions/bulk-delete` | `transactions:delete` | `{ ids }` |
 | POST | `/transactions/filter` · `/daily-balances/filter` | `transactions:read` / `balances:read` | List. Filter keys must be real columns |

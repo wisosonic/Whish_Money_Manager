@@ -369,3 +369,68 @@ describe("actions on an ambiguous row (user's request, 2026-09-29): discard, or 
     });
   });
 });
+
+describe("clearing the import history (user's request, 2026-09-30; data:purge)", () => {
+  const clear = (as, query, expected_count) => client.request("DELETE", `/import-history${query || ""}`, { as, body: { expected_count } });
+  const set = (line, reason, over = {}) => ({ line_no: line, date: "2026-09-05", reference_number: `tr:h${line}`, service: "W2W", description: "ROW", debit: "-5.00", credit: "0.00", balance: "10.00", reason, ...over });
+
+  it("removes every entry in scope and returns how many were cleared", async () => {
+    await importAs("user", [row("2026-09-01")]);
+    await importAs("user", [row("2026-09-02")]);
+    expect(entries()).toHaveLength(2);
+    const res = await clear("admin", "", 2);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ cleared: 2, discarded_ambiguous: 0 });
+    expect(entries()).toEqual([]);
+  });
+
+  it("cascades to any ambiguous rows still pending review under a cleared import", async () => {
+    await importAs("user", [row("2026-09-01")], { ambiguous: [set(1, "negative"), set(2, "both")] });
+    expect(db.prepare("SELECT COUNT(*) AS n FROM ambiguous_rows").get().n).toBe(2);
+    const res = await clear("admin", "", 1);
+    expect(res.body).toEqual({ cleared: 1, discarded_ambiguous: 2 });
+    expect(db.prepare("SELECT COUNT(*) AS n FROM ambiguous_rows").get().n).toBe(0);
+  });
+
+  it("is scoped like the rest of the panel: a Manager clears only their store's entries", async () => {
+    await importAs("user", [row("2026-09-01")]); // store1
+    await importAs("manager2", [row("2026-09-03")]); // store2
+    expect((await clear("manager", "", 1)).status).toBe(200);
+    expect(entries()).toHaveLength(1);
+    expect(entries()[0].store_id).toBe(store2);
+  });
+
+  it("the Admin can target one store, or every store", async () => {
+    await importAs("user", [row("2026-09-01")]); // store1
+    await importAs("manager2", [row("2026-09-03")]); // store2
+    expect((await clear("admin", `?store_id=${store1}`, 1)).status).toBe(200);
+    expect(entries()).toHaveLength(1);
+    expect(entries()[0].store_id).toBe(store2);
+    expect((await clear("admin", "", 1)).status).toBe(200);
+    expect(entries()).toEqual([]);
+  });
+
+  it("409s on a stale count, without deleting anything", async () => {
+    await importAs("user", [row("2026-09-01")]);
+    await importAs("user", [row("2026-09-02")]);
+    const res = await clear("admin", "", 1); // someone else's screen was showing 1
+    expect(res.status).toBe(409);
+    expect(res.body.total).toBe(2);
+    expect(entries()).toHaveLength(2);
+  });
+
+  it("400s without a valid expected_count, without deleting anything", async () => {
+    await importAs("user", [row("2026-09-01")]);
+    expect((await clear("admin", "", undefined)).status).toBe(400);
+    expect((await clear("admin", "", -1)).status).toBe(400);
+    expect((await clear("admin", "", "2")).status).toBe(400); // a string, not a number
+    expect(entries()).toHaveLength(1);
+  });
+
+  it("needs data:purge — a User can't clear anything, and a Manager only ever reaches their own store", async () => {
+    await importAs("user", [row("2026-09-01")]); // store1 only
+    expect((await clear("user", "", 1)).status).toBe(403);
+    expect((await clear("manager2", "", 1)).status).toBe(409); // manager2 is store2's Manager: 0 there, not 1
+    expect(entries()).toHaveLength(1);
+  });
+});

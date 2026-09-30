@@ -162,6 +162,11 @@ export const api = {
   // The import history: { total, truncated, imports } (the Admin can ask for one store).
   importHistory: {
     list: async (storeId) => apiRequest(`/import-history${query({ store_id: storeId })}`, { method: 'GET' }),
+    // Clears the log (data:purge). expected_count: the total the user was shown, so a stale confirm
+    // never clears more (or different) rows than they saw; returns { cleared, discarded_ambiguous }.
+    clear: async (storeId, expectedCount) => apiRequest(`/import-history${query({ store_id: storeId })}`, {
+      method: 'DELETE', body: JSON.stringify({ expected_count: expectedCount }),
+    }),
     // The statement rows set aside as ambiguous: { total, truncated, rows }.
     ambiguous: async (storeId) => apiRequest(`/ambiguous-rows${query({ store_id: storeId })}`, { method: 'GET' }),
     // Just how many (the dashboard button's badge): { total }.

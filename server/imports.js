@@ -4,6 +4,9 @@
 //
 //   recordImport(...)                 called by POST /transactions/import, inside its db transaction
 //   GET    /local-api/import-history     the entries the user may see, newest first (at most MAX_ROWS)
+//   DELETE /local-api/import-history     clears the log (data:purge; the store's, or every store's for
+//                                       the Admin) — a housekeeping action on the log only, but it
+//                                       cascades to any ambiguous rows still pending review there
 //   GET    /local-api/ambiguous-rows     the rows those imports set aside as ambiguous, same visibility
 //                                       (?count=1: just { total }, for the dashboard button's badge)
 //   DELETE /local-api/ambiguous-rows/:id             discard one row for good (transactions:import)
@@ -149,6 +152,44 @@ export const registerImportHistoryRoutes = (app) => {
        LIMIT ?`
     ).all(...params, MAX_ROWS);
     res.json({ total, truncated: total > imports.length, imports });
+  });
+
+  // Clears the import-history log (data:purge, like the admin panel's other destructive actions —
+  // not transactions:read, so a User never sees the button). It's a log, so this never touches the
+  // transactions themselves — but `ambiguous_rows` has ON DELETE CASCADE to `import_history`, so any
+  // row still pending review under a cleared import is discarded with it. The client is told how many
+  // (`discarded_ambiguous`) so it can warn before asking to confirm.
+  //
+  // The client sends the count it showed the user (`expected_count`), the same race-safety pattern as
+  // the admin panel's purge: if the log changed since (another import, or someone else clearing it),
+  // nothing is deleted and the current count comes back instead, so a "confirm" the user actually saw
+  // never wipes more (or different) rows than were shown.
+  app.delete("/local-api/import-history", requirePermission(P.DATA_PURGE), (req, res) => {
+    const store = readStore(req, res, req.query.store_id);
+    if (!store) return;
+    const expected = req.body?.expected_count;
+    if (!Number.isInteger(expected) || expected < 0) {
+      res.status(400).json({ error: "expected_count is required" });
+      return;
+    }
+    const historyWhere = store.all ? "" : "WHERE store_id = ?";
+    const joinWhere = store.all ? "" : "WHERE h.store_id = ?";
+    const params = store.all ? [] : [store.id];
+    const result = db.transaction(() => {
+      const current = db.prepare(`SELECT COUNT(*) AS n FROM import_history ${historyWhere}`).get(...params).n;
+      if (current !== expected) return { conflict: current };
+      const ambiguousDiscarded = db.prepare(
+        `SELECT COUNT(*) AS n FROM ambiguous_rows a JOIN import_history h ON h.id = a.import_id ${joinWhere}`
+      ).get(...params).n;
+      const cleared = db.prepare(`DELETE FROM import_history ${historyWhere}`).run(...params).changes;
+      return { cleared, ambiguousDiscarded };
+    })();
+    if (result.conflict !== undefined) {
+      res.status(409).json({ error: "The import history changed since you last saw it. Check the count and try again.", total: result.conflict });
+      return;
+    }
+    console.log(`[imports] ${req.user.email} cleared ${result.cleared} import-history entries (${store.all ? "every store" : `store ${store.id}`}), discarding ${result.ambiguousDiscarded} pending ambiguous row(s)`);
+    res.json({ cleared: result.cleared, discarded_ambiguous: result.ambiguousDiscarded });
   });
 
   // The rows set aside as ambiguous, newest import first, in file order; with their import's file,
